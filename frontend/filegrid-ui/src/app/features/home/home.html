@@ -4,7 +4,12 @@
   <h1>Bine ai venit</h1>
   @if (auth.hasRole('FIELD', 'CONNECTIONS')) {
     <p>Poți încărca fișiere din pagina <a routerLink="/upload">Upload</a>.</p>
+  }
+  @if (auth.hasRole('FIELD', 'DISPATCH', 'CONNECTIONS')) {
+    <p>
+      Poți căuta, descărca și verifica integritatea fișierelor din pagina <a routerLink="/search">Căutare</a>.
+    </p>
   } @else {
-    <p>Ești autentificat. Paginile de căutare și statistici vin în pașii următori.</p>
+    <p>Ești autentificat. Rolul tău nu încarcă și nu caută fișiere; statisticile vin în pașii următori.</p>
   }
 </main>
