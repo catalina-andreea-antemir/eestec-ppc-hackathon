@@ -209,7 +209,7 @@ if ($curl) {
 # --- 5. Rezumat -------------------------------------------------------------------------------------------------
 Write-Host ''
 Write-Host 'FileGrid PPC ruleaza:  https://localhost   (certificat self-signed: accepta-l in browser)'
-Write-Host 'Grafana:               https://localhost/grafana/   (cand exista; utilizator admin, parola GRAFANA_ADMIN_PASSWORD din .env)'
+Write-Host 'Grafana:               https://localhost/grafana/   (utilizator admin, parola GRAFANA_ADMIN_PASSWORD din .env)'
 Write-Host ''
 Write-Host 'Utilizatori de test (parolele sunt in .env):'
 foreach ($user in $testUsers.Keys) {
