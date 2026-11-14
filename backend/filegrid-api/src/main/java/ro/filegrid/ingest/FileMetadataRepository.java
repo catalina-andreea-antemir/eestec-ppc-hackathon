@@ -69,6 +69,21 @@ public class FileMetadataRepository {
         return rows.stream().findFirst();
     }
 
+    /** Rândul din {@code files} (fără detaliile de avarie), pentru {@code complete} repetat la upload în bucăți. */
+    public Optional<FileRecord> find(UUID fileId) {
+        return jdbc.query("""
+                SELECT category, original_filename, content_type, size_bytes, sha256, sha256_plain, storage_type,
+                       storage_key, status, encrypted, created_at, created_by
+                  FROM dbo.files WHERE id = CAST(:id AS UNIQUEIDENTIFIER)""", id(fileId),
+                (row, n) -> new FileRecord(fileId, ro.filegrid.domain.Category.valueOf(row.getString("category")),
+                        row.getString("original_filename"), row.getString("content_type"), row.getLong("size_bytes"),
+                        row.getBytes("sha256"), row.getBytes("sha256_plain"),
+                        ro.filegrid.domain.StorageType.valueOf(row.getString("storage_type")),
+                        row.getString("storage_key"), row.getString("status"), row.getBoolean("encrypted"),
+                        row.getObject("created_at", LocalDateTime.class).toInstant(ZoneOffset.UTC),
+                        row.getString("created_by"), null)).stream().findFirst();
+    }
+
     private static MapSqlParameterSource id(UUID id) {
         return new MapSqlParameterSource().addValue("id", id.toString(), Types.VARCHAR);
     }

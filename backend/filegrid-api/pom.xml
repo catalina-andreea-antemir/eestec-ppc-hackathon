@@ -141,6 +141,14 @@
     <build>
         <plugins>
             <plugin>
+                <!-- Testele rulează cu heap de 256 MB: upload-ul de 1,1 GB (C7) trebuie să treacă în streaming. -->
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <argLine>-Xmx256m</argLine>
+                </configuration>
+            </plugin>
+            <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
             </plugin>
