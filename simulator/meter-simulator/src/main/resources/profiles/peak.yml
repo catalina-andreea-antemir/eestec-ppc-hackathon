@@ -1,0 +1,10 @@
+meters: 120
+firstMeterNumber: 9100001
+sendingInterval: PT1S
+duration: PT5M
+readingsPerFile: 96
+firstReadingAt: "2026-01-18T00:00:00Z"
+scenario: peak
+abnormalPercent: 5
+silentPercent: 5
+duplicatePercent: 10
