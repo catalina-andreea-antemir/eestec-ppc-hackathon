@@ -28,6 +28,18 @@ public class ApiException extends RuntimeException {
         this.details = details;
     }
 
+    private final Map<String, String> headers = new java.util.LinkedHashMap<>();
+
+    /** Un header suplimentar al răspunsului de eroare (de exemplu {@code Content-Range} la 416). */
+    public ApiException withHeader(String name, String value) {
+        headers.put(name, value);
+        return this;
+    }
+
+    public Map<String, String> headers() {
+        return headers;
+    }
+
     public static ApiException unauthorized(String message) {
         return new ApiException(HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", message);
     }
