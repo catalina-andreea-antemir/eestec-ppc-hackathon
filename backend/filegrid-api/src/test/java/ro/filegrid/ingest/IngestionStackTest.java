@@ -42,6 +42,7 @@ import com.zaxxer.hikari.HikariDataSource;
 import ro.filegrid.api.ApiException;
 import ro.filegrid.domain.Category;
 import ro.filegrid.domain.StorageType;
+import ro.filegrid.TestSecrets;
 import ro.filegrid.integrity.Sha256;
 import ro.filegrid.policy.PolicyEngine;
 import ro.filegrid.storage.ByteRange;
@@ -131,7 +132,7 @@ class IngestionStackTest {
         ContentWriter writer = new ContentWriter(new StorageSelector(policies, registry), registry);
         TransactionTemplate tx = new TransactionTemplate(new DataSourceTransactionManager(meta));
         FileMetadataRepository metadata = new FileMetadataRepository(jdbc);
-        files = new FileIngestionService(policies, writer, metadata, tx, new EncryptionNotReady(), Clock.systemUTC());
+        files = new FileIngestionService(policies, writer, metadata, tx, new AesGcmDocumentEncryption(TestSecrets.DOC_KEY_BYTES), Clock.systemUTC());
         MeterReadingRepository repository = new MeterReadingRepository(jdbc, new DataSourceTransactionManager(meta));
         readings = new MeterReadingIngestionService(repository, metadata, writer, tx, Clock.systemUTC());
     }

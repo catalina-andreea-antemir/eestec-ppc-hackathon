@@ -60,6 +60,10 @@ filegrid:
       admin:
         role: ADMIN
         password: ${FILEGRID_USER_ADMIN_PASSWORD:}
+  # Criptarea documentelor (C10): AES-256-GCM, cheia base64 de 32 de octeti doar din mediu (nu se logheaza). Fara ea
+  # aplicatia nu porneste daca politica are o categorie cu encryption: true.
+  encryption:
+    key: ${DOC_ENCRYPTION_KEY:}
   # Descarcare (C8): link semnat HMAC (cheia vine doar din mediu) si pragul sub care fisierul se verifica inainte de
   # trimitere (peste prag, hash-ul se verifica in timpul trimiterii).
   download:

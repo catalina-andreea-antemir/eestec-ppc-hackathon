@@ -17,6 +17,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import ro.filegrid.domain.Category;
+import ro.filegrid.download.FileAccess;
+import ro.filegrid.ingest.FileRecord;
 import ro.filegrid.download.FileQueryService;
 import ro.filegrid.ingest.IngestErrors;
 
@@ -27,9 +29,11 @@ public class FileReadController {
     static final int MAX_QUERY_LENGTH = 200;
 
     private final ObjectProvider<FileQueryService> service;
+    private final FileAccess access;
 
-    public FileReadController(ObjectProvider<FileQueryService> service) {
+    public FileReadController(ObjectProvider<FileQueryService> service, FileAccess access) {
         this.service = service;
+        this.access = access;
     }
 
     /** Schema {@code FilePage}. */
@@ -58,7 +62,9 @@ public class FileReadController {
     @GetMapping("/api/v1/files/{id}")
     public FileMetadata get(HttpServletRequest request, Authentication authentication, @PathVariable String id) {
         RequestScenario.read(request);
-        return FileMetadata.of(require().get(authentication, fileId(id)));
+        FileRecord file = require().get(authentication, fileId(id), "VIEW");
+        access.audit(authentication, file, "VIEW");
+        return FileMetadata.of(file);
     }
 
     /** Un id care nu e UUID nu poate exista: 404, ca în contract (fără 400 la aceste rute). */

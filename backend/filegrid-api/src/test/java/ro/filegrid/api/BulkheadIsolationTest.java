@@ -85,6 +85,8 @@ class BulkheadIsolationTest {
     @Autowired
     MeterRegistry registry;
     @MockitoBean
+    ro.filegrid.security.AuditLog auditLog;
+    @MockitoBean
     FileIngestionService files;
     @MockitoBean
     MeterReadingIngestionService meters;
@@ -118,7 +120,7 @@ class BulkheadIsolationTest {
             return outage();
         });
         when(query.lookup(DOC_ID)).thenReturn(doc());
-        when(query.get(any(), eq(OUTAGE_ID))).thenReturn(outage());
+        when(query.get(any(), eq(OUTAGE_ID), any())).thenReturn(outage());
         doAnswer(inv -> {
             FileRecord f = inv.getArgument(0);
             HttpServletResponse response = inv.getArgument(2);

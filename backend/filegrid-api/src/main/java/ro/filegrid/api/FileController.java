@@ -19,6 +19,7 @@ import org.springframework.web.multipart.MultipartHttpServletRequest;
 import org.springframework.web.util.WebUtils;
 
 import ro.filegrid.domain.Category;
+import ro.filegrid.download.FileAccess;
 import ro.filegrid.ingest.FileIngestionService;
 import ro.filegrid.ingest.FileRecord;
 import ro.filegrid.ingest.IngestErrors;
@@ -40,10 +41,12 @@ public class FileController {
     private final ObjectProvider<FileIngestionService> service;
 
     private final CategoryBulkheads bulkheads;
+    private final FileAccess access;
 
-    public FileController(ObjectProvider<FileIngestionService> service, CategoryBulkheads bulkheads) {
+    public FileController(ObjectProvider<FileIngestionService> service, CategoryBulkheads bulkheads, FileAccess access) {
         this.service = service;
         this.bulkheads = bulkheads;
+        this.access = access;
     }
 
     @PostMapping("/api/v1/files")
@@ -54,6 +57,7 @@ public class FileController {
             throw IngestErrors.validation(null, "Cererea trebuie să fie multipart/form-data.");
         }
         Category category = category(multipart.getParameter("category"));
+        access.requireRole(authentication, category, FileAccess.UPLOAD, null);
         MultipartFile file = multipart.getFile("file");
         if (file == null || file.isEmpty()) {
             throw IngestErrors.validation("file", "Câmpul „file” lipsește sau fișierul este gol.");
@@ -65,9 +69,16 @@ public class FileController {
         }
         // Categoria vine din corpul multipart, deja parsat de container; permisul se ia înainte de munca grea (storage).
         try (var permit = bulkheads.acquire(category)) {
-            FileRecord stored = ingestion.upload(new FileIngestionService.Upload(category,
+            FileRecord stored;
+            try {
+                stored = ingestion.upload(new FileIngestionService.Upload(category,
                     originalName(file.getOriginalFilename()), contentType(file.getContentType()), file.getSize(),
                     file::getInputStream, outage, authentication.getName()));
+            } catch (RuntimeException e) {
+                access.failed(category, FileAccess.UPLOAD);
+                throw e;
+            }
+            access.audit(authentication, stored, FileAccess.UPLOAD);
             return ResponseEntity.status(HttpStatus.CREATED).body(FileMetadata.of(stored));
         }
     }

@@ -9,12 +9,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Profile;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
-import ro.filegrid.api.ApiException;
 import ro.filegrid.domain.Category;
 import ro.filegrid.policy.CategoryPolicy;
 import ro.filegrid.policy.PolicyEngine;
@@ -58,15 +56,11 @@ public class FileIngestionService {
         if (upload.size() > policy.maxSizeBytes()) {
             throw IngestErrors.tooLarge(upload.category(), policy.maxSizeBytes());
         }
-        if (policy.encrypted() && !encryption.ready()) {
-            // Datele personale nu ajung necriptate în storage: refuz până la C10.
-            throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "STORAGE_UNAVAILABLE",
-                    "Criptarea pentru " + upload.category() + " nu este încă activă; documentul nu a fost salvat.",
-                    IngestErrors.STORAGE_RETRY_AFTER_SECONDS, null);
-        }
         ContentWriter.Stored stored = writer.write(upload.category(), upload.size(), upload.contentType(),
                 upload.source(), policy.encrypted() ? encryption : null);
-        FileRecord record = new FileRecord(UUID.randomUUID(), upload.category(), upload.originalName(),
+        // Numele original al documentelor se păstrează doar criptat (nu apare nici în loguri).
+        String storedName = policy.encrypted() ? encryption.encryptName(upload.originalName()) : upload.originalName();
+        FileRecord record = new FileRecord(UUID.randomUUID(), upload.category(), storedName,
                 upload.contentType(), upload.size(), stored.sha256(), stored.sha256Plain(), stored.storage(),
                 stored.key(), FileRecord.CONFIRMED, policy.encrypted(), now(), upload.createdBy(), upload.outage());
         try {
@@ -77,7 +71,7 @@ public class FileIngestionService {
             writer.deleteQuietly(stored.storage(), stored.key());
             throw IngestErrors.storageUnavailable("Baza de metadate este indisponibilă; fișierul nu a fost salvat.");
         }
-        return record;
+        return policy.encrypted() ? record.withOriginalName(upload.originalName()) : record;
     }
 
     private Instant now() {

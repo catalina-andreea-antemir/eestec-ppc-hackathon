@@ -35,7 +35,7 @@ public class FileQueryService {
     public Page search(Authentication user, Category category, String q, Instant from, Instant to, int page,
                        int size) {
         if (category != null) {
-            access.requireRole(user, category);
+            access.requireRole(user, category, "SEARCH", null);
         }
         FileSearch.Result result;
         try {
@@ -44,20 +44,25 @@ public class FileQueryService {
             throw metadataUnavailable();
         }
         long pages = (result.total() + size - 1) / size;
-        return new Page(result.items(), page, size, result.total(), (int) pages);
+        return new Page(result.items().stream().map(access::reveal).toList(), page, size, result.total(), (int) pages);
     }
 
-    /** Fișierul confirmat, după verificarea rolului pe categorie. */
+    /** Fișierul confirmat, după verificarea rolului pe categorie (acțiunea {@code READ}); numele în clar. */
     public FileRecord get(Authentication user, UUID id) {
+        return get(user, id, "READ");
+    }
+
+    /** La fel, pentru o acțiune anume ({@code DOWNLOAD}, {@code VERIFY}, ...): un refuz se auditează cu ea. */
+    public FileRecord get(Authentication user, UUID id, String action) {
         FileRecord file = lookup(id);
-        access.requireRole(user, file.category());
+        access.requireRole(user, file.category(), action, file.id());
         return file;
     }
 
     /** Fișierul confirmat, fără verificarea rolului (link semnat: rolul s-a verificat la crearea lui). */
     public FileRecord lookup(UUID id) {
         try {
-            return files.findWithOutage(id).filter(f -> FileRecord.CONFIRMED.equals(f.status()))
+            return files.findWithOutage(id).filter(f -> FileRecord.CONFIRMED.equals(f.status())).map(access::reveal)
                     .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Fișierul nu există."));
         } catch (DataAccessException e) {
             throw metadataUnavailable();
