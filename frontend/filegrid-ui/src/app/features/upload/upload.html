@@ -1,0 +1,234 @@
+<app-topbar />
+
+<main class="content">
+  <h1>Upload</h1>
+
+  @if (categories().length === 0) {
+    <p class="card">Rolul tău nu poate încărca fișiere. Upload-ul e permis rolurilor FIELD, CONNECTIONS și ADMIN.</p>
+  } @else {
+    @let s = state();
+
+    <!-- Upload video neterminat (păstrat în sessionStorage), de exemplu după un refresh de pagină. -->
+    @if (pending(); as p) {
+      @if (!manager.busy() && s.phase !== 'paused') {
+        <section class="card pending" aria-live="polite">
+          <h2>Upload video neterminat</h2>
+          <p>
+            <strong>{{ p.fileName }}</strong> ({{ formatBytes(p.totalSize) }}), primit pe server
+            {{ formatBytes(p.receivedBytes) }}.
+          </p>
+          @if (manager.canContinueWithoutFile()) {
+            <div class="actions">
+              <button type="button" (click)="manager.resume()">Continuă</button>
+              <button type="button" class="secondary" (click)="manager.cancel()">Renunță la upload</button>
+            </div>
+          } @else {
+            <p class="hint">
+              După refresh, browserul nu mai are acces la fișier. Alege din nou același fișier
+              (verificăm numele și mărimea), iar upload-ul continuă de unde a rămas.
+            </p>
+            <div class="actions">
+              <label class="file-button">
+                Alege fișierul și continuă
+                <input type="file" [accept]="rules.INSPECTION_VIDEO.accept" (change)="onResumeFileChange($event)" />
+              </label>
+              <button type="button" class="secondary" (click)="manager.cancel()">Renunță la upload</button>
+            </div>
+          }
+        </section>
+      }
+    }
+
+    @if (s.phase === 'idle') {
+      <form class="card" (submit)="$event.preventDefault(); submit()" novalidate>
+        <fieldset>
+          <legend>Categoria</legend>
+          <div class="categories">
+            @for (c of categories(); track c) {
+              <label class="category" [class.selected]="category() === c">
+                <input type="radio" name="category" [value]="c" [checked]="category() === c" (change)="selectCategory(c)" />
+                <span class="category-title">{{ rules[c].label }}</span>
+                <span class="category-desc">{{ rules[c].description }}</span>
+              </label>
+            }
+          </div>
+        </fieldset>
+
+        @if (category(); as c) {
+          <label for="file">Fișierul</label>
+          <input id="file" type="file" [accept]="rules[c].accept" (change)="onFileChange($event)" />
+          @if (file(); as f) {
+            <span class="hint">{{ f.name }} — {{ formatBytes(f.size) }} (maxim {{ formatBytes(rules[c].maxBytes) }})</span>
+          } @else if (submitted()) {
+            <span class="field-error">Alege un fișier.</span>
+          }
+          @if (sizeError(); as err) {
+            <span class="field-error">{{ err }}</span>
+          }
+
+          @if (c === 'OUTAGE_RECORD') {
+            <div class="grid">
+              <div>
+                <label for="zone">Zona</label>
+                <select id="zone" [value]="zone()" (change)="zone.set($any($event.target).value)">
+                  <option value="" disabled>Alege zona</option>
+                  @for (z of zones; track z) {
+                    <option [value]="z">{{ z }}</option>
+                  }
+                </select>
+                @if (submitted() && !zone()) {
+                  <span class="field-error">Alege zona.</span>
+                }
+              </div>
+              <div>
+                <label for="occurredAt">Momentul avariei (ora locală)</label>
+                <input
+                  id="occurredAt"
+                  type="datetime-local"
+                  [value]="occurredAtLocal()"
+                  (input)="occurredAtLocal.set($any($event.target).value)"
+                />
+                @if (occurredAtError(); as err) {
+                  <span class="field-error">{{ err }}</span>
+                }
+              </div>
+              <div>
+                <label for="station">Stația (opțional)</label>
+                <input
+                  id="station"
+                  type="text"
+                  placeholder="ST-BRASOV-114"
+                  [value]="stationId()"
+                  (input)="stationId.set($any($event.target).value)"
+                />
+              </div>
+            </div>
+          }
+
+          @if (blockedByPending()) {
+            <p class="field-error">Continuă sau renunță întâi la upload-ul video neterminat de mai sus.</p>
+          }
+
+          <button type="submit" [disabled]="submitted() && !canSubmit()">Încarcă</button>
+        }
+      </form>
+    } @else {
+      <section class="card progress-card" aria-live="polite">
+        <div class="progress-head">
+          <div>
+            <strong>{{ s.fileName }}</strong>
+            <span class="hint">{{ s.category ? rules[s.category].label : '' }} · {{ formatBytes(s.totalBytes) }}</span>
+          </div>
+          <span class="phase" [class]="'phase ' + s.phase">{{ phaseLabel() }}</span>
+        </div>
+
+        <div
+          class="bar"
+          role="progressbar"
+          aria-label="Progres upload"
+          [attr.aria-valuenow]="percent()"
+          aria-valuemin="0"
+          aria-valuemax="100"
+        >
+          <div
+            class="bar-fill"
+            [class.done]="s.phase === 'done'"
+            [class.error]="s.phase === 'error'"
+            [style.width.%]="percent()"
+          ></div>
+        </div>
+
+        <div class="stats">
+          <span>{{ percent() }}% · {{ formatBytes(s.sentBytes) }} din {{ formatBytes(s.totalBytes) }}</span>
+          @if (s.totalChunks) {
+            <span>Bucata {{ s.chunk }} din {{ s.totalChunks }}</span>
+          }
+          @if (s.bytesPerSecond && s.phase === 'uploading') {
+            <span>{{ formatBytes(s.bytesPerSecond) }}/s{{ eta() ? ' · mai durează ~' + eta() : '' }}</span>
+          }
+        </div>
+
+        @if (s.message) {
+          <p [class]="s.phase === 'error' ? 'form-error' : 'retry-message'" role="status">{{ s.message }}</p>
+        }
+
+        <div class="actions">
+          @if (manager.busy() && s.category === 'INSPECTION_VIDEO') {
+            <button type="button" class="secondary" (click)="manager.pause()">Pauză</button>
+          }
+          @if (manager.canContinueWithoutFile()) {
+            <button type="button" (click)="manager.resume()">Continuă</button>
+          }
+          @if (s.category === 'INSPECTION_VIDEO' && (manager.busy() || pending())) {
+            <button type="button" class="secondary danger" (click)="manager.cancel()">Anulează upload-ul</button>
+          }
+          @if (s.phase === 'done' || (s.phase === 'error' && !manager.canContinueWithoutFile())) {
+            <button type="button" (click)="newUpload()">Încarcă alt fișier</button>
+          }
+        </div>
+
+        @if (s.result; as r) {
+          <dl class="result">
+            <dt>ID</dt>
+            <dd><code>{{ r.id }}</code></dd>
+            <dt>Storage</dt>
+            <dd>{{ r.storage }}{{ r.encrypted ? ' (criptat AES-GCM)' : '' }}</dd>
+            <dt>Mărime</dt>
+            <dd>{{ formatBytes(r.size) }} ({{ r.size.toLocaleString('ro-RO') }} octeți)</dd>
+            @if (r.sha256Plain) {
+              <dt>SHA-256 (original)</dt>
+              <dd><code class="hash">{{ r.sha256Plain }}</code></dd>
+              <dt>SHA-256 (stocat, criptat)</dt>
+              <dd><code class="hash">{{ r.sha256 }}</code></dd>
+            } @else {
+              <dt>SHA-256</dt>
+              <dd><code class="hash">{{ r.sha256 }}</code></dd>
+            }
+            @if (r.outage; as o) {
+              <dt>Avarie</dt>
+              <dd>{{ o.zone }} · {{ o.occurredAt | date: 'dd.MM.yyyy HH:mm' }}{{ o.stationId ? ' · ' + o.stationId : '' }}</dd>
+            }
+            <dt>Încărcat de</dt>
+            <dd>{{ r.createdBy }}, {{ r.createdAt | date: 'dd.MM.yyyy HH:mm:ss' }}</dd>
+          </dl>
+        }
+      </section>
+    }
+
+    @if (useMocks) {
+      <details class="card mock">
+        <summary>Mock: rețea și erori simulate</summary>
+        <p class="hint">
+          Doar în <code>ng serve</code> cu mock. Pentru întreruperea rețelei: DevTools → Network → Offline,
+          apoi înapoi la „No throttling”.
+        </p>
+        <div class="grid">
+          <div>
+            <label for="mockSpeed">Viteză simulată</label>
+            <select
+              id="mockSpeed"
+              [value]="mockSettings().speedMBps"
+              (change)="updateMock({ speedMBps: +$any($event.target).value })"
+            >
+              <option [value]="5">5 MB/s (lent)</option>
+              <option [value]="25">25 MB/s</option>
+              <option [value]="100">100 MB/s</option>
+            </select>
+          </div>
+          <div>
+            <label for="mockFailures">Erori aleatorii (503, 429, UPLOAD_BUSY, rețea)</label>
+            <select
+              id="mockFailures"
+              [value]="mockSettings().failureRate"
+              (change)="updateMock({ failureRate: +$any($event.target).value })"
+            >
+              <option [value]="0">Fără</option>
+              <option [value]="0.1">10% din cereri</option>
+              <option [value]="0.3">30% din cereri</option>
+            </select>
+          </div>
+        </div>
+      </details>
+    }
+  }
+</main>

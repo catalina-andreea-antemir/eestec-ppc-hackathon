@@ -1,17 +1,10 @@
-<header class="topbar">
-  <strong>FileGrid</strong>
-  @if (auth.user(); as user) {
-    <span class="user">
-      {{ user.username }}
-      @if (user.role) {
-        <span class="role">{{ user.role }}</span>
-      }
-    </span>
-  }
-  <button type="button" class="secondary" (click)="auth.logout()">Ieșire</button>
-</header>
+<app-topbar />
 
 <main class="content">
   <h1>Bine ai venit</h1>
-  <p>Ești autentificat. Paginile de upload, căutare și statistici vin în pașii următori.</p>
+  @if (auth.hasRole('FIELD', 'CONNECTIONS')) {
+    <p>Poți încărca fișiere din pagina <a routerLink="/upload">Upload</a>.</p>
+  } @else {
+    <p>Ești autentificat. Paginile de căutare și statistici vin în pașii următori.</p>
+  }
 </main>
