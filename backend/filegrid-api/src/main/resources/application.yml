@@ -3,6 +3,13 @@
 spring:
   application:
     name: filegrid-api
+  # Upload multipart (C7): fisierul trece printr-un fisier temporar al containerului, sters dupa cerere.
+  # Limita aici e cea din nginx; limita pe categorie (4.2) o verifica ingestia (413).
+  servlet:
+    multipart:
+      max-file-size: 100MB
+      max-request-size: 100MB
+      file-size-threshold: 0
   autoconfigure:
     # Nu vrem parola generata si logata de Spring Security; utilizatorii vin din config la C4.
     exclude:

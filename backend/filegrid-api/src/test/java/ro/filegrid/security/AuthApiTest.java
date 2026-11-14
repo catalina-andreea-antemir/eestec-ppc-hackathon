@@ -33,7 +33,7 @@ import ro.filegrid.TestSecrets;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class AuthApiTest {
 
-    private static final String PROTECTED = "/api/v1/files";
+    private static final String PROTECTED = "/api/v1/__auth-probe";
 
     @Autowired
     TestRestTemplate rest;
