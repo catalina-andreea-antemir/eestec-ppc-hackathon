@@ -59,7 +59,7 @@ public class HealthController {
                 .body(new Health("DOWN"));
     }
 
-    private boolean metaDatabaseUp() {
+    boolean metaDatabaseUp() {
         Instant now = clock.instant();
         Check cached = last;
         if (cached != null && Duration.between(cached.at(), now).compareTo(CACHE) < 0) {

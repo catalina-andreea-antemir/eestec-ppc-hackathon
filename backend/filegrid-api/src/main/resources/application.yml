@@ -64,6 +64,21 @@ filegrid:
   # aplicatia nu porneste daca politica are o categorie cu encryption: true.
   encryption:
     key: ${DOC_ENCRYPTION_KEY:}
+  # Rezilienta per storage (C11): retry cu backoff doar pentru citiri / operatii idempotente, circuit breaker si health
+  # periodic (cu timeout <= 2 s). Valorile de mai jos sunt cele implicite.
+  resilience:
+    retry-attempts: 3
+    retry-initial-backoff: 100ms
+    retry-multiplier: 2
+    retry-jitter: 0.5
+    failure-rate-threshold: 50
+    minimum-calls: 5
+    sliding-window: 10
+    open-wait: 5s
+    half-open-calls: 2
+    health-interval: 3s
+    health-timeout: 2s
+    health-failures-to-open: 2
   # Descarcare (C8): link semnat HMAC (cheia vine doar din mediu) si pragul sub care fisierul se verifica inainte de
   # trimitere (peste prag, hash-ul se verifica in timpul trimiterii).
   download:

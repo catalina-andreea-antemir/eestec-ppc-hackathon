@@ -15,6 +15,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import ro.filegrid.domain.StorageType;
+import ro.filegrid.resilience.StorageGuard;
 
 /**
  * Găsește adaptorul și writer-ul pentru un {@link StorageType}, din beanurile Spring {@link StorageAdapter} și
@@ -30,8 +31,9 @@ public class StorageAdapterRegistry {
     private final Map<StorageType, ChunkedWriter> writers;
 
     @Autowired
-    public StorageAdapterRegistry(ObjectProvider<StorageAdapter> adapters, ObjectProvider<ChunkedWriter> writers) {
-        this(adapters.orderedStream().toList(), writers.orderedStream().toList());
+    public StorageAdapterRegistry(ObjectProvider<StorageAdapter> adapters, ObjectProvider<ChunkedWriter> writers,
+                                  StorageGuard guard) {
+        this(adapters.orderedStream().map(guard::wrap).toList(), writers.orderedStream().map(guard::wrap).toList());
     }
 
     public StorageAdapterRegistry(List<StorageAdapter> adapters, List<ChunkedWriter> writers) {
