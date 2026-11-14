@@ -263,10 +263,12 @@ export class UploadManager {
   private showRetry(info: RetryInfo, operation: string): void {
     const seconds = Math.max(1, Math.round(info.delayMs / 1000));
     this.rateStart = { time: 0, bytes: 0 };
+    // Dacă serverul a trimis un mesaj în română (schema Error), îl arătăm pe acela: spune motivul real.
+    const reason = toApiError(info.error)?.message ?? `${retryReason(info.error)} la ${operation}.`;
     this.stateSignal.update((state) => ({
       ...state,
       phase: 'retrying',
-      message: `${retryReason(info.error)} la ${operation}. Reîncerc în ${seconds} s (reîncercarea ${info.attempt}).`,
+      message: `${reason} Reîncerc în ${seconds} s (reîncercarea ${info.attempt}).`,
     }));
   }
 

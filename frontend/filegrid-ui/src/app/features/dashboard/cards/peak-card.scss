@@ -1,0 +1,96 @@
+.scenario {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+}
+
+.scenario select {
+  width: auto;
+}
+
+.legend,
+.note,
+.facts {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  vertical-align: middle;
+  margin-left: 8px;
+}
+
+.rows {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.row-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.change {
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.change.stable {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+
+.change.moderate {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.change.high {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.bar-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.bar {
+  display: block;
+  height: 10px;
+  min-width: 2px;
+  max-width: calc(100% - 90px);
+  border-radius: 4px;
+}
+
+.normal {
+  background: var(--muted);
+}
+
+.peak {
+  background: var(--accent);
+}
+
+.value {
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.rejected {
+  color: var(--warn);
+  font-weight: 600;
+}

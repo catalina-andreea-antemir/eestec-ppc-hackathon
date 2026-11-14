@@ -44,13 +44,17 @@ export function describeFileError(error: unknown): string {
       return `Rolul tău nu are acces la această categorie (matricea de roluri).${trace}`;
     case 404:
       return `Fișierul nu există (sau conținutul lui nu mai e disponibil).${trace}`;
+    case 405:
+    case 501:
+      // Endpoint-ul nu e (încă) implementat pe server, de exemplu GET /files înainte de C8.
+      return 'Funcția aceasta nu este încă disponibilă pe server.';
     case 409:
       return `${api?.message ?? 'Conflict'}${trace}`;
     case 429:
     case 503:
       return `Serviciul e ocupat sau un storage e indisponibil; reîncearcă${api?.retryAfterSeconds ? ` peste ${api.retryAfterSeconds} s` : ''}.${trace}`;
     default:
-      return api?.message ? `${api.message}${trace}` : 'Eroare neașteptată.';
+      return api?.message ? `${api.message}${trace}` : `Eroare neașteptată (${status}).`;
   }
 }
 

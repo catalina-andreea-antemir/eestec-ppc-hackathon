@@ -1,0 +1,66 @@
+<app-stat-card
+  heading="Anomalii în citirile de contor"
+  question="Ce contoare trebuie verificate: consum anormal sau comunicație căzută?"
+  [state]="result().state"
+  [error]="errorOf()"
+  [interpretation]="data()?.interpretation ?? null"
+>
+  @if (data(); as d) {
+    <div class="tiles">
+      <div class="tile" [class.alert]="d.anomalies.totalItems > 0">
+        <span class="big">{{ d.anomalies.totalItems }}</span>
+        {{ d.anomalies.totalItems === 1 ? 'consum anormal' : 'consumuri anormale' }}
+      </div>
+      <div class="tile" [class.alert]="silent().length > 0">
+        <span class="big">{{ silent().length }}</span>
+        {{ silent().length === 1 ? 'contor tăcut' : 'contoare tăcute' }}
+      </div>
+    </div>
+
+    @if (anomalies().length) {
+      <h3>Consumuri anormale <span class="muted">(cele mai mari abateri primele)</span></h3>
+      <ul class="list">
+        @for (a of anomalies(); track a.meterId + a.readingTs) {
+          <li>
+            <code>{{ a.meterId }}</code> · {{ a.zone }} · {{ a.readingTs | date: 'dd.MM HH:mm' }}
+            <br />
+            <strong>{{ a.kwh | number: '1.2-2' }} kWh</strong>
+            <span class="muted">
+              față de mediana {{ a.median | number: '1.2-2' }} (prag {{ a.threshold | number: '1.2-2' }}) —
+              {{ a.deviations | number: '1.0-1' }} abateri standard
+            </span>
+          </li>
+        }
+      </ul>
+      @if (d.anomalies.totalPages > 1) {
+        <div class="pager">
+          <button type="button" class="secondary" [disabled]="d.anomalies.page <= 1" (click)="page.set(d.anomalies.page - 1)">
+            ‹ Înapoi
+          </button>
+          <span>Pagina {{ d.anomalies.page }} din {{ d.anomalies.totalPages }}</span>
+          <button
+            type="button"
+            class="secondary"
+            [disabled]="d.anomalies.page >= d.anomalies.totalPages"
+            (click)="page.set(d.anomalies.page + 1)"
+          >
+            Înainte ›
+          </button>
+        </div>
+      }
+    }
+
+    @if (silent().length) {
+      <h3>Contoare tăcute</h3>
+      <ul class="list">
+        @for (m of silent(); track m.meterId) {
+          <li>
+            <code>{{ m.meterId }}</code> · {{ m.zone }} · fără citiri de <strong>{{ minutes(m.silentMinutes) }}</strong>&nbsp;<span class="muted">(ultima la {{ m.lastReadingTs | date: 'dd.MM HH:mm' }})</span>
+          </li>
+        }
+      </ul>
+    }
+
+    <p class="note">Regula: {{ d.rule }}. Interval: {{ d.from | date: 'dd.MM HH:mm' }} – {{ d.to | date: 'dd.MM HH:mm' }}.</p>
+  }
+</app-stat-card>

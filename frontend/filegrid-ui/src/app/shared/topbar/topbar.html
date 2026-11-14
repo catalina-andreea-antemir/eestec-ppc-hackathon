@@ -8,6 +8,9 @@
     @if (canSearch()) {
       <a routerLink="/search" routerLinkActive="active">Căutare</a>
     }
+    @if (canViewStats()) {
+      <a routerLink="/stats" routerLinkActive="active">Statistici</a>
+    }
   </nav>
   @if (auth.user(); as user) {
     <span class="user">

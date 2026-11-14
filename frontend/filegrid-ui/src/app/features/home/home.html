@@ -10,6 +10,12 @@
       Poți căuta, descărca și verifica integritatea fișierelor din pagina <a routerLink="/search">Căutare</a>.
     </p>
   } @else {
-    <p>Ești autentificat. Rolul tău nu încarcă și nu caută fișiere; statisticile vin în pașii următori.</p>
+    <p>Ești autentificat. Rolul tău nu încarcă și nu caută fișiere.</p>
+  }
+  @if (auth.hasRole('DISPATCH')) {
+    <p>
+      Vezi recomandările de storage, ziua de vârf, anomaliile și starea cerințelor în pagina
+      <a routerLink="/stats">Statistici</a>.
+    </p>
   }
 </main>

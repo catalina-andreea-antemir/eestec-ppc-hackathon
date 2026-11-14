@@ -1,0 +1,62 @@
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.tile {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--ok-soft);
+  color: var(--ok);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.tile.alert {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.big {
+  display: block;
+  font-size: 1.6rem;
+  line-height: 1.1;
+}
+
+h3 {
+  margin: 4px 0 0;
+  font-size: 0.95rem;
+}
+
+.list {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+.muted,
+.note {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.note {
+  margin: 0;
+}
+
+.pager {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 0.85rem;
+}
+
+.pager button {
+  padding: 4px 10px;
+}

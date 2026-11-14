@@ -1,0 +1,58 @@
+<app-stat-card
+  heading="Zi normală vs. zi de vârf"
+  question="A rezistat sistemul la vârf? Care categorie a simțit încărcarea?"
+  [state]="result().state"
+  [error]="errorOf()"
+  [interpretation]="data()?.interpretation ?? null"
+>
+  <label class="scenario">
+    Ziua de vârf comparată:
+    <select [ngModel]="peakScenario()" (ngModelChange)="peakScenario.set($event)">
+      @for (s of scenarios; track s.value) {
+        <option [value]="s.value">{{ s.label }}</option>
+      }
+    </select>
+  </label>
+
+  @if (data(); as d) {
+    <p class="legend">
+      <span class="swatch normal"></span> normal ({{ d.normal.from | date: 'dd.MM HH:mm' }}–{{ d.normal.to | date: 'HH:mm' }})
+      <span class="swatch peak"></span> vârf „{{ d.peak.scenario }}” ({{ d.peak.from | date: 'dd.MM HH:mm' }}–{{
+        d.peak.to | date: 'HH:mm'
+      }})
+    </p>
+
+    <div class="rows">
+      @for (row of rows(); track row.category) {
+        <div class="row">
+          <div class="row-head">
+            <strong>{{ row.label }}</strong>
+            <span class="change" [class]="row.level">
+              p95 {{ row.item.p95ChangePercent > 0 ? '+' : '' }}{{ row.item.p95ChangePercent | number: '1.0-1' }}%
+            </span>
+          </div>
+          <div class="bar-line">
+            <span class="bar normal" [style.width.%]="row.normalBar"></span>
+            <span class="value">{{ row.item.normal.latencyP95Ms | number: '1.0-0' }} ms</span>
+          </div>
+          <div class="bar-line">
+            <span class="bar peak" [style.width.%]="row.peakBar"></span>
+            <span class="value">{{ row.item.peak.latencyP95Ms | number: '1.0-0' }} ms</span>
+          </div>
+          <p class="facts">
+            cereri {{ row.item.normal.requests | number }} → {{ row.item.peak.requests | number }}
+            @if (row.requestsRatio !== null && row.requestsRatio >= 1.5) {
+              <strong>(×{{ row.requestsRatio | number: '1.0-1' }})</strong>
+            }
+            · erori {{ row.item.normal.errorRatePercent | number: '1.0-1' }}% →
+            {{ row.item.peak.errorRatePercent | number: '1.0-1' }}%
+            @if (row.item.peak.rejected > 0) {
+              · <span class="rejected">{{ row.item.peak.rejected }} respinse de bulkhead</span>
+            }
+          </p>
+        </div>
+      }
+    </div>
+    <p class="note">Barele arată latența p95 (95% din cereri au fost mai rapide), scalată pe fiecare rând.</p>
+  }
+</app-stat-card>

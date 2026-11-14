@@ -1,0 +1,141 @@
+.scroll {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  min-width: 460px;
+  border-collapse: separate;
+  border-spacing: 4px;
+  table-layout: fixed;
+}
+
+thead th:first-child {
+  width: 28%;
+}
+
+th {
+  text-align: left;
+  font-size: 0.9rem;
+}
+
+thead th {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+thead th:not(:first-child) {
+  text-align: center;
+}
+
+td {
+  padding: 8px;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  text-align: center;
+  vertical-align: top;
+  background: color-mix(in srgb, var(--accent) var(--tint, 0%), transparent);
+}
+
+td.recommended {
+  border-color: var(--ok);
+}
+
+.score {
+  display: block;
+  font-size: 1.4rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.detail {
+  display: block;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.badge {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+.badge.rec {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+
+.badge.policy {
+  background: var(--surface);
+  color: var(--muted);
+  border: 1px solid var(--border);
+}
+
+.badge.change {
+  display: block;
+  width: fit-content;
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.rationale {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 0.9rem;
+}
+
+.note,
+.warning {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.warning {
+  color: var(--warn);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
+/* Telefon: matricea încape în lățime, fără derulare; rămân scorul, p95 și etichetele. */
+@media (max-width: 600px) {
+  table {
+    min-width: 0;
+    border-spacing: 2px;
+  }
+
+  thead th:first-child {
+    width: 30%;
+  }
+
+  th {
+    font-size: 0.8rem;
+    overflow-wrap: anywhere;
+  }
+
+  td {
+    padding: 6px 2px;
+  }
+
+  .score {
+    font-size: 1.15rem;
+  }
+
+  .detail.errors {
+    display: none;
+  }
+
+  .badge {
+    padding: 1px 4px;
+    font-size: 0.62rem;
+  }
+}

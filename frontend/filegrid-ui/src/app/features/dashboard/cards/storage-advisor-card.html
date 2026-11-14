@@ -1,0 +1,84 @@
+<app-stat-card
+  heading="Ce storage pentru fiecare categorie"
+  question="Unde e mai bine să stea fiecare tip de fișier: FTP, S3 sau baza de date?"
+  [state]="result().state"
+  [error]="errorOf()"
+  [interpretation]="data()?.interpretation ?? null"
+>
+  @if (matrix(); as m) {
+    <div class="scroll">
+      <table>
+        <caption class="sr-only">Scorul 0–100 pentru fiecare categorie și storage; mai mare e mai bine.</caption>
+        <thead>
+          <tr>
+            <th scope="col">Categorie</th>
+            <th scope="col">FTP</th>
+            <th scope="col">S3</th>
+            <th scope="col">DB</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (row of m.rows; track row.category) {
+            <tr>
+              <th scope="row">
+                {{ row.label }}
+                @if (row.recommendation; as rec) {
+                  @if (!rec.matchesPolicy) {
+                    <span class="badge change">de schimbat: {{ rec.currentPolicyStorage }} → {{ rec.recommendedStorage }}</span>
+                  }
+                }
+              </th>
+              @for (cell of row.cells; track cell.storage) {
+                <td
+                  [class.recommended]="cell.recommended"
+                  [style.--tint]="(cell.score ? tint(cell.score.score) : 0) + '%'"
+                >
+                  @if (cell.score; as s) {
+                    <span class="score">{{ s.score | number: '1.0-0' }}</span>
+                    <span class="detail">p95 {{ s.latencyP95Ms | number: '1.0-0' }} ms</span>
+                    <span class="detail errors">erori {{ s.errorRatePercent | number: '1.0-1' }}%</span>
+                    @if (cell.recommended) {
+                      <span class="badge rec">★ recomandat</span>
+                    }
+                    @if (cell.currentPolicy) {
+                      <span class="badge policy">politica actuală</span>
+                    }
+                  } @else {
+                    <span class="detail">fără date</span>
+                  }
+                </td>
+              }
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+
+    @if (m.missingCells > 0) {
+      <p class="warning">Serverul a trimis doar {{ 12 - m.missingCells }} din 12 celule; matricea nu e completă.</p>
+    }
+
+    <ul class="rationale">
+      @for (row of m.rows; track row.category) {
+        @if (row.recommendation; as rec) {
+          <li><strong>{{ row.label }} → {{ rec.recommendedStorage }}:</strong> {{ rec.rationale }}</li>
+        }
+      }
+    </ul>
+
+    @if (cost(); as c) {
+      <p class="note">
+        <strong>Ipoteza de cost</strong> — {{ c.unit }}: {{ costValues(c) }}. Scorul combină latența, erorile și acest cost relativ; costul e o presupunere din YAML, nu o factură.
+      </p>
+    }
+    @if (data(); as d) {
+      <p class="note">
+        Bază: {{ d.basis.benchmarkSamples ?? 0 | number }} măsurători din benchmark
+        @if (d.basis.benchmarkRunAt) {
+          ({{ d.basis.benchmarkRunAt | date: 'dd.MM.yyyy HH:mm' }})
+        }
+        și {{ d.basis.liveSamples ?? 0 | number }} din trafic live.
+      </p>
+    }
+  }
+</app-stat-card>

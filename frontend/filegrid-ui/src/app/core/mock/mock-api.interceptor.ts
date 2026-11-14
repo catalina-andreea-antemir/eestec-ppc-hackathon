@@ -5,12 +5,13 @@ import { environment } from '../../../environments/environment';
 import { ApiError } from '../api/api-error';
 import { AccessToken, LoginRequest, RefreshRequest, Role, TokenPair } from '../auth/auth.models';
 import { handleFileRoutes } from './mock-files';
+import { handleStatsRoutes } from './mock-stats';
 import { handleUploadRoutes } from './mock-uploads';
 
 /**
  * Backend fals pentru `ng serve`, activ doar când environment.useMocks e true.
  * Imită contractul din docs/api/openapi.yaml până există API-ul real: login, upload (mock-uploads.ts),
- * căutare, verificare și link de descărcare (mock-files.ts).
+ * căutare, verificare și link de descărcare (mock-files.ts), statistici (mock-stats.ts).
  *
  * Utilizatori de test: numele de mai jos, opțional cu cifre la final (teren1, racordari2),
  * cu orice parolă nevidă. Nu ținem parole în repo; parolele reale sunt generate de
@@ -61,6 +62,10 @@ export const mockApiInterceptor: HttpInterceptorFn = (req, next) => {
   const files = handleFileRoutes(req, path, { sub, role });
   if (files) {
     return files;
+  }
+  const stats = handleStatsRoutes(req, path, { sub, role });
+  if (stats) {
+    return stats;
   }
   return error(404, 'NOT_FOUND', `Endpoint-ul ${req.method} ${path} nu are încă mock.`);
 };
