@@ -41,6 +41,6 @@ export class RequirementsCard {
 
   protected errorOf(): string {
     const r = this.result();
-    return r.state === 'error' ? r.message : '';
+    return 'message' in r ? r.message : '';
   }
 }

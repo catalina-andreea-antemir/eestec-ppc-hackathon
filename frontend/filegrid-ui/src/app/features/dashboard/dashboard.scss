@@ -26,7 +26,17 @@ h1 {
 }
 
 .mock {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
   font-size: 0.85rem;
+}
+
+.mock label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .grid {

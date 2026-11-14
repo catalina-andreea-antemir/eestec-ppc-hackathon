@@ -2,10 +2,17 @@ import { Component, DestroyRef, input, signal, WritableSignal } from '@angular/c
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Observable } from 'rxjs';
 
-import { describeStatsError } from '../../core/stats/stats-view';
+import { describeStatsFailure } from '../../core/stats/stats-view';
 
-/** Starea unei cărți: se încarcă, are date sau a primit o eroare (fiecare carte separat). */
-export type Loadable<T> = { state: 'loading' } | { state: 'ok'; data: T } | { state: 'error'; message: string };
+/**
+ * Starea unei cărți: se încarcă, are date, încă nu sunt date (503 cu reason de la O7, mesaj informativ)
+ * sau a primit o eroare. Fiecare carte separat.
+ */
+export type Loadable<T> =
+  | { state: 'loading' }
+  | { state: 'ok'; data: T }
+  | { state: 'unavailable'; message: string }
+  | { state: 'error'; message: string };
 
 /**
  * Pornește cererea și pune rezultatul în semnal. O carte care dă eroare (de exemplu 501 pe un endpoint
@@ -15,7 +22,10 @@ export function loadInto<T>(target: WritableSignal<Loadable<T>>, source: Observa
   target.set({ state: 'loading' });
   source.pipe(takeUntilDestroyed(destroyRef)).subscribe({
     next: (data) => target.set({ state: 'ok', data }),
-    error: (err: unknown) => target.set({ state: 'error', message: describeStatsError(err) }),
+    error: (err: unknown) => {
+      const failure = describeStatsFailure(err);
+      target.set({ state: failure.kind, message: failure.message });
+    },
   });
 }
 
@@ -38,6 +48,9 @@ export function loadable<T>(): WritableSignal<Loadable<T>> {
       @switch (state()) {
         @case ('loading') {
           <p class="placeholder">Se încarcă…</p>
+        }
+        @case ('unavailable') {
+          <p class="unavailable" role="status"><span aria-hidden="true">ℹ</span> {{ error() }}</p>
         }
         @case ('error') {
           <p class="error" role="alert">{{ error() }}</p>
@@ -92,12 +105,21 @@ export function loadable<T>(): WritableSignal<Loadable<T>> {
       margin: 0;
       color: var(--danger);
     }
+    .unavailable {
+      margin: 0;
+      padding: 12px 14px;
+      border: 1px dashed var(--border);
+      border-radius: 8px;
+      background: var(--bg);
+      color: var(--muted);
+    }
   `,
 })
 export class StatCard {
   readonly heading = input.required<string>();
   readonly question = input.required<string>();
   readonly state = input.required<Loadable<unknown>['state']>();
+  /** Mesajul pentru stările error și unavailable. */
   readonly error = input<string>('');
   readonly interpretation = input<string | null>(null);
 }

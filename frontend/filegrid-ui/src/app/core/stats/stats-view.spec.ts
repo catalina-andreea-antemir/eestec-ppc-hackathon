@@ -1,14 +1,21 @@
 import { HttpErrorResponse, HttpHeaders } from '@angular/common/http';
 
 import { ALL_CATEGORIES } from '../files/files.models';
-import { Requirement, Requirements, StorageAdvisor, StorageScore, ZoneRank } from './stats.models';
+import { OutageZones, Requirement, Requirements, StorageAdvisor, StorageScore, ZoneRank } from './stats.models';
 import {
   buildAdvisorMatrix,
   changeLevel,
   comparisonRows,
   costAssumptionLine,
   describeStatsError,
+  describeStatsFailure,
   formatMinutes,
+  formatPeakHour,
+  formatRatio,
+  formatShare,
+  hasOutageData,
+  NO_VALUE,
+  UNAVAILABLE_REASONS,
   requirementsInterpretation,
   requirementTone,
   sortAnomalies,
@@ -189,5 +196,79 @@ describe('stats-view', () => {
     expect(describeStatsError(http(404))).toBe('Funcția aceasta nu este încă disponibilă pe server.');
     expect(describeStatsError(http(501))).toBe('Funcția aceasta nu este încă disponibilă pe server.');
     expect(describeStatsError(http(0))).toContain('Serverul nu răspunde');
+  });
+
+  describe('null din O7 (interval fără avarii) e altceva decât 0', () => {
+    const zones = (totalOutages: number, ranking: ZoneRank[]): OutageZones => ({
+      generatedAt: '', from: '', to: '', totalOutages, ranking, byHour: [], interpretation: '',
+    });
+    const empty = (zone: ZoneRank['zone']): ZoneRank => ({
+      rank: 1, zone, outages: 0, sharePercent: null, vsAverageRatio: null, peakHour: null,
+    });
+
+    it('null se afișează „—”, niciodată 0, NaN sau „null”', () => {
+      for (const text of [formatShare(null), formatRatio(null), formatPeakHour(null)]) {
+        expect(text).toBe(NO_VALUE);
+        expect(text).not.toMatch(/0|NaN|null/);
+      }
+    });
+
+    it('0 real se afișează ca 0', () => {
+      expect(formatShare(0)).toBe('0%');
+      expect(formatRatio(0)).toBe('×0,00');
+      expect(formatPeakHour(0)).toBe('00:00');
+      expect(formatShare(54.9)).toBe('54,9%');
+      expect(formatRatio(1.65)).toBe('×1,65');
+    });
+
+    it('hasOutageData: fals pentru total 0, clasament gol sau toate câmpurile null', () => {
+      expect(hasOutageData(zones(0, [empty('Muntenia'), empty('Dobrogea'), empty('Banat')]))).toBe(false);
+      expect(hasOutageData(zones(5, []))).toBe(false);
+      expect(hasOutageData(zones(5, [empty('Muntenia'), empty('Banat')]))).toBe(false);
+    });
+
+    it('hasOutageData: adevărat când o zonă are 0 avarii, dar intervalul are avarii', () => {
+      const res = zones(78, [
+        { rank: 1, zone: 'Muntenia', outages: 78, sharePercent: 100, vsAverageRatio: 3, peakHour: 9 },
+        { rank: 2, zone: 'Banat', outages: 0, sharePercent: 0, vsAverageRatio: 0, peakHour: null },
+      ]);
+      expect(hasOutageData(res)).toBe(true);
+      // Zona fără avarii rămâne în clasament, cu bara goală și nicio oră de vârf marcată.
+      const banat = zoneBars(res.ranking, res.byHour).find((b) => b.zone.zone === 'Banat')!;
+      expect(banat.width).toBe(0);
+      expect(banat.hours.every((h) => h === 0)).toBe(true);
+    });
+  });
+
+  describe('describeStatsFailure: 503 fără măsurători = indisponibil temporar, nu eroare', () => {
+    const http503 = (details?: object, retryAfterSeconds?: number) =>
+      new HttpErrorResponse({
+        status: 503,
+        error: { status: 503, code: 'STORAGE_UNAVAILABLE', message: 'm', traceId: 't9', retryAfterSeconds, details },
+        headers: new HttpHeaders(),
+      });
+
+    it.each(['REQUEST_METRICS_UNAVAILABLE', 'STORAGE_MEASUREMENTS_INCOMPLETE'])('%s → mesaj informativ', (reason) => {
+      const f = describeStatsFailure(http503({ reason }));
+      expect(f.kind).toBe('unavailable');
+      expect(f.message).toBe(UNAVAILABLE_REASONS[reason]);
+      expect(f.message).toContain('nu este încă disponibil');
+      expect(f.message).toContain('Va apărea automat');
+    });
+
+    it('alt 503 rămâne eroare, cu Retry-After', () => {
+      const f = describeStatsFailure(http503({ reason: 'ALTCEVA' }, 30));
+      expect(f.kind).toBe('error');
+      expect(f.message).toContain('reîncearcă peste 30 s');
+      expect(describeStatsFailure(http503(undefined, 5)).kind).toBe('error');
+    });
+
+    it('reason-ul contează doar la 503', () => {
+      const err = new HttpErrorResponse({
+        status: 500,
+        error: { status: 500, code: 'INTERNAL', message: 'Eroare', traceId: 't', details: { reason: 'REQUEST_METRICS_UNAVAILABLE' } },
+      });
+      expect(describeStatsFailure(err).kind).toBe('error');
+    });
   });
 });

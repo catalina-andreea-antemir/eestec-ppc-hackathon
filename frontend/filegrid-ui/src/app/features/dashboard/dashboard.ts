@@ -3,6 +3,7 @@ import localeRo from '@angular/common/locales/ro';
 import { Component, LOCALE_ID, signal } from '@angular/core';
 
 import { environment } from '../../../environments/environment';
+import { getMockStatsMode, MOCK_STATS_MODES, MockStatsMode, setMockStatsMode } from '../../core/mock/mock-stats';
 import { Topbar } from '../../shared/topbar/topbar';
 import { AnomaliesCard } from './cards/anomalies-card';
 import { OutageZonesCard } from './cards/outage-zones-card';
@@ -32,4 +33,14 @@ registerLocaleData(localeRo);
 export class Dashboard {
   protected readonly reload = signal(0);
   protected readonly useMocks = environment.useMocks;
+
+  /** Doar pe mock: ce situație O7 simulăm (date normale, interval fără avarii, 503 fără măsurători). */
+  protected readonly mockModes = MOCK_STATS_MODES;
+  protected readonly mockMode = signal<MockStatsMode>(getMockStatsMode());
+
+  protected changeMockMode(mode: string): void {
+    setMockStatsMode(mode as MockStatsMode);
+    this.mockMode.set(getMockStatsMode());
+    this.reload.update((n) => n + 1);
+  }
 }

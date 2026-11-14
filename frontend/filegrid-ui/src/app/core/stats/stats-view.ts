@@ -10,6 +10,7 @@ import {
   Category,
   CategoryComparison,
   MeterAnomaly,
+  OutageZones,
   Requirement,
   Requirements,
   SilentMeter,
@@ -196,6 +197,38 @@ export function formatHour(hour: number): string {
   return `${String(hour).padStart(2, '0')}:00`;
 }
 
+/** Ce afișăm pentru o valoare pe care serverul n-o poate calcula (null), ca să nu pară 0. */
+export const NO_VALUE = '—';
+
+/** „09:00”, sau „—” când zona n-a avut avarii (peakHour null). */
+export function formatPeakHour(hour: number | null): string {
+  return hour === null ? NO_VALUE : formatHour(hour);
+}
+
+/** „54,9%”, „0%” (0 real) sau „—” (null: nedefinit). */
+export function formatShare(percent: number | null): string {
+  return percent === null ? NO_VALUE : `${percent.toLocaleString('ro-RO', { maximumFractionDigits: 1 })}%`;
+}
+
+/** „×1,65”, „×0,00” (0 real) sau „—” (null: nedefinit). */
+export function formatRatio(ratio: number | null): string {
+  return ratio === null
+    ? NO_VALUE
+    : `×${ratio.toLocaleString('ro-RO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+/**
+ * Are statistica de avarii sens pentru intervalul ales? Nu, dacă intervalul n-are nicio avarie: total 0,
+ * clasament gol sau toate câmpurile calculate null (O7 trimite atunci null în loc de procente).
+ */
+export function hasOutageData(res: OutageZones): boolean {
+  return (
+    res.totalOutages > 0 &&
+    res.ranking.length > 0 &&
+    !res.ranking.every((z) => z.sharePercent === null && z.vsAverageRatio === null && z.peakHour === null)
+  );
+}
+
 // ---------- 5. Cerințele de business ----------
 
 export type Tone = 'green' | 'red';
@@ -233,6 +266,35 @@ export function requirementsInterpretation(res: Requirements): string {
 }
 
 // ---------- erori ----------
+
+/**
+ * 503 cu `details.reason` de la O7: statistica de performanță nu se poate calcula încă, pentru că lipsesc
+ * măsurătorile (C12). Nu e o defecțiune, deci cartea arată un mesaj informativ, nu o eroare.
+ */
+export const UNAVAILABLE_REASONS: Readonly<Record<string, string>> = {
+  REQUEST_METRICS_UNAVAILABLE:
+    'Statistica nu este încă disponibilă: lipsesc măsurătorile de performanță. Va apărea automat după ce sistemul strânge date.',
+  STORAGE_MEASUREMENTS_INCOMPLETE:
+    'Recomandarea nu este încă disponibilă: lipsesc măsurătorile de performanță pentru unele combinații categorie–storage. ' +
+    'Va apărea automat după ce sistemul strânge date.',
+};
+
+export interface StatsFailure {
+  /** unavailable = lipsesc încă datele (informativ); error = ceva nu merge. */
+  kind: 'unavailable' | 'error';
+  message: string;
+}
+
+/** Ca describeStatsError, dar separă „încă nu sunt date” (503 cu reason cunoscut) de erorile adevărate. */
+export function describeStatsFailure(error: unknown): StatsFailure {
+  const api = toApiError(error);
+  const status = api?.status ?? (error instanceof HttpErrorResponse ? error.status : -1);
+  const reason = api?.details?.['reason'];
+  if (status === 503 && typeof reason === 'string' && reason in UNAVAILABLE_REASONS) {
+    return { kind: 'unavailable', message: UNAVAILABLE_REASONS[reason] };
+  }
+  return { kind: 'error', message: describeStatsError(error) };
+}
 
 /** Mesaj în română pentru erorile de la /stats/*, în stilul din file-errors.ts. */
 export function describeStatsError(error: unknown): string {

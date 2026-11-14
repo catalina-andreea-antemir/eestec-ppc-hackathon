@@ -64,3 +64,12 @@
   margin: 0;
   font-size: 0.85rem;
 }
+
+.empty {
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--muted);
+}

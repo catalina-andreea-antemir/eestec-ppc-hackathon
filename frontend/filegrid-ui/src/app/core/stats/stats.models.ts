@@ -155,11 +155,12 @@ export interface ZoneRank {
   rank: number;
   zone: Zone;
   outages: number;
-  sharePercent: number;
-  /** Raport față de media pe zone. */
-  vsAverageRatio: number;
-  /** Ora (UTC) cu cele mai multe avarii. */
-  peakHour: number;
+  /** null când tot intervalul n-are avarii (procentul nu e definit). 0 = zonă fără avarii într-un interval cu avarii. */
+  sharePercent: number | null;
+  /** Raport față de media pe zone; null când tot intervalul n-are avarii. */
+  vsAverageRatio: number | null;
+  /** Ora (UTC) cu cele mai multe avarii; null când zona n-are avarii. */
+  peakHour: number | null;
 }
 
 export interface ZoneHourOutages {

@@ -6,39 +6,57 @@
   [interpretation]="data()?.interpretation ?? null"
 >
   @if (data(); as d) {
-    <div class="zones">
-      @for (b of bars(); track b.zone.zone) {
-        <div class="zone">
-          <div class="zone-head">
-            <strong>{{ b.zone.zone }}</strong>
-            <span>
-              {{ b.zone.outages }} avarii · {{ b.zone.sharePercent | number: '1.0-1' }}% ·
-              <span class="muted">×{{ b.zone.vsAverageRatio | number: '1.2-2' }} față de medie</span>
-            </span>
+    @if (hasData()) {
+      <div class="zones">
+        @for (b of bars(); track b.zone.zone) {
+          <div class="zone">
+            <div class="zone-head">
+              <strong>{{ b.zone.zone }}</strong>
+              <span>
+                {{ b.zone.outages }} {{ b.zone.outages === 1 ? 'avarie' : 'avarii' }} · {{ share(b.zone.sharePercent) }} ·
+                <span class="muted">{{ ratio(b.zone.vsAverageRatio) }} față de medie</span>
+              </span>
+            </div>
+            <div class="track"><span class="bar" [style.width.%]="b.width"></span></div>
+            <div
+              class="hours"
+              [attr.aria-label]="
+                'Avarii pe oră în ' + b.zone.zone + (b.zone.peakHour === null ? ', fără avarii' : ', vârf la ' + peakHour(b.zone.peakHour))
+              "
+            >
+              @for (n of b.hours; track $index) {
+                <span
+                  class="h"
+                  [class.peak]="$index === b.zone.peakHour"
+                  [style.opacity]="n === 0 ? 0.08 : 0.25 + (0.75 * n) / hourMax()"
+                  [attr.title]="hour($index) + ': ' + n + ' avarii'"
+                ></span>
+              }
+            </div>
+            <p class="peak-note">
+              @if (b.zone.peakHour === null) {
+                Vârf: {{ peakHour(null) }} (nicio avarie în zonă în acest interval)
+              } @else {
+                Vârf la {{ peakHour(b.zone.peakHour) }} (UTC)
+              }
+            </p>
           </div>
-          <div class="track"><span class="bar" [style.width.%]="b.width"></span></div>
-          <div class="hours" [attr.aria-label]="'Avarii pe oră în ' + b.zone.zone + ', vârf la ' + hour(b.zone.peakHour)">
-            @for (n of b.hours; track $index) {
-              <span
-                class="h"
-                [class.peak]="$index === b.zone.peakHour"
-                [style.opacity]="n === 0 ? 0.08 : 0.25 + (0.75 * n) / hourMax()"
-                [attr.title]="hour($index) + ': ' + n + ' avarii'"
-              ></span>
-            }
-          </div>
-          <p class="peak-note">Vârf la {{ hour(b.zone.peakHour) }} (UTC)</p>
-        </div>
-      }
-    </div>
-    <div class="ticks" aria-hidden="true">
-      @for (t of hourTicks; track t) {
-        <span>{{ hour(t) }}</span>
-      }
-    </div>
+        }
+      </div>
+      <div class="ticks" aria-hidden="true">
+        @for (t of hourTicks; track t) {
+          <span>{{ hour(t) }}</span>
+        }
+      </div>
+    } @else {
+      <p class="empty" role="status">Nu există date pentru intervalul ales: nicio avarie înregistrată.</p>
+    }
     <p class="note">
-      {{ d.totalOutages }} avarii în total, {{ d.from | date: 'dd.MM.yyyy' }} – {{ d.to | date: 'dd.MM.yyyy' }}. Banda de sub
-      fiecare bară arată orele zilei (UTC); culoarea mai închisă = mai multe avarii.
+      {{ d.totalOutages }} {{ d.totalOutages === 1 ? 'avarie' : 'avarii' }} în total, {{ d.from | date: 'dd.MM.yyyy' }} –
+      {{ d.to | date: 'dd.MM.yyyy' }}.
+      @if (hasData()) {
+        Banda de sub fiecare bară arată orele zilei (UTC); culoarea mai închisă = mai multe avarii.
+      }
     </p>
   }
 </app-stat-card>
