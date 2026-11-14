@@ -42,7 +42,8 @@ info:
     7. **Hash la descărcare**: `X-Content-SHA256` este hash-ul bytes-ilor trimiși (la `CONNECTION_DOC`, care se
        descarcă decriptat, este `sha256Plain`). `/verify` fără `deep` compară `sha256` (bytes-ii stocați).
     8. **Link expirat sau invalid** la `GET /downloads/{token}`: `401`.
-    9. **Claim JWT** pentru rol: `role` (un singur șir); subiectul este `sub` (numele de utilizator).
+    9. **Claim JWT** pentru rol: `role` (un singur șir) și, cu aceeași valoare, `roles` (listă cu un element), pe care
+       le citește interfața Angular; subiectul este `sub` (numele de utilizator). Detalii la `POST /auth/login`.
     10. **`POST /admin/benchmark/run`** este sincron (răspunde `200` cu rezultatele celor 12 combinații; timeout nginx
         300 s), fără corp.
     11. **`X-Scenario`**: șir liber (`^[a-z0-9_-]{1,32}$`), valori așteptate `normal`, `peak`, `storm`; benchmark-ul
@@ -118,8 +119,23 @@ paths:
       operationId: login
       summary: Autentificare, întoarce JWT și token de reîmprospătare
       description: |
-        `accessToken` (JWT) este valabil 15 minute, `refreshToken` 8 ore. JWT-ul are claim-urile `sub` (utilizator) și
-        `role` (unul dintre cele 5 roluri). Parola greșită sau utilizator necunoscut: `401`.
+        `accessToken` (JWT) este valabil 15 minute, `refreshToken` 8 ore. Parola greșită sau utilizator necunoscut: `401`.
+
+        **Claim-uri** (ambele token-uri sunt JWT HS256, semnate cu `JWT_SECRET`):
+
+        | Token | Claim-uri |
+        |---|---|
+        | `accessToken` | `sub` (utilizator), `role` (șir, de exemplu `"DISPATCH"`), `roles` (listă cu același rol, `["DISPATCH"]`), `typ: "access"`, `iss: "filegrid"`, `iat`, `exp`, `jti` |
+        | `refreshToken` | `sub`, `typ: "refresh"`, `iss`, `iat`, `exp`, `jti` (fără rol) |
+
+        `role` și `roles` au mereu aceeași valoare: `role` e forma din contract, `roles` e forma citită de interfața
+        Angular (`auth.service.ts`) și de autorizarea din backend (`ROLE_<rol>`). Un `refreshToken` nu este acceptat
+        ca `Authorization: Bearer`, iar un `accessToken` nu este acceptat la `/auth/refresh` (`typ` diferit).
+
+        Utilizatorii de test (login minim): câte unul per rol, `dispecer` (DISPATCH), `teren` (FIELD), `racordari`
+        (CONNECTIONS), `contor` (METER_SERVICE), `admin` (ADMIN), cu parolele generate în `.env`
+        (`FILEGRID_USER_*_PASSWORD`) și afișate de scriptul de start. Un header `Authorization` trimis la
+        `/auth/login`, `/auth/refresh` sau `/health` se ignoră.
       security: []
       x-roles: [public]
       requestBody:
@@ -160,7 +176,9 @@ paths:
       summary: Reînnoiește accessToken, fără parolă
       description: |
         Token de reîmprospătare stateless; revocarea nu este suportată. Interfața și simulatorul apelează acest
-        endpoint la `401` și repetă cererea o singură dată.
+        endpoint la `401` și repetă cererea o singură dată. Rolul din noul `accessToken` (`role` și `roles`) se ia din
+        configurația curentă a utilizatorului; răspunsul nu conține un `refreshToken` nou (se păstrează cel de la login).
+        refreshToken expirat, invalid sau al unui utilizator dezactivat: `401`.
       security: []
       x-roles: [public]
       requestBody:
@@ -1513,7 +1531,8 @@ components:
       bearerFormat: JWT
       description: |
         JWT obținut la `POST /auth/login`, valabil 15 minute (`expiresIn`). Claim-uri: `sub` (utilizator),
-        `role` (DISPATCH | FIELD | CONNECTIONS | METER_SERVICE | ADMIN). Lipsă sau expirat: `401`; rol nepermis: `403`.
+        `role` (DISPATCH | FIELD | CONNECTIONS | METER_SERVICE | ADMIN) și `roles` (listă cu același rol), `typ: "access"`.
+        Lipsă, expirat sau refreshToken în loc de accessToken: `401`; rol nepermis: `403`.
         Reînnoire cu `POST /auth/refresh`.
   headers:
     X-Trace-Id:

@@ -113,7 +113,8 @@ if ! docker compose up -d --build; then
 fi
 
 # --- 4. Asteptarea health-ului ---------------------------------------------------------------------------------
-# Pana exista GET /api/v1/health (C4) se foloseste healthcheck-ul containerului api (Actuator, cu FileGridMeta).
+# Healthcheck-ul containerului api foloseste GET /api/v1/health (UP cand api si FileGridMeta raspund); apoi se
+# verifica acelasi endpoint prin nginx, pe HTTPS, cum il vede interfata.
 info "astept health-ul api (maxim ${health_timeout}s)"
 deadline=$((SECONDS + health_timeout))
 while :; do
@@ -137,11 +138,18 @@ done
 info "api: $healthy/$total instante healthy"
 
 if command -v curl >/dev/null 2>&1; then
-    code=$(curl -ks -o /dev/null -w '%{http_code}' https://localhost/api/v1/health || true)
-    case "$code" in
-        200) info "GET https://localhost/api/v1/health -> 200" ;;
-        *) info "GET https://localhost/api/v1/health -> ${code:-fara raspuns} (endpoint-ul vine la C4; health-ul containerului e OK)" ;;
-    esac
+    # nginx re-rezolva api la 5 s, deci primele cereri pot da 502/503 cateva secunde.
+    nginx_deadline=$((SECONDS + 60))
+    while :; do
+        code=$(curl -ks -o /dev/null -w '%{http_code}' https://localhost/api/v1/health || true)
+        [[ "$code" == 200 ]] && break
+        if ((SECONDS >= nginx_deadline)); then
+            docker compose logs --no-color --tail 20 nginx >&2 || true
+            fail "GET https://localhost/api/v1/health -> ${code:-fara raspuns} (api e healthy, dar nginx nu il serveste)."
+        fi
+        sleep 2
+    done
+    info "GET https://localhost/api/v1/health -> 200"
 fi
 
 # --- 5. Rezumat -------------------------------------------------------------------------------------------------

@@ -40,8 +40,8 @@ services:
       api:
         condition: service_started
     healthcheck:
-      # Cand exista GET /api/v1/health (C4), healthcheck-ul nginx il poate folosi (contract, /health).
-      test: ["CMD", "curl", "-fsk", "-o", "/dev/null", "https://localhost/"]
+      # Contract (/health): drumul complet nginx -> api -> FileGridMeta.
+      test: ["CMD", "curl", "-fsk", "-o", "/dev/null", "https://localhost/api/v1/health"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -88,8 +88,12 @@ services:
       FILEGRID_USER_RACORDARI_PASSWORD: ${FILEGRID_USER_RACORDARI_PASSWORD:-}
       FILEGRID_USER_CONTOR_PASSWORD: ${FILEGRID_USER_CONTOR_PASSWORD:-}
       FILEGRID_USER_ADMIN_PASSWORD: ${FILEGRID_USER_ADMIN_PASSWORD:-}
+      # Politica per categorie (4.2): directorul din repo, montat read-only; PolicyEngine il reciteste fara restart.
+      FILEGRID_POLICY_DIR: /app/policies
       # Heap-ul din procent, ca limita containerului (512 MB) sa ramana sub control.
       JAVA_OPTS: "-XX:MaxRAMPercentage=60 -XX:+ExitOnOutOfMemoryError"
+    volumes:
+      - ../../backend/filegrid-api/src/main/resources/policies:/app/policies:ro
     networks:
       - storage-net
     depends_on:
@@ -100,8 +104,8 @@ services:
       ftp:
         condition: service_healthy
     healthcheck:
-      # Pana exista GET /api/v1/health (C4) se foloseste health-ul Actuator (include FileGridMeta in profilul db).
-      test: ["CMD", "curl", "-fs", "-o", "/dev/null", "http://localhost:8080/actuator/health"]
+      # GET /api/v1/health (contract): UP doar cand api si FileGridMeta raspund (storage-urile nu intra aici).
+      test: ["CMD", "curl", "-fs", "-o", "/dev/null", "http://localhost:8080/api/v1/health"]
       interval: 10s
       timeout: 5s
       retries: 6

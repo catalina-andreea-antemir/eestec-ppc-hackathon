@@ -167,7 +167,8 @@ if ((Invoke-Native docker @('compose', 'up', '-d', '--build')) -ne 0) {
 }
 
 # --- 4. Asteptarea health-ului ---------------------------------------------------------------------------------
-# Pana exista GET /api/v1/health (C4) se foloseste healthcheck-ul containerului api (Actuator, cu FileGridMeta).
+# Healthcheck-ul containerului api foloseste GET /api/v1/health (UP cand api si FileGridMeta raspund); apoi se
+# verifica acelasi endpoint prin nginx, pe HTTPS, cum il vede interfata.
 Write-Info "astept health-ul api (maxim ${HealthTimeoutSeconds}s)"
 $deadline = (Get-Date).AddSeconds($HealthTimeoutSeconds)
 while ($true) {
@@ -191,9 +192,18 @@ Write-Info "api: $healthy/$($ids.Count) instante healthy"
 # Verificarea prin nginx; curl.exe exista in Windows 10/11 (in PowerShell 5.1 `curl` e alias, deci .exe explicit).
 $curl = Get-Command curl.exe -ErrorAction SilentlyContinue
 if ($curl) {
-    $code = Get-NativeOutput $curl.Source @('-ks', '-o', 'NUL', '-w', '%{http_code}', 'https://localhost/api/v1/health')
-    if ($code -eq '200') { Write-Info 'GET https://localhost/api/v1/health -> 200' }
-    else { Write-Info "GET https://localhost/api/v1/health -> $code (endpoint-ul vine la C4; health-ul containerului e OK)" }
+    # nginx re-rezolva api la 5 s, deci primele cereri pot da 502/503 cateva secunde.
+    $nginxDeadline = (Get-Date).AddSeconds(60)
+    while ($true) {
+        $code = Get-NativeOutput $curl.Source @('-ks', '-o', 'NUL', '-w', '%{http_code}', 'https://localhost/api/v1/health')
+        if ($code -eq '200') { break }
+        if ((Get-Date) -ge $nginxDeadline) {
+            [void](Invoke-Native docker @('compose', 'logs', '--no-color', '--tail', '20', 'nginx'))
+            Stop-WithError "GET https://localhost/api/v1/health -> $code (api e healthy, dar nginx nu il serveste)."
+        }
+        Start-Sleep -Seconds 2
+    }
+    Write-Info 'GET https://localhost/api/v1/health -> 200'
 }
 
 # --- 5. Rezumat -------------------------------------------------------------------------------------------------
