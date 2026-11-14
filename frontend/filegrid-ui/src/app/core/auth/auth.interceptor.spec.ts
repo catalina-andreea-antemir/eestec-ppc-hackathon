@@ -14,8 +14,9 @@ function fakeJwt(payload: object): string {
 describe('authInterceptor', () => {
   let http: HttpClient;
   let backend: HttpTestingController;
-  const oldToken = fakeJwt({ sub: 'teren', roles: ['FIELD'] });
-  const newToken = fakeJwt({ sub: 'teren', roles: ['FIELD'], v: 2 });
+  // Claim-urile din contract: `sub` și `role` (un singur șir).
+  const oldToken = fakeJwt({ sub: 'teren1', role: 'FIELD' });
+  const newToken = fakeJwt({ sub: 'teren1', role: 'FIELD', v: 2 });
 
   beforeEach(() => {
     sessionStorage.clear();
@@ -90,6 +91,17 @@ describe('authInterceptor', () => {
     expect(failed).toBe(true);
     expect(sessionStorage.getItem('filegrid.accessToken')).toBeNull();
     expect(navigate).toHaveBeenCalledWith(['/login']);
+  });
+
+  it('fără refresh token nu mai cere refresh și deloghează', () => {
+    sessionStorage.removeItem('filegrid.refreshToken');
+    vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+    http.get('/api/v1/files').subscribe({ error: () => undefined });
+
+    backend.expectOne('/api/v1/files').flush(null, { status: 401, statusText: 'Unauthorized' });
+    backend.expectNone('/api/v1/auth/refresh');
+
+    expect(sessionStorage.getItem('filegrid.accessToken')).toBeNull();
   });
 
   it('la eroare de rețea pe refresh, utilizatorul rămâne logat', () => {

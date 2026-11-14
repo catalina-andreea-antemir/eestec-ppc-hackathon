@@ -3,6 +3,7 @@ import { Component, inject, signal } from '@angular/core';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 
+import { toApiError } from '../../core/api/api-error';
 import { AuthService } from '../../core/auth/auth.service';
 import { environment } from '../../../environments/environment';
 
@@ -41,12 +42,26 @@ export class Login {
       },
       error: (err: unknown) => {
         this.submitting.set(false);
-        this.errorMessage.set(
-          err instanceof HttpErrorResponse && err.status === 401
-            ? 'Utilizator sau parolă greșită.'
-            : 'Serverul nu răspunde. Încearcă din nou.',
-        );
+        this.errorMessage.set(loginErrorMessage(err));
       },
     });
   }
+}
+
+function loginErrorMessage(err: unknown): string {
+  const status = err instanceof HttpErrorResponse ? err.status : 0;
+  if (status === 401) {
+    return 'Utilizator sau parolă greșită.';
+  }
+  if (status === 429 || status === 503) {
+    const seconds = toApiError(err)?.retryAfterSeconds;
+    return seconds
+      ? `Serverul e ocupat. Încearcă din nou peste ${seconds} s.`
+      : 'Serverul e ocupat. Încearcă din nou în câteva secunde.';
+  }
+  if (status === 0) {
+    return 'Serverul nu răspunde. Verifică dacă sistemul e pornit.';
+  }
+  // Alte erori: mesajul în română din contract (câmpul `message`), dacă există.
+  return toApiError(err)?.message ?? 'A apărut o eroare. Încearcă din nou.';
 }

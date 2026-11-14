@@ -3,8 +3,8 @@
   @if (auth.user(); as user) {
     <span class="user">
       {{ user.username }}
-      @for (role of user.roles; track role) {
-        <span class="role">{{ role }}</span>
+      @if (user.role) {
+        <span class="role">{{ user.role }}</span>
       }
     </span>
   }
