@@ -8,7 +8,12 @@ import java.util.List;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 
 import ro.filegrid.domain.Category;
 import ro.filegrid.domain.StorageType;
@@ -32,9 +37,17 @@ public class ContentWriter {
     private final StorageSelector selector;
     private final StorageAdapterRegistry registry;
 
+    private final MeterRegistry meters;
+
     public ContentWriter(StorageSelector selector, StorageAdapterRegistry registry) {
+        this(selector, registry, new SimpleMeterRegistry());
+    }
+
+    @Autowired
+    public ContentWriter(StorageSelector selector, StorageAdapterRegistry registry, MeterRegistry meters) {
         this.selector = selector;
         this.registry = registry;
+        this.meters = meters;
     }
 
     /**
@@ -59,6 +72,8 @@ public class ContentWriter {
                 if (e instanceof StorageUnavailableException) {
                     selector.markDown(adapter.type());
                 }
+                Counter.builder("filegrid.transfers.failed").tag("category", category.name())
+                        .tag("storage", adapter.type().name()).register(meters).increment();
                 log.warn("Scrierea {} în storage-ul {} a eșuat: {}", category, adapter.type(), e.getMessage());
             } catch (IOException e) {
                 throw new UncheckedIOException("Nu pot citi conținutul primit", e);
