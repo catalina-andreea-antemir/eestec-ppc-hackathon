@@ -58,6 +58,17 @@ filegrid:
     health-timeout: 2s
     # Obiectele mai mari trec intern prin multipart, cu parti fixe de aceasta marime (minim 5 MiB).
     part-size: 16MB
+  # FTP / vsftpd (C6): mod pasiv, conexiune per operatie, fara retry in adaptor (rezilienta vine la C11).
+  # Fara credentiale, FtpAdapter porneste neconfigurat (health down, operatiile -> 503).
+  ftp:
+    host: ${FTP_HOST:}
+    port: ${FTP_PORT:21}
+    user: ${FTP_USER:}
+    password: ${FTP_PASSWORD:}
+    connect-timeout: 2s
+    control-timeout: 30s
+    data-timeout: 30s
+    health-timeout: 2s
 
 management:
   endpoints:

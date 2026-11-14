@@ -25,4 +25,20 @@ grep -qx /sbin/nologin /etc/shells || echo /sbin/nologin >>/etc/shells
 chown "$FTP_USER:$FTP_USER" /srv/ftp
 chmod 755 /srv/ftp
 
-exec vsftpd /etc/vsftpd/vsftpd.conf
+# Doar pentru dezvoltare: FTP_PASV_ADDRESS (setat in docker-compose.dev.yml) face vsftpd sa anunte aceasta adresa in
+# raspunsul PASV, ca serverul sa poata fi folosit de pe host prin porturile publicate pe 127.0.0.1. Fara variabila
+# (configuratia implicita) nu se schimba nimic: se foloseste direct vsftpd.conf din imagine.
+CONF=/etc/vsftpd/vsftpd.conf
+if [ -n "${FTP_PASV_ADDRESS:-}" ]; then
+    case "$FTP_PASV_ADDRESS" in
+        *[!0-9.]* | "" | .* | *.)
+            echo "FTP_PASV_ADDRESS trebuie sa fie o adresa IPv4." >&2
+            exit 1
+            ;;
+    esac
+    CONF=/var/run/vsftpd/vsftpd-dev.conf
+    cp /etc/vsftpd/vsftpd.conf "$CONF"
+    printf 'pasv_address=%s\n' "$FTP_PASV_ADDRESS" >>"$CONF"
+fi
+
+exec vsftpd "$CONF"

@@ -226,6 +226,8 @@ services:
       context: ../ftp
     image: filegrid/ftp:local
     restart: unless-stopped
+    # vsftpd ca PID 1 se prabuseste (SIGSEGV, exit 139) dupa cateva sute de conexiuni; cu init (tini) rezista.
+    init: true
     environment:
       FTP_USER: ${FTP_USER}
       FTP_PASSWORD: ${FTP_PASSWORD}
