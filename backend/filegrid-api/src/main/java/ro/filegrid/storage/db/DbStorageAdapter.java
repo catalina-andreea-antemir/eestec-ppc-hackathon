@@ -14,6 +14,7 @@ import java.sql.SQLTransientConnectionException;
 import java.sql.Statement;
 import java.sql.Types;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
@@ -348,48 +349,70 @@ public class DbStorageAdapter implements StorageAdapter, ChunkedWriter {
     public boolean delete(String key) {
         StorageKeys.requireValid(key);
         return mutate(key, "delete", connection -> {
-            deleteChunks(connection, key, false);
-            try (PreparedStatement versions = prepare(connection, """
-                    DELETE FROM dbo.blob_versions WHERE logical_key = ? AND retired_at IS NULL
-                    """);
-                    PreparedStatement retired = prepare(connection, """
-                    DELETE FROM dbo.blob_versions WHERE logical_key = ? AND retired_at IS NOT NULL
-                    """)) {
-                versions.setNString(1, key);
-                boolean removed = versions.executeUpdate() > 0;
-                retired.setNString(1, key);
-                retired.executeUpdate();
-                return removed;
+            boolean removed = false;
+            for (VersionToRemove version : versionsToRemove(connection, key, false)) {
+                deleteVersionChunks(connection, version.id());
+                deleteVersionMetadata(connection, version.id());
+                removed |= !version.retired();
             }
+            return removed;
         });
     }
 
-    private static void deleteChunks(Connection connection, String key, boolean publishedOnly) throws SQLException {
-        String filter = publishedOnly ? " AND v.published = 1" : "";
-        try (PreparedStatement chunks = prepare(connection, """
-                DELETE c FROM dbo.blob_chunks c INNER JOIN dbo.blob_versions v ON c.storage_key = v.version_key
-                WHERE v.logical_key = ?
+    private record VersionToRemove(String id, boolean multipart, boolean retired) {
+    }
+
+    private static List<VersionToRemove> versionsToRemove(Connection connection, String key, boolean publishedOnly)
+            throws SQLException {
+        // A per-key application lock cannot protect against scans of other keys. Seek the logical-key
+        // index first, then mutate by physical PK; never let a DELETE join scan all blob_chunks.
+        String filter = publishedOnly ? " AND published = 1" : "";
+        try (PreparedStatement find = prepare(connection, """
+                SELECT version_key, upload_chunk_size, CASE WHEN retired_at IS NULL THEN 0 ELSE 1 END
+                FROM dbo.blob_versions WITH (FORCESEEK, INDEX(IX_blob_versions_logical_key))
+                WHERE logical_key = ?
                 """ + filter)) {
-            chunks.setNString(1, key);
+            find.setNString(1, key);
+            try (ResultSet rows = find.executeQuery()) {
+                List<VersionToRemove> versions = new ArrayList<>();
+                while (rows.next()) {
+                    versions.add(new VersionToRemove(rows.getString(1), rows.getObject(2) != null,
+                            rows.getBoolean(3)));
+                }
+                return versions;
+            }
+        }
+    }
+
+    private static void deleteVersionChunks(Connection connection, String version) throws SQLException {
+        try (PreparedStatement chunks = prepare(connection, "DELETE FROM dbo.blob_chunks WHERE storage_key = ?")) {
+            chunks.setNString(1, version);
             chunks.executeUpdate();
         }
     }
 
-    private static void publishVersion(Connection connection, String key, String version) throws SQLException {
-        deleteChunks(connection, key, true);
-        try (PreparedStatement oldPut = prepare(connection, """
-                DELETE FROM dbo.blob_versions WHERE logical_key = ? AND published = 1 AND upload_chunk_size IS NULL
-                """)) {
-            oldPut.setNString(1, key);
-            oldPut.executeUpdate();
+    private static void deleteVersionMetadata(Connection connection, String version) throws SQLException {
+        try (PreparedStatement metadata = prepare(connection, "DELETE FROM dbo.blob_versions WHERE version_key = ?")) {
+            metadata.setNString(1, version);
+            metadata.executeUpdate();
         }
-        // Pentru multipart păstrăm confirmarea de finalizare după înlocuire, fără rândurile binare.
-        try (PreparedStatement retire = prepare(connection, """
-                UPDATE dbo.blob_versions SET published = 0, retired_at = SYSUTCDATETIME()
-                WHERE logical_key = ? AND published = 1 AND upload_chunk_size IS NOT NULL
-                """)) {
-            retire.setNString(1, key);
-            retire.executeUpdate();
+    }
+
+    private static void publishVersion(Connection connection, String key, String version) throws SQLException {
+        for (VersionToRemove old : versionsToRemove(connection, key, true)) {
+            deleteVersionChunks(connection, old.id());
+            if (old.multipart()) {
+                // Keep the completion receipt after replacement, without binary rows.
+                try (PreparedStatement retire = prepare(connection, """
+                        UPDATE dbo.blob_versions SET published = 0, retired_at = SYSUTCDATETIME()
+                        WHERE version_key = ?
+                        """)) {
+                    retire.setNString(1, old.id());
+                    retire.executeUpdate();
+                }
+            } else {
+                deleteVersionMetadata(connection, old.id());
+            }
         }
         try (PreparedStatement publish = prepare(connection, """
                 UPDATE dbo.blob_versions SET published = 1 WHERE version_key = ?

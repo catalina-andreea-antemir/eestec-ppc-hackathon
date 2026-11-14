@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -19,6 +20,10 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Random;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
@@ -55,6 +60,7 @@ class DbStorageAdapterSqlServerTest {
             + ";encrypt=true;trustServerCertificate=true";
 
     private static HikariDataSource pool;
+    private final Set<String> testKeys = new HashSet<>();
     private final Set<String> testVersions = new HashSet<>();
     private DbStorageAdapter adapter;
     private Connection observer;
@@ -67,7 +73,8 @@ class DbStorageAdapterSqlServerTest {
         var properties = new YamlPropertySourceLoader().load("config", new ClassPathResource("application.yml"));
         new Binder(ConfigurationPropertySources.from(properties)).bind("filegrid.storage-db.hikari",
                 Bindable.ofInstance(pool));
-        pool.setMaximumPoolSize(3);
+        // Use the production C9 pool limit, including for concurrent puts.
+        pool.setMaximumPoolSize(30);
         pool.setMinimumIdle(1);
         try (Connection probe = pool.getConnection(); Statement statement = probe.createStatement();
                 ResultSet identity = statement.executeQuery("SELECT DB_NAME(), ORIGINAL_LOGIN(), USER_NAME()")) {
@@ -92,6 +99,7 @@ class DbStorageAdapterSqlServerTest {
         String generated = "o3-a-it-" + StorageKeys.newKey();
         assertThat(versions(generated)).isEmpty();
         key = generated;
+        testKeys.add(key);
     }
 
     @AfterEach
@@ -106,7 +114,9 @@ class DbStorageAdapterSqlServerTest {
             }
             cleanup.setAutoCommit(false);
             try {
-                versions(key).stream().map(Version::id).forEach(testVersions::add);
+                for (String ownedKey : testKeys) {
+                    versions(ownedKey).stream().map(Version::id).forEach(testVersions::add);
+                }
                 try (PreparedStatement chunks = prepare("DELETE FROM dbo.blob_chunks WHERE storage_key = ?")) {
                     for (String version : testVersions) {
                         chunks.setNString(1, version);
@@ -114,8 +124,10 @@ class DbStorageAdapterSqlServerTest {
                     }
                 }
                 try (PreparedStatement metadata = prepare("DELETE FROM dbo.blob_versions WHERE logical_key = ?")) {
-                    metadata.setNString(1, key);
-                    metadata.executeUpdate();
+                    for (String ownedKey : testKeys) {
+                        metadata.setNString(1, ownedKey);
+                        metadata.executeUpdate();
+                    }
                 }
                 cleanup.commit();
             } catch (SQLException | RuntimeException | Error e) {
@@ -129,11 +141,85 @@ class DbStorageAdapterSqlServerTest {
         }
         try (Connection verification = pool.getConnection()) {
             observer = verification;
-            assertThat(versions(key)).isEmpty();
+            for (String ownedKey : testKeys) {
+                assertThat(versions(ownedKey)).isEmpty();
+            }
             for (String version : testVersions) {
                 assertThat(chunkCount(version)).isZero();
             }
         }
+    }
+
+    @Test
+    void fiftyConcurrentDistinctKeyPutsPublishExactBytesWithoutRetries() throws Exception {
+        List<String> keys = new ArrayList<>();
+        for (int n = 0; n < 50; n++) {
+            String owned = "o3-concurrent-" + StorageKeys.newKey();
+            assertThat(versions(owned)).isEmpty();
+            testKeys.add(owned); // Register before submitting, so failures are also cleaned up.
+            keys.add(owned);
+        }
+        // Warm connections separately: measure SQL locking, not simultaneous TLS handshakes.
+        List<Connection> warm = new ArrayList<>();
+        try {
+            for (int n = 0; n < 29; n++) {
+                warm.add(pool.getConnection());
+            }
+        } finally {
+            for (Connection connection : warm) {
+                connection.close();
+            }
+        }
+        CountDownLatch start = new CountDownLatch(1);
+        List<Future<?>> writes = new ArrayList<>();
+        List<Throwable> failures = new ArrayList<>();
+        try (var workers = Executors.newFixedThreadPool(50)) {
+            for (int n = 0; n < keys.size(); n++) {
+                final int seed = n;
+                String owned = keys.get(n);
+                writes.add(workers.submit(() -> {
+                    start.await();
+                    byte[] expected = new byte[64 * 1024 + seed];
+                    new Random(seed).nextBytes(expected);
+                    // No reset/reopen/retry support: bytes must be consumed once only.
+                    InputStream source = new InputStream() {
+                        private int position;
+                        @Override
+                        public int read() {
+                            return position == expected.length ? -1 : expected[position++] & 0xff;
+                        }
+                    };
+                    assertThat(adapter.put(owned, source, expected.length, null)).isEqualTo(expected.length);
+                    assertThat(adapter.exists(owned)).isTrue();
+                    try (InputStream stored = adapter.get(owned, ByteRange.full())) {
+                        byte[] actual = stored.readAllBytes();
+                        assertThat(actual).isEqualTo(expected);
+                        assertThat(MessageDigest.getInstance("SHA-256").digest(actual))
+                                .isEqualTo(MessageDigest.getInstance("SHA-256").digest(expected));
+                    }
+                    return null;
+                }));
+            }
+            start.countDown();
+            for (Future<?> write : writes) {
+                try {
+                    write.get(45, TimeUnit.SECONDS);
+                } catch (Exception failure) {
+                    failures.add(failure);
+                }
+            }
+        }
+        if (!failures.isEmpty()) {
+            AssertionError failure = new AssertionError(failures.size() + " of 50 concurrent puts failed");
+            failures.forEach(failure::addSuppressed);
+            throw failure;
+        }
+        for (String owned : keys) {
+            assertThat(versions(owned)).singleElement().satisfies(version -> {
+                assertThat(version.published()).isTrue();
+            });
+        }
+        // @AfterEach independently deletes exact owned keys/versions and verifies no rows remain.
     }
 
     @Test
