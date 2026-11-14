@@ -23,6 +23,7 @@ import {
   ZONES,
   Zone,
 } from '../upload/upload.models';
+import { registerMockFile } from './mock-files';
 import { getMockSettings } from './mock-settings';
 import { Sha256, sha256Hex, Sha256State } from './sha256';
 
@@ -61,6 +62,12 @@ interface MockSession {
 
 /** Sesiuni cu o cerere în curs (lease); doar în memorie, ca un refresh să nu lase lease-ul blocat. */
 const busy = new Set<string>();
+
+/**
+ * Bucățile primite (Blob-uri din File.slice: referințe, nu copii), ca video-ul să se poată descărca
+ * și verifica din pagina Căutare. Doar în memorie: după un refresh conținutul se pierde.
+ */
+const chunkBlobs = new Map<string, Blob[]>();
 
 export function handleUploadRoutes(
   req: HttpRequest<unknown>,
@@ -154,6 +161,8 @@ function uploadFile(req: HttpRequest<FormData>, user: MockUser): Observable<Http
             createdBy: user.sub,
             ...(outage ? { outage } : {}),
           };
+          // Ca fișierul să apară în căutare (F5); conținutul rămâne doar o referință la File, nu o copie.
+          registerMockFile(metadata, file);
           return metadata;
         })(),
       ).pipe(map((body) => response(201, body))),
@@ -243,6 +252,9 @@ function putChunk(req: HttpRequest<Blob>, stored: MockSession, n: number): Obser
           const chunkHash = await sha256Hex(bytes);
           current.hash = new Sha256(current.hash).update(bytes).state();
           current.chunkHashes[n - 1] = chunkHash;
+          const blobs = chunkBlobs.get(s.uploadId) ?? [];
+          blobs[n - 1] = body;
+          chunkBlobs.set(s.uploadId, blobs);
           current.session.nextChunk = n + 1;
           current.session.receivedBytes += bytes.length;
           current.session.lastActivityAt = nowIso();
@@ -293,6 +305,11 @@ function complete(stored: MockSession, user: MockUser): Observable<HttpEvent<unk
   s.status = 'COMPLETED';
   s.lastActivityAt = nowIso();
   save(stored);
+  // Conținutul există doar dacă toate bucățile au fost primite în această încărcare a paginii.
+  const blobs = chunkBlobs.get(s.uploadId) ?? [];
+  const complete = blobs.length === s.totalChunks && blobs.every(Boolean);
+  registerMockFile(stored.result, complete ? new Blob(blobs, { type: 'video/mp4' }) : null);
+  chunkBlobs.delete(s.uploadId);
   return respond(201, stored.result);
 }
 
@@ -304,6 +321,7 @@ function abort(stored: MockSession): Observable<HttpEvent<unknown>> {
   s.status = 'ABORTED';
   s.lastActivityAt = nowIso();
   save(stored);
+  chunkBlobs.delete(s.uploadId);
   return respond(200, s);
 }
 
@@ -387,7 +405,7 @@ function traceId(): string {
   return crypto.randomUUID().replace(/-/g, '');
 }
 
-function nowIso(): string {
+export function nowIso(): string {
   return new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
 }
 
@@ -395,7 +413,7 @@ function response<T>(status: number, body: T): HttpResponse<T> {
   return new HttpResponse({ status, body, headers: new HttpHeaders({ 'X-Trace-Id': traceId() }) });
 }
 
-function respond<T>(status: number, body: T): Observable<HttpEvent<T>> {
+export function respond<T>(status: number, body: T): Observable<HttpEvent<T>> {
   if (!navigator.onLine) {
     return offline();
   }
@@ -417,7 +435,7 @@ function httpError(
   return new HttpErrorResponse({ status, statusText: message, error: body, headers });
 }
 
-function apiError(
+export function apiError(
   status: number,
   code: string,
   message: string,

@@ -5,8 +5,8 @@ import { AuthService } from '../../core/auth/auth.service';
 import { Topbar } from '../../shared/topbar/topbar';
 
 /**
- * Pagina protejată de după login. De aici se ajunge la Upload (F4);
- * Căutare și descărcare (F5) și Dashboard (F6) vin în pașii următori.
+ * Pagina protejată de după login. De aici se ajunge la Upload (F4) și la Căutare și descărcare (F5);
+ * Dashboard (F6) vine într-un pas următor.
  */
 @Component({
   selector: 'app-home',

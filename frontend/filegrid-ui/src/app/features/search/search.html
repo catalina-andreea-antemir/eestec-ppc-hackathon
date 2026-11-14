@@ -1,0 +1,186 @@
+<app-topbar />
+
+<main class="content">
+  <h1>Căutare și descărcare</h1>
+
+  @if (categories().length === 0) {
+    <p class="card">
+      Rolul tău nu poate căuta sau descărca fișiere (matricea de roluri: METER_SERVICE doar trimite citiri).
+    </p>
+  } @else {
+    <form class="card filters" (submit)="$event.preventDefault(); submit()" novalidate>
+      <div class="field">
+        <label for="category">Categoria</label>
+        <select id="category" (change)="category.set($any($event.target).value)">
+          <option value="" [selected]="category() === ''">Toate categoriile mele</option>
+          @for (c of categories(); track c) {
+            <option [value]="c" [selected]="c === category()">{{ labels[c] }}</option>
+          }
+        </select>
+      </div>
+
+      <div class="field wide">
+        <label for="q">Text în numele fișierului</label>
+        <input
+          id="q"
+          type="search"
+          maxlength="200"
+          placeholder="de exemplu BRASOV sau tronson-7"
+          [value]="q()"
+          [disabled]="textDisabled()"
+          (input)="q.set($any($event.target).value)"
+        />
+        @if (categories().includes('CONNECTION_DOC')) {
+          <small class="hint">
+            La documentele de racordare numele e criptat pe server, deci textul nu se aplică lor; le găsești după
+            categorie și dată.
+          </small>
+        }
+      </div>
+
+      <div class="field">
+        <label for="from">De la (creat)</label>
+        <input id="from" type="date" [value]="fromDay()" (change)="fromDay.set($any($event.target).value)" />
+      </div>
+      <div class="field">
+        <label for="to">Până la (inclusiv)</label>
+        <input id="to" type="date" [value]="toDay()" (change)="toDay.set($any($event.target).value)" />
+      </div>
+
+      <div class="buttons">
+        <button type="submit" [disabled]="!!dateError()">Caută</button>
+        <button type="button" class="secondary" (click)="reset()">Resetează</button>
+      </div>
+      @if (dateError(); as message) {
+        <p class="error wide-row">{{ message }}</p>
+      }
+    </form>
+
+    @if (error(); as message) {
+      <div class="card error-card" role="alert">
+        <span>{{ message }}</span>
+        <button type="button" class="secondary" (click)="retry()">Reîncearcă</button>
+      </div>
+    }
+
+    @if (result(); as page) {
+      <section class="card results" [class.busy]="loading()" [attr.aria-busy]="loading()">
+        <div class="results-head">
+          <strong>{{ rangeLabel(page.page, page.size, page.totalItems) }}</strong>
+          <label class="size">
+            pe pagină
+            <select (change)="changeSize(+$any($event.target).value)">
+              @for (s of pageSizes; track s) {
+                <option [value]="s" [selected]="s === size()">{{ s }}</option>
+              }
+            </select>
+          </label>
+        </div>
+
+        @if (page.items.length === 0) {
+          <p class="empty">Niciun fișier nu se potrivește filtrelor.</p>
+        } @else {
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Nume</th>
+                  <th>Categorie</th>
+                  <th class="num">Mărime</th>
+                  <th>Storage</th>
+                  <th>Status</th>
+                  <th>Creat</th>
+                  <th><span class="sr-only">Detalii</span></th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (f of page.items; track f.id) {
+                  @let open = expandedId() === f.id;
+                  <tr class="row" [class.open]="open" (click)="toggle(f)">
+                    <td class="name">
+                      {{ f.originalName }}
+                      @if (f.encrypted) {
+                        <span class="badge">criptat</span>
+                      }
+                    </td>
+                    <td>{{ labels[f.category] }}</td>
+                    <td class="num">{{ formatBytes(f.size) }}</td>
+                    <td>{{ f.storage }}</td>
+                    <td><span [class]="'status ' + f.status.toLowerCase()">{{ f.status }}</span></td>
+                    <td>{{ f.createdAt | date: 'dd.MM.yyyy HH:mm' }}</td>
+                    <td>
+                      <button
+                        type="button"
+                        class="secondary small"
+                        [attr.aria-expanded]="open"
+                        (click)="$event.stopPropagation(); toggle(f)"
+                      >
+                        {{ open ? 'Ascunde' : 'Detalii' }}
+                      </button>
+                    </td>
+                  </tr>
+                  @if (open) {
+                    <tr class="details">
+                      <td colspan="7">
+                        <dl>
+                          <dt>ID</dt>
+                          <dd><code>{{ f.id }}</code></dd>
+                          <dt>Mărime</dt>
+                          <dd>{{ formatBytes(f.size) }} ({{ f.size }} octeți)</dd>
+                          <dt>Tip</dt>
+                          <dd>{{ f.contentType }}</dd>
+                          <dt>Storage</dt>
+                          <dd>{{ f.storage }}</dd>
+                          <dt>Status</dt>
+                          <dd>{{ f.status }}</dd>
+                          <dt>SHA-256 stocat</dt>
+                          <dd><code class="hash">{{ f.sha256 }}</code></dd>
+                          @if (f.sha256Plain) {
+                            <dt>SHA-256 original</dt>
+                            <dd>
+                              <code class="hash">{{ f.sha256Plain }}</code>
+                              <small class="hint">hash-ul fișierului decriptat, cel pe care îl obții și tu după descărcare</small>
+                            </dd>
+                          }
+                          <dt>Creat de</dt>
+                          <dd>{{ f.createdBy }}</dd>
+                          <dt>Creat la</dt>
+                          <dd>{{ f.createdAt | date: 'dd.MM.yyyy HH:mm:ss' }}</dd>
+                          @if (f.outage; as o) {
+                            <dt>Avarie</dt>
+                            <dd>
+                              zona {{ o.zone }}{{ o.stationId ? ', stația ' + o.stationId : '' }}, la
+                              {{ o.occurredAt | date: 'dd.MM.yyyy HH:mm' }}
+                            </dd>
+                          }
+                        </dl>
+                        <app-file-actions [file]="f" />
+                      </td>
+                    </tr>
+                  }
+                }
+              </tbody>
+            </table>
+          </div>
+
+          <nav class="pager" aria-label="Paginare">
+            <button type="button" class="secondary small" [disabled]="page.page <= 1 || loading()" (click)="goToPage(page.page - 1)">
+              ‹ Înapoi
+            </button>
+            <span>Pagina {{ page.page }} din {{ page.totalPages || 1 }}</span>
+            <button
+              type="button"
+              class="secondary small"
+              [disabled]="page.page >= page.totalPages || loading()"
+              (click)="goToPage(page.page + 1)"
+            >
+              Înainte ›
+            </button>
+          </nav>
+        }
+      </section>
+    } @else if (loading()) {
+      <p class="card">Se caută…</p>
+    }
+  }
+</main>

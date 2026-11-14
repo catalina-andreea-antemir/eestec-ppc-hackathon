@@ -1,0 +1,58 @@
+<div class="actions">
+  <button type="button" (click)="download()" [disabled]="downloading()">
+    {{ downloading() ? 'Se cere link-ul…' : 'Descarcă' }}
+  </button>
+  <button type="button" class="secondary" (click)="verify()" [disabled]="verifying()">
+    {{ verifying() ? 'Se verifică…' : 'Verifică integritatea' }}
+  </button>
+  @if (file().category === 'CONNECTION_DOC') {
+    <label class="deep">
+      <input type="checkbox" [checked]="deep()" (change)="deep.set($any($event.target).checked)" />
+      Verificare completă (decriptează și compară și hash-ul originalului)
+    </label>
+  }
+</div>
+
+@if (downloadInfo(); as info) {
+  <p class="note" role="status">
+    Descărcarea a pornit în browser (vezi managerul de descărcări). Link-ul e valabil până la
+    {{ info.expiresAt | date: 'HH:mm:ss' }}; dacă se întrerupe, browserul o poate relua până atunci.
+  </p>
+}
+@if (downloadError(); as message) {
+  <p class="error" role="alert">{{ message }}</p>
+}
+
+@if (outcome(); as o) {
+  @switch (o.kind) {
+    @case ('ok') {
+      <div class="result ok" role="status">
+        <span>
+          <strong>OK</strong> — hash-ul recalculat din storage e identic cu cel salvat la upload.
+          @if (o.deep) {
+            Verificare completă: și originalul decriptat se potrivește.
+          }
+        </span>
+        <code class="hash">{{ o.actualSha256 }}</code>
+        <span class="when">verificat la {{ o.verifiedAt | date: 'dd.MM.yyyy HH:mm:ss' }}</span>
+      </div>
+    }
+    @case ('corrupt') {
+      <div class="result corrupt" role="alert">
+        <span><strong>Corupt</strong> — {{ o.message }}: conținutul din storage nu mai are hash-ul salvat la upload.</span>
+        <dl>
+          <dt>Așteptat</dt>
+          <dd><code class="hash">{{ o.expectedSha256 ?? '—' }}</code></dd>
+          <dt>Găsit</dt>
+          <dd><code class="hash">{{ o.actualSha256 ?? '—' }}</code></dd>
+        </dl>
+        @if (o.traceId) {
+          <span class="when">trace {{ o.traceId }}</span>
+        }
+      </div>
+    }
+    @case ('error') {
+      <p class="error" role="alert">{{ o.message }}</p>
+    }
+  }
+}

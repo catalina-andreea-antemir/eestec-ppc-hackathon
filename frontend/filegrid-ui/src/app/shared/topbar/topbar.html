@@ -5,6 +5,9 @@
     @if (canUpload()) {
       <a routerLink="/upload" routerLinkActive="active">Upload</a>
     }
+    @if (canSearch()) {
+      <a routerLink="/search" routerLinkActive="active">Căutare</a>
+    }
   </nav>
   @if (auth.user(); as user) {
     <span class="user">
