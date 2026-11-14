@@ -4,17 +4,24 @@ DECLARE @from_utc datetime2(7) = DATEADD(day, -30, @to_utc);
 IF @from_utc IS NULL OR @to_utc IS NULL OR @from_utc >= @to_utc
     THROW 50000, 'Expected a nonempty UTC interval.', 1;
 
+-- Capture the observed groups once so both result sets describe the same data.
+DECLARE @zone_hours TABLE (
+    zone nvarchar(16) NOT NULL,
+    hour_utc int NOT NULL,
+    outages bigint NOT NULL
+);
+
+INSERT INTO @zone_hours (zone, hour_utc, outages)
+SELECT zone, DATEPART(hour, occurred_at), COUNT_BIG(*)
+FROM dbo.outage_records
+WHERE occurred_at >= @from_utc AND occurred_at < @to_utc
+GROUP BY zone, DATEPART(hour, occurred_at);
+
 -- First result set: rank zones within the selected interval.
-;WITH zone_hours AS (
-    SELECT zone, DATEPART(hour, occurred_at) AS hour_utc, COUNT_BIG(*) AS outages
-    FROM dbo.outage_records
-    WHERE occurred_at >= @from_utc AND occurred_at < @to_utc
-    GROUP BY zone, DATEPART(hour, occurred_at)
-),
-peak_hours AS (
+;WITH peak_hours AS (
     SELECT *,
         FIRST_VALUE(hour_utc) OVER (PARTITION BY zone ORDER BY outages DESC, hour_utc) AS peak_hour_utc
-    FROM zone_hours
+    FROM @zone_hours
 ),
 zone_totals AS (
     SELECT zone, SUM(outages) AS outages, MAX(peak_hour_utc) AS peak_hour_utc
@@ -43,8 +50,6 @@ FROM all_zones
 ORDER BY [rank], zone;
 
 -- Second result set: UTC hour-of-day distribution across the same interval.
-SELECT zone, DATEPART(hour, occurred_at) AS hour_utc, COUNT_BIG(*) AS outages
-FROM dbo.outage_records
-WHERE occurred_at >= @from_utc AND occurred_at < @to_utc
-GROUP BY zone, DATEPART(hour, occurred_at)
+SELECT zone, hour_utc, outages
+FROM @zone_hours
 ORDER BY zone, hour_utc;
