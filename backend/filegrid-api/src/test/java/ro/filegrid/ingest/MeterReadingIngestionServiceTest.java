@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -20,7 +21,11 @@ import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.dao.CannotAcquireLockException;
 import org.springframework.dao.DataAccessResourceFailureException;
+import org.springframework.dao.DeadlockLoserDataAccessException;
+
+import org.springframework.transaction.CannotCreateTransactionException;
 
 import ro.filegrid.api.ApiException;
 import ro.filegrid.domain.Category;
@@ -115,6 +120,46 @@ class MeterReadingIngestionServiceTest {
     }
 
     @Test
+    void deadlockOnceThenSuccessRetriesWithoutRewritingOrCompensating() {
+        when(readings.tryBegin(BATCH)).thenReturn(new BeginResult(Status.NEW, ATTEMPT, null));
+        when(readings.attachFile(eq(ATTEMPT), any())).thenReturn(2);
+        doThrow(new DeadlockLoserDataAccessException("1205", null)).doNothing().when(files).insert(any());
+
+        MeterReadingIngestionService.Result result = service.ingest(BODY, BATCH, "contor");
+
+        ArgumentCaptor<FileRecord> row = ArgumentCaptor.forClass(FileRecord.class);
+        verify(files, times(2)).insert(row.capture());
+        assertThat(row.getAllValues().get(0).id()).isEqualTo(row.getAllValues().get(1).id())
+                .isEqualTo(result.fileId());
+        assertThat(env.db.puts).hasValue(1);
+        assertThat(env.db.deletes).hasValue(0);
+        verify(readings, never()).delete(any());
+        verify(readings).attachFile(ATTEMPT, result.fileId());
+    }
+
+    @Test
+    void deadlockFourTimesCompensatesAndIs503() {
+        when(readings.tryBegin(BATCH)).thenReturn(new BeginResult(Status.NEW, ATTEMPT, null));
+        doThrow(new CannotAcquireLockException("deadlock")).when(files).insert(any());
+
+        assertError(503, "STORAGE_UNAVAILABLE");
+        verify(files, times(4)).insert(any());
+        assertThat(env.db.puts).hasValue(1);
+        assertThat(env.db.deletes).hasValue(1);
+        verify(readings).delete(ATTEMPT);
+    }
+
+    @Test
+    void otherExceptionCompensatesWithoutRetry() {
+        when(readings.tryBegin(BATCH)).thenReturn(new BeginResult(Status.NEW, ATTEMPT, null));
+        doThrow(new DataAccessResourceFailureException("simulat")).when(files).insert(any());
+
+        assertError(503, "STORAGE_UNAVAILABLE");
+        verify(files, times(1)).insert(any());
+        verify(readings).delete(ATTEMPT);
+    }
+
+    @Test
     void partialAttachRollsBackAndCompensates() {
         when(readings.tryBegin(BATCH)).thenReturn(new BeginResult(Status.NEW, ATTEMPT, null));
         when(readings.attachFile(eq(ATTEMPT), any())).thenReturn(1);
@@ -127,6 +172,13 @@ class MeterReadingIngestionServiceTest {
     @Test
     void metadataDatabaseDownAtBeginIs503() {
         when(readings.tryBegin(BATCH)).thenThrow(new DataAccessResourceFailureException("simulat"));
+
+        assertError(503, "STORAGE_UNAVAILABLE");
+    }
+
+    @Test
+    void connectionPoolExhaustedAtBeginIs503() {
+        when(readings.tryBegin(BATCH)).thenThrow(new CannotCreateTransactionException("pool"));
 
         assertError(503, "STORAGE_UNAVAILABLE");
     }

@@ -1,18 +1,23 @@
 package ro.filegrid.ingest;
 
 import java.io.ByteArrayInputStream;
+import java.sql.SQLException;
 import java.time.Clock;
 import java.time.temporal.ChronoUnit;
 import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Profile;
+import org.springframework.dao.CannotAcquireLockException;
 import org.springframework.dao.DataAccessException;
+import org.springframework.dao.DeadlockLoserDataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionException;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import ro.filegrid.api.ApiException;
@@ -33,6 +38,8 @@ import ro.filegrid.storage.db.MeterReadingRepository.BeginResult;
 public class MeterReadingIngestionService {
 
     static final String CONTENT_TYPE = "application/json";
+    private static final int DEADLOCK_RETRIES = 3;
+    private static final int SQL_SERVER_DEADLOCK = 1205;
     private static final Logger log = LoggerFactory.getLogger(MeterReadingIngestionService.class);
 
     private final MeterReadingRepository readings;
@@ -61,7 +68,7 @@ public class MeterReadingIngestionService {
         BeginResult begin;
         try {
             begin = readings.tryBegin(batch);
-        } catch (DataAccessException e) {
+        } catch (DataAccessException | TransactionException e) {
             log.warn("tryBegin a eșuat pentru un lot de {} citiri: {}", batch.readings().size(), e.getMessage());
             throw metadataUnavailable();
         }
@@ -92,20 +99,52 @@ public class MeterReadingIngestionService {
                 clock.instant().truncatedTo(ChronoUnit.MICROS), createdBy, null);
         int expected = batch.readings().size();
         try {
-            transaction.executeWithoutResult(status -> {
-                files.insert(record);
-                int attached = readings.attachFile(attemptId, fileId);
-                if (attached != expected) {
-                    throw new IllegalStateException("attachFile a legat " + attached + " din " + expected
-                            + " citiri");
+            for (int attempt = 0; ; attempt++) {
+                try {
+                    transaction.executeWithoutResult(status -> {
+                        files.insert(record);
+                        int attached = readings.attachFile(attemptId, fileId);
+                        if (attached != expected) {
+                            throw new IllegalStateException("attachFile a legat " + attached + " din " + expected
+                                    + " citiri");
+                        }
+                    });
+                    break;
+                } catch (RuntimeException e) {
+                    if (attempt >= DEADLOCK_RETRIES || !isDeadlock(e)) {
+                        throw e;
+                    }
+                    log.info("Deadlock la salvarea metadatelor lotului (fișier {}), reîncercare {}/{}", fileId,
+                            attempt + 1, DEADLOCK_RETRIES);
+                    backoff(attempt);
                 }
-            });
+            }
         } catch (RuntimeException e) {
             log.warn("Metadatele lotului nu s-au salvat (fișier {}): {}", fileId, e.getMessage());
             compensate(attemptId, stored);
             throw metadataUnavailable();
         }
         return new Result(fileId, batch.meterId(), expected, Sha256.hex(stored.sha256()), false);
+    }
+
+    /** Deadlock SQL Server: excepțiile Spring de blocare sau cauza SQL cu codul 1205. */
+    static boolean isDeadlock(Throwable e) {
+        for (Throwable t = e; t != null; t = t.getCause() == t ? null : t.getCause()) {
+            if (t instanceof CannotAcquireLockException || t instanceof DeadlockLoserDataAccessException
+                    || t instanceof SQLException sql && sql.getErrorCode() == SQL_SERVER_DEADLOCK) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static void backoff(int attempt) {
+        long ms = 15L * (attempt + 1) + ThreadLocalRandom.current().nextLong(0, 30);
+        try {
+            Thread.sleep(ms);
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     private Result duplicate(MeterReadingBatch batch, UUID fileId) {
