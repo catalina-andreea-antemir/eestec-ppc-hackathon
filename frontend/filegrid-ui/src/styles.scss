@@ -1,0 +1,77 @@
+/* Stiluri globale și culori comune pentru toată interfața. */
+
+:root {
+  --bg: #f5f7fa;
+  --surface: #ffffff;
+  --border: #d9dee5;
+  --text: #1c2430;
+  --muted: #5d6b7c;
+  --accent: #0b5cad;
+  --accent-soft: #e3eefa;
+  --danger: #b42318;
+  --ok: #157f3b;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #11161d;
+    --surface: #1a212b;
+    --border: #2c3644;
+    --text: #e6ebf1;
+    --muted: #9aa7b6;
+    --accent: #6aa8ec;
+    --accent-soft: #1e3149;
+    --danger: #f2877d;
+    --ok: #5fcf86;
+    color-scheme: dark;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  line-height: 1.5;
+}
+
+input,
+select {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+
+button {
+  padding: 8px 16px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+button.secondary {
+  background: transparent;
+  color: var(--accent);
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+code {
+  font-family: ui-monospace, Consolas, monospace;
+}

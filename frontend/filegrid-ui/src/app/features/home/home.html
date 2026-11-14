@@ -1,0 +1,17 @@
+<header class="topbar">
+  <strong>FileGrid</strong>
+  @if (auth.user(); as user) {
+    <span class="user">
+      {{ user.username }}
+      @for (role of user.roles; track role) {
+        <span class="role">{{ role }}</span>
+      }
+    </span>
+  }
+  <button type="button" class="secondary" (click)="auth.logout()">Ieșire</button>
+</header>
+
+<main class="content">
+  <h1>Bine ai venit</h1>
+  <p>Ești autentificat. Paginile de upload, căutare și statistici vin în pașii următori.</p>
+</main>
