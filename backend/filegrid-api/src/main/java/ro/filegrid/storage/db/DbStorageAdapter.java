@@ -12,7 +12,9 @@ import java.sql.SQLRecoverableException;
 import java.sql.SQLTimeoutException;
 import java.sql.SQLTransientConnectionException;
 import java.sql.Statement;
+import java.sql.Types;
 import java.time.Duration;
+import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
@@ -25,7 +27,11 @@ import org.springframework.stereotype.Repository;
 
 import ro.filegrid.config.DataSourceConfig;
 import ro.filegrid.domain.StorageType;
+import ro.filegrid.policy.CategoryPolicy;
 import ro.filegrid.storage.ByteRange;
+import ro.filegrid.storage.ChunkReceipt;
+import ro.filegrid.storage.ChunkedUpload;
+import ro.filegrid.storage.ChunkedWriter;
 import ro.filegrid.storage.StorageAdapter;
 import ro.filegrid.storage.StorageException;
 import ro.filegrid.storage.StorageHealth;
@@ -36,7 +42,7 @@ import ro.filegrid.storage.StorageUnavailableException;
 /** Storage de octeți în FileGridStorage, cu tranzacții locale pe conexiunea JDBC proprie. */
 @Repository
 @Profile("db")
-public class DbStorageAdapter implements StorageAdapter {
+public class DbStorageAdapter implements StorageAdapter, ChunkedWriter {
 
     private static final StorageType TYPE = StorageType.DB;
     private static final int ROW_SIZE = 4 * 1024 * 1024;
@@ -80,30 +86,29 @@ public class DbStorageAdapter implements StorageAdapter {
         // Prefixul rezervat separă cheile fizice de cheile logice valide din schema inițială.
         String version = "~" + UUID.randomUUID();
         return mutate(key, "put", connection -> {
-            try (PreparedStatement insert = prepare(connection, """
-                    INSERT INTO dbo.blob_versions (version_key, logical_key, size_bytes, published) VALUES (?, ?, ?, 0)
-                    """)) {
-                insert.setNString(1, version);
-                insert.setNString(2, key);
-                insert.setLong(3, length);
-                insert.executeUpdate();
-            }
-            writeRows(connection, version, data, length);
-            deleteVersions(connection, key, true);
-            try (PreparedStatement publish = prepare(connection, """
-                    UPDATE dbo.blob_versions SET published = 1 WHERE version_key = ?
-                    """)) {
-                publish.setNString(1, version);
-                if (publish.executeUpdate() != 1) {
-                    throw new StorageException(TYPE, "DB put: versiunea nu a fost publicată");
-                }
-            }
+            insertVersion(connection, version, key, length, null);
+            writeRows(connection, version, 0, data, length, "put");
+            publishVersion(connection, key, version);
             return length;
         });
     }
 
-    private static void writeRows(Connection connection, String version, InputStream data, long length)
-            throws SQLException {
+    private static void insertVersion(Connection connection, String version, String key, long length,
+            Integer chunkSize) throws SQLException {
+        try (PreparedStatement insert = prepare(connection, """
+                INSERT INTO dbo.blob_versions (version_key, logical_key, size_bytes, published, upload_chunk_size)
+                VALUES (?, ?, ?, 0, ?)
+                """)) {
+            insert.setNString(1, version);
+            insert.setNString(2, key);
+            insert.setLong(3, length);
+            insert.setObject(4, chunkSize, Types.INTEGER);
+            insert.executeUpdate();
+        }
+    }
+
+    private static void writeRows(Connection connection, String version, long start, InputStream data, long length,
+            String operation) throws SQLException {
         try (PreparedStatement insert = prepare(connection, """
                 INSERT INTO dbo.blob_chunks (storage_key, chunk_offset, chunk_data) VALUES (?, ?, ?)
                 """)) {
@@ -112,20 +117,178 @@ public class DbStorageAdapter implements StorageAdapter {
             while (offset < length) {
                 int size = (int) Math.min(ROW_SIZE, length - offset);
                 RowSource row = new RowSource(data, size);
-                insert.setLong(2, offset);
+                insert.setLong(2, start + offset);
                 try {
                     insert.setBinaryStream(3, row, (long) size);
                     insert.executeUpdate();
                 } catch (SQLException e) {
                     if (row.failure != null) {
-                        throw sourceError(row.failure);
+                        throw sourceError(operation, row.failure);
                     }
                     throw e;
                 }
                 if (row.remaining != 0) {
-                    throw sourceError(row.failure);
+                    throw sourceError(operation, row.failure);
                 }
                 offset += size;
+            }
+        }
+    }
+
+    @Override
+    public String open(String key, long totalSize, int chunkSize) {
+        StorageKeys.requireValid(key);
+        validateUploadSize(totalSize, chunkSize);
+        String uploadRef = UUID.randomUUID().toString();
+        return mutate(key, "open", connection -> {
+            insertVersion(connection, "~" + uploadRef, key, totalSize, chunkSize);
+            return uploadRef;
+        });
+    }
+
+    @Override
+    public ChunkReceipt append(ChunkedUpload upload, int n, InputStream data, long length) {
+        String version = uploadVersion(upload);
+        Objects.requireNonNull(data, "data");
+        if (length != upload.expectedLength(n)) {
+            throw new IllegalArgumentException("Lungimea nu corespunde bucății declarate");
+        }
+        long start = upload.offsetOf(n);
+        return mutate(upload.key(), "append", connection -> {
+            if (requireUpload(connection, upload, version) != UploadState.PENDING) {
+                throw new StorageException(TYPE, "DB append: upload deja finalizat");
+            }
+            try (PreparedStatement delete = prepare(connection, """
+                    DELETE FROM dbo.blob_chunks WHERE storage_key = ? AND chunk_offset >= ? AND chunk_offset < ?
+                    """)) {
+                delete.setNString(1, version);
+                delete.setLong(2, start);
+                delete.setLong(3, start + length);
+                delete.executeUpdate();
+            }
+            writeRows(connection, version, start, data, length, "append");
+            return new ChunkReceipt(n, length, null);
+        });
+    }
+
+    @Override
+    public long finish(ChunkedUpload upload, List<ChunkReceipt> receipts) {
+        String version = uploadVersion(upload);
+        Objects.requireNonNull(receipts, "receipts");
+        if (receipts.size() != upload.totalChunks()) {
+            throw new StorageException(TYPE, "DB finish: număr incorect de confirmări");
+        }
+        int n = 0;
+        for (ChunkReceipt receipt : receipts) {
+            n++;
+            if (receipt == null || receipt.n() != n || receipt.size() != upload.expectedLength(n)) {
+                throw new StorageException(TYPE, "DB finish: confirmare de bucată invalidă");
+            }
+        }
+        return mutate(upload.key(), "finish", connection -> {
+            if (requireUpload(connection, upload, version) == UploadState.PENDING) {
+                validateCoverage(connection, upload, version);
+                publishVersion(connection, upload.key(), version);
+            }
+            return upload.totalSize();
+        });
+    }
+
+    @Override
+    public void abort(ChunkedUpload upload) {
+        String version = uploadVersion(upload);
+        mutate(upload.key(), "abort", connection -> {
+            UploadState state = findUpload(connection, upload, version);
+            if (state == null || state == UploadState.RETIRED) {
+                return null;
+            }
+            try (PreparedStatement chunks = prepare(connection, "DELETE FROM dbo.blob_chunks WHERE storage_key = ?");
+                    PreparedStatement metadata = prepare(connection, "DELETE FROM dbo.blob_versions WHERE version_key = ?")) {
+                chunks.setNString(1, version);
+                chunks.executeUpdate();
+                metadata.setNString(1, version);
+                metadata.executeUpdate();
+            }
+            return null;
+        });
+    }
+
+    private static String uploadVersion(ChunkedUpload upload) {
+        Objects.requireNonNull(upload, "upload");
+        StorageKeys.requireValid(upload.key());
+        validateUploadSize(upload.totalSize(), upload.chunkSize());
+        String uuid = UUID.fromString(upload.uploadRef()).toString();
+        if (!uuid.equals(upload.uploadRef())) {
+            throw new IllegalArgumentException("uploadRef trebuie să fie un UUID canonic");
+        }
+        return "~" + uuid;
+    }
+
+    private static void validateUploadSize(long size, int chunkSize) {
+        if (size <= 0 || chunkSize < CategoryPolicy.MIN_CHUNK_SIZE || chunkSize > CategoryPolicy.MAX_CHUNK_SIZE) {
+            throw new IllegalArgumentException("totalSize trebuie să fie pozitiv și chunkSize între 5 și 64 MiB");
+        }
+        if ((size - 1) / chunkSize >= Integer.MAX_VALUE) {
+            throw new IllegalArgumentException("Prea multe bucăți pentru un upload");
+        }
+    }
+
+    private enum UploadState {
+        PENDING, PUBLISHED, RETIRED
+    }
+
+    private static UploadState findUpload(Connection connection, ChunkedUpload upload, String version)
+            throws SQLException {
+        try (PreparedStatement find = prepare(connection, """
+                SELECT size_bytes, upload_chunk_size, published, CASE WHEN retired_at IS NOT NULL THEN 1 ELSE 0 END
+                FROM dbo.blob_versions WHERE version_key = ? AND logical_key = ? AND upload_chunk_size IS NOT NULL
+                """)) {
+            find.setNString(1, version);
+            find.setNString(2, upload.key());
+            try (ResultSet result = find.executeQuery()) {
+                if (!result.next()) {
+                    return null;
+                }
+                if (result.getLong(1) != upload.totalSize() || result.getInt(2) != upload.chunkSize()) {
+                    throw new StorageException(TYPE, "DB multipart: dimensiunile sesiunii diferă");
+                }
+                if (result.getBoolean(3)) {
+                    return UploadState.PUBLISHED;
+                }
+                return result.getBoolean(4) ? UploadState.RETIRED : UploadState.PENDING;
+            }
+        }
+    }
+
+    private static UploadState requireUpload(Connection connection, ChunkedUpload upload, String version)
+            throws SQLException {
+        UploadState state = findUpload(connection, upload, version);
+        if (state == null) {
+            throw new StorageException(TYPE, "DB multipart: upload inexistent sau anulat");
+        }
+        return state;
+    }
+
+    private static void validateCoverage(Connection connection, ChunkedUpload upload, String version)
+            throws SQLException {
+        try (PreparedStatement chunks = prepare(connection, """
+                SELECT chunk_offset, chunk_size FROM dbo.blob_chunks WHERE storage_key = ? ORDER BY chunk_offset
+                """)) {
+            chunks.setNString(1, version);
+            try (ResultSet rows = chunks.executeQuery()) {
+                long offset = 0;
+                while (rows.next()) {
+                    // Verifică și granița fiecărei bucăți multipart, inclusiv a ultimei bucăți scurte.
+                    long chunkRemaining = upload.chunkSize() - offset % upload.chunkSize();
+                    long expected = Math.min(ROW_SIZE, Math.min(chunkRemaining, upload.totalSize() - offset));
+                    if (expected <= 0 || rows.getLong(1) != offset || rows.getInt(2) != expected) {
+                        throw new StorageException(TYPE, "DB finish: acoperire invalidă a bucăților stocate");
+                    }
+                    offset += expected;
+                }
+                if (offset != upload.totalSize()) {
+                    throw new StorageException(TYPE, "DB finish: lipsesc octeți din bucățile stocate");
+                }
             }
         }
     }
@@ -184,21 +347,57 @@ public class DbStorageAdapter implements StorageAdapter {
     @Override
     public boolean delete(String key) {
         StorageKeys.requireValid(key);
-        return mutate(key, "delete", connection -> deleteVersions(connection, key, false) > 0);
+        return mutate(key, "delete", connection -> {
+            deleteChunks(connection, key, false);
+            try (PreparedStatement versions = prepare(connection, """
+                    DELETE FROM dbo.blob_versions WHERE logical_key = ? AND retired_at IS NULL
+                    """);
+                    PreparedStatement retired = prepare(connection, """
+                    DELETE FROM dbo.blob_versions WHERE logical_key = ? AND retired_at IS NOT NULL
+                    """)) {
+                versions.setNString(1, key);
+                boolean removed = versions.executeUpdate() > 0;
+                retired.setNString(1, key);
+                retired.executeUpdate();
+                return removed;
+            }
+        });
     }
 
-    private static int deleteVersions(Connection connection, String key, boolean publishedOnly) throws SQLException {
+    private static void deleteChunks(Connection connection, String key, boolean publishedOnly) throws SQLException {
         String filter = publishedOnly ? " AND v.published = 1" : "";
         try (PreparedStatement chunks = prepare(connection, """
                 DELETE c FROM dbo.blob_chunks c INNER JOIN dbo.blob_versions v ON c.storage_key = v.version_key
                 WHERE v.logical_key = ?
-                """ + filter);
-                PreparedStatement versions = prepare(connection,
-                        "DELETE v FROM dbo.blob_versions v WHERE v.logical_key = ?" + filter)) {
+                """ + filter)) {
             chunks.setNString(1, key);
             chunks.executeUpdate();
-            versions.setNString(1, key);
-            return versions.executeUpdate();
+        }
+    }
+
+    private static void publishVersion(Connection connection, String key, String version) throws SQLException {
+        deleteChunks(connection, key, true);
+        try (PreparedStatement oldPut = prepare(connection, """
+                DELETE FROM dbo.blob_versions WHERE logical_key = ? AND published = 1 AND upload_chunk_size IS NULL
+                """)) {
+            oldPut.setNString(1, key);
+            oldPut.executeUpdate();
+        }
+        // Pentru multipart păstrăm confirmarea de finalizare după înlocuire, fără rândurile binare.
+        try (PreparedStatement retire = prepare(connection, """
+                UPDATE dbo.blob_versions SET published = 0, retired_at = SYSUTCDATETIME()
+                WHERE logical_key = ? AND published = 1 AND upload_chunk_size IS NOT NULL
+                """)) {
+            retire.setNString(1, key);
+            retire.executeUpdate();
+        }
+        try (PreparedStatement publish = prepare(connection, """
+                UPDATE dbo.blob_versions SET published = 1 WHERE version_key = ?
+                """)) {
+            publish.setNString(1, version);
+            if (publish.executeUpdate() != 1) {
+                throw new StorageException(TYPE, "DB: versiunea nu a fost publicată");
+            }
         }
     }
 
@@ -312,8 +511,8 @@ public class DbStorageAdapter implements StorageAdapter {
         return new StorageException(TYPE, "DB " + operation + ": operația SQL a eșuat", error);
     }
 
-    private static StorageException sourceError(IOException error) {
-        return new StorageException(TYPE, "DB put: sursa s-a întrerupt înainte de lungimea declarată", error);
+    private static StorageException sourceError(String operation, IOException error) {
+        return new StorageException(TYPE, "DB " + operation + ": sursa s-a întrerupt înainte de lungimea declarată", error);
     }
 
     /** Vedere limitată la un rând SQL. Sursa aparține apelantului, inclusiv când driverul închide vederea. */
