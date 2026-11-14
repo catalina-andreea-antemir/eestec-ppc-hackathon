@@ -1,0 +1,29 @@
+# Suprascriere pentru dezvoltare (ADR-002), activata explicit, din radacina repo-ului:
+#   docker compose -f docker-compose.yml -f infra/docker/docker-compose.dev.yml up -d
+# Publica porturi DOAR pe 127.0.0.1 (nimic vizibil din retea):
+#   127.0.0.1:1433  SQL Server (SSMS / Azure Data Studio; login sa sau filegrid_*_app, parolele din .env)
+#   127.0.0.1:9000  MinIO S3 API
+#   127.0.0.1:9001  consola MinIO (MINIO_ROOT_USER / MINIO_ROOT_PASSWORD din .env)
+#
+# Serviciile stau pe storage-net, care e interna, iar Docker nu publica porturi dintr-o retea interna; de aceea
+# serviciile de mai jos primesc si reteaua dev-net (bridge obisnuit), folosita doar pentru aceste porturi.
+# api nu publica porturi nici aici, ca `--scale api=3` sa ramana posibil.
+
+services:
+  mssql:
+    ports:
+      - "127.0.0.1:1433:1433"
+    networks:
+      - storage-net
+      - dev-net
+
+  minio:
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+    networks:
+      - storage-net
+      - dev-net
+
+networks:
+  dev-net: {}

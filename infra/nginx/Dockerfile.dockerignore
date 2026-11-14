@@ -1,0 +1,7 @@
+# Context de build = radacina repo-ului; intra doar interfata Angular si configuratia nginx.
+*
+!frontend/filegrid-ui/
+!infra/nginx/
+**/node_modules/
+**/dist/
+**/.angular/
