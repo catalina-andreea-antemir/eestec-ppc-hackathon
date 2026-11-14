@@ -156,7 +156,7 @@ fi
 cat <<EOF
 
 FileGrid PPC ruleaza:  https://localhost   (certificat self-signed: accepta-l in browser)
-Grafana:               https://localhost/grafana/   (cand exista; utilizator admin, parola GRAFANA_ADMIN_PASSWORD din .env)
+Grafana:               https://localhost/grafana/   (utilizator admin, parola GRAFANA_ADMIN_PASSWORD din .env)
 
 Utilizatori de test (parolele sunt in .env):
 EOF
