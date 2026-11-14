@@ -245,9 +245,29 @@ services:
     mem_limit: 128m
 
   # ---------------------------------------------------------------------------------------------------------------
+  # Prometheus (O8): scrape separat pentru fiecare replica api, prin DNS-ul Docker.
+  prometheus:
+    image: prom/prometheus:v3.13.5
+    restart: unless-stopped
+    # Pe reteaua interna, ndots explicit face Docker sa raspunda fara inregistrari pentru numele local absent.
+    # Astfel DNS SD elimina tinta simulatorului in loc sa pastreze ultima adresa dupa SERVFAIL.
+    dns_opt: ["ndots:1"]
+    volumes:
+      - ../../observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus:/prometheus
+    networks:
+      - storage-net
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:9090/-/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
+    mem_limit: 512m
+
+  # ---------------------------------------------------------------------------------------------------------------
   # Locuri rezervate pentru etapele urmatoare (se completeaza in etapele lor; toate pe storage-net, fara porturi):
   #
-  # prometheus:      # O8 - observability/prometheus, scrape 5 s, dns_sd_configs pe api; volum prometheus; mem_limit 512m
   # alertmanager:    # O8 - observability/alertmanager, group_wait 10s; webhook catre alert-webhook
   # alert-webhook:   # O8 - observability/alert-webhook, receiver local
   # loki:            # O8 - observability/loki; volum loki; mem_limit 512m
@@ -256,7 +276,7 @@ services:
   # ---------------------------------------------------------------------------------------------------------------
   # Grafana (F7): dashboard-uri si alerte provisionate din observability/grafana (apar singure la pornire). Fara port
   # publicat: se vede doar prin nginx, la https://localhost/grafana/ (utilizator admin, parola din .env). Datasource-ul
-  # Prometheus asteapta serviciul `prometheus` pe portul 9090 (O8); pana atunci panourile arata "No data".
+  # Prometheus foloseste serviciul intern `prometheus` pe portul 9090.
   grafana:
     image: grafana/grafana:12.1.1
     restart: unless-stopped
@@ -321,5 +341,5 @@ volumes:
   ftp:
   nginx-certs:
   grafana:
-  # prometheus:  # O8
+  prometheus:
   # loki:        # O8
