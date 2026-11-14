@@ -4,11 +4,17 @@ import { firstValueFrom } from 'rxjs';
 import { Role } from '../auth/auth.models';
 import { OutageZones, PeakVsNormal, StorageAdvisor } from '../stats/stats.models';
 import { buildAdvisorMatrix } from '../stats/stats-view';
-import { handleStatsRoutes } from './mock-stats';
+import { describeStatsFailure, hasOutageData } from '../stats/stats-view';
+import { handleStatsRoutes, MockStatsMode } from './mock-stats';
 
-async function get<T>(path: string, role: Role, params: Record<string, string> = {}): Promise<T> {
+async function get<T>(
+  path: string,
+  role: Role,
+  params: Record<string, string> = {},
+  mode: MockStatsMode = 'normal',
+): Promise<T> {
   const req = new HttpRequest('GET', `/api/v1${path}`, null, { params: new HttpParams({ fromObject: params }) });
-  const res = await firstValueFrom(handleStatsRoutes(req, path, { sub: 'u', role })!);
+  const res = await firstValueFrom(handleStatsRoutes(req, path, { sub: 'u', role }, mode)!);
   return (res as HttpResponse<T>).body!;
 }
 
@@ -47,5 +53,41 @@ describe('mock /stats/*', () => {
       expect(sum).toBe(r.outages);
     }
     expect(zones.ranking.reduce((s, r) => s + r.outages, 0)).toBe(zones.totalOutages);
+  });
+
+  it('interval fără avarii: total 0 și câmpuri null (nu 0), ca în O7', async () => {
+    const zones = await get<OutageZones>('/stats/outage-zones', 'DISPATCH', {}, 'no-outages');
+    expect(zones.totalOutages).toBe(0);
+    expect(zones.ranking).toHaveLength(3);
+    for (const z of zones.ranking) {
+      expect(z).toMatchObject({ outages: 0, sharePercent: null, vsAverageRatio: null, peakHour: null });
+    }
+    expect(hasOutageData(zones)).toBe(false);
+  });
+
+  it('o zonă fără avarii: 0 real la procent și raport, null doar la ora de vârf', async () => {
+    const zones = await get<OutageZones>('/stats/outage-zones', 'DISPATCH', {}, 'zone-without-outages');
+    expect(zones.ranking.find((z) => z.zone === 'Banat')).toMatchObject({
+      outages: 0,
+      sharePercent: 0,
+      vsAverageRatio: 0,
+      peakHour: null,
+    });
+    expect(hasOutageData(zones)).toBe(true);
+  });
+
+  it('lipsesc măsurătorile: cele două statistici de performanță dau 503 cu reason, restul merg', async () => {
+    const reasons = {
+      '/stats/peak-vs-normal': 'REQUEST_METRICS_UNAVAILABLE',
+      '/stats/storage-advisor': 'STORAGE_MEASUREMENTS_INCOMPLETE',
+    };
+    for (const [path, reason] of Object.entries(reasons)) {
+      const err = (await get(path, 'ADMIN', {}, 'metrics-missing').catch((e: unknown) => e)) as HttpErrorResponse;
+      expect(err.status).toBe(503);
+      expect(err.error).toMatchObject({ code: 'STORAGE_UNAVAILABLE', details: { reason } });
+      expect(describeStatsFailure(err).kind).toBe('unavailable');
+    }
+    const zones = await get<OutageZones>('/stats/outage-zones', 'ADMIN', {}, 'metrics-missing');
+    expect(zones.totalOutages).toBe(142);
   });
 });

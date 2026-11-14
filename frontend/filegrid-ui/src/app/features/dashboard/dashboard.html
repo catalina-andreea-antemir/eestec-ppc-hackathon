@@ -11,7 +11,17 @@
     <button type="button" class="secondary" (click)="reload.set(reload() + 1)">Reîncarcă</button>
   </div>
   @if (useMocks) {
-    <p class="mock">Date de test (mock), după exemplele din contractul API.</p>
+    <div class="mock">
+      <span>Date de test (mock), după exemplele din contractul API.</span>
+      <label>
+        Simulare:
+        <select [value]="mockMode()" (change)="changeMockMode($any($event.target).value)">
+          @for (m of mockModes; track m.value) {
+            <option [value]="m.value">{{ m.label }}</option>
+          }
+        </select>
+      </label>
+    </div>
   }
 
   <app-requirements-card [reload]="reload()" />

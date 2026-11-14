@@ -21,11 +21,13 @@ import { apiError, MockUser, nowIso, respond } from './mock-uploads';
  *   de 13 ori); `peakScenario=peak` e o zi de vârf de consum (citirile se dublează). Alt scenariu → 0 cereri.
  * - /stats/outage-zones: clasamentul din contract, cu distribuția pe ore completată (sumele se potrivesc).
  * - /stats/requirements: exemplul din contract (R2 roșu). Schema nu are `interpretation`, deci nici mock-ul.
+ * - Situațiile din O7 se simulează din selectorul „Simulare (mock)” al paginii Statistici (MockStatsMode).
  */
 export function handleStatsRoutes(
   req: HttpRequest<unknown>,
   path: string,
   user: MockUser,
+  mode: MockStatsMode = getMockStatsMode(),
 ): Observable<HttpEvent<unknown>> | null {
   if (!path.startsWith('/stats/')) {
     return null;
@@ -36,6 +38,13 @@ export function handleStatsRoutes(
   if (!canViewStats(user.role)) {
     return apiError(403, 'FORBIDDEN', `Rolul ${user.role} nu are acces la statistici.`);
   }
+  if (mode === 'metrics-missing' && path in MISSING_METRICS) {
+    // Ca O7 cât timp lipsesc măsurătorile C12: 503 STORAGE_UNAVAILABLE cu details.reason și Retry-After.
+    return apiError(503, 'STORAGE_UNAVAILABLE', 'Măsurătorile de performanță nu sunt încă disponibile.', {
+      retryAfterSeconds: 60,
+      details: MISSING_METRICS[path],
+    });
+  }
   switch (path) {
     case '/stats/storage-advisor':
       return respond(200, { ...STORAGE_ADVISOR, generatedAt: nowIso() });
@@ -44,7 +53,7 @@ export function handleStatsRoutes(
     case '/stats/anomalies':
       return anomalies(req);
     case '/stats/outage-zones':
-      return respond(200, { ...OUTAGE_ZONES, generatedAt: nowIso() });
+      return respond(200, { ...outageZones(mode), generatedAt: nowIso() });
     case '/stats/requirements':
       return respond(200, { ...REQUIREMENTS, generatedAt: nowIso() });
     default:
@@ -203,6 +212,77 @@ const OUTAGE_ZONES: OutageZones = {
     'Muntenia a avut de 3,4 ori mai multe avarii decât Banat (78 față de 23), cu un vârf la ora 09:00; recomandăm ' +
     'capacitate suplimentară de intervenție în zonă în intervalul 08:00–10:00.',
 };
+
+/** Interval fără avarii: O7 păstrează NULL-urile din SQL (procente, rapoarte și ore de vârf nedefinite). */
+const NO_OUTAGES: OutageZones = {
+  ...OUTAGE_ZONES,
+  totalOutages: 0,
+  ranking: OUTAGE_ZONES.ranking.map((z) => ({ ...z, rank: 1, outages: 0, sharePercent: null, vsAverageRatio: null, peakHour: null })),
+  byHour: [],
+  interpretation: 'Nu a fost înregistrată nicio avarie în intervalul ales; nu există zone de prioritizat.',
+};
+
+/** Banat fără avarii, celelalte zone cu avarii: 0 real (0% și ×0,00), doar ora de vârf e null. */
+const ZONE_WITHOUT_OUTAGES: OutageZones = {
+  ...OUTAGE_ZONES,
+  totalOutages: 119,
+  ranking: [
+    { rank: 1, zone: 'Muntenia', outages: 78, sharePercent: 65.5, vsAverageRatio: 1.97, peakHour: 9 },
+    { rank: 2, zone: 'Dobrogea', outages: 41, sharePercent: 34.5, vsAverageRatio: 1.03, peakHour: 8 },
+    { rank: 3, zone: 'Banat', outages: 0, sharePercent: 0, vsAverageRatio: 0, peakHour: null },
+  ],
+  byHour: OUTAGE_ZONES.byHour.filter((h) => h.zone !== 'Banat'),
+  interpretation:
+    'Muntenia a avut 78 de avarii, cu vârf la ora 09:00; în Banat nu a fost nicio avarie în intervalul ales. ' +
+    'Recomandăm capacitate suplimentară în Muntenia în intervalul 08:00–10:00.',
+};
+
+function outageZones(mode: MockStatsMode): OutageZones {
+  return mode === 'no-outages' ? NO_OUTAGES : mode === 'zone-without-outages' ? ZONE_WITHOUT_OUTAGES : OUTAGE_ZONES;
+}
+
+/** details din 503-urile O7 (docs/api/o7-analytics.md, „C12 and shared contract gaps”). */
+const MISSING_METRICS: Record<string, Record<string, unknown>> = {
+  '/stats/peak-vs-normal': {
+    reason: 'REQUEST_METRICS_UNAVAILABLE',
+    unavailableFields: ['requests', 'throughputPerMinute', 'rejected'],
+  },
+  '/stats/storage-advisor': { reason: 'STORAGE_MEASUREMENTS_INCOMPLETE' },
+};
+
+// ---------- situația simulată ----------
+
+/**
+ * normal = exemplele din contract; zone-without-outages = o zonă cu 0 avarii; no-outages = interval fără
+ * avarii (null-uri); metrics-missing = 503 pe cele două statistici de performanță (lipsesc măsurătorile C12).
+ */
+export type MockStatsMode = 'normal' | 'zone-without-outages' | 'no-outages' | 'metrics-missing';
+
+export const MOCK_STATS_MODES: readonly { value: MockStatsMode; label: string }[] = [
+  { value: 'normal', label: 'Date normale' },
+  { value: 'zone-without-outages', label: 'O zonă fără avarii' },
+  { value: 'no-outages', label: 'Interval fără avarii' },
+  { value: 'metrics-missing', label: 'Lipsesc măsurătorile (503)' },
+];
+
+const MODE_KEY = 'filegrid.mock.stats';
+
+export function getMockStatsMode(): MockStatsMode {
+  try {
+    const raw = localStorage.getItem(MODE_KEY);
+    return MOCK_STATS_MODES.some((m) => m.value === raw) ? (raw as MockStatsMode) : 'normal';
+  } catch {
+    return 'normal';
+  }
+}
+
+export function setMockStatsMode(mode: MockStatsMode): void {
+  try {
+    localStorage.setItem(MODE_KEY, mode);
+  } catch {
+    /* ignorat */
+  }
+}
 
 const REQUIREMENTS: Requirements = {
   generatedAt: '2026-11-14T13:05:00Z',
