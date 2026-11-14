@@ -1,0 +1,10 @@
+meters: 12
+firstMeterNumber: 9000001
+sendingInterval: PT5S
+duration: PT5M
+readingsPerFile: 96
+firstReadingAt: "2026-09-15T00:00:00Z"
+scenario: normal
+abnormalPercent: 0
+silentPercent: 0
+duplicatePercent: 0
