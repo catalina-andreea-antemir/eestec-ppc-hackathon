@@ -1,0 +1,12 @@
+# Politica unei categorii (planul v4, 4.2). Citita de PolicyEngine si recitita fara restart (cel mult la 2 s).
+# Campuri: category (METER_READING | OUTAGE_RECORD | CONNECTION_DOC | INSPECTION_VIDEO), primaryStorage si
+# fallbackStorage (FTP | S3 | DB, diferite), maxSize (octeti sau cu unitate: KB, MB, GB, toate binare, 1 KB = 1024 B),
+# encryption (true | false), chunkSize (optional, doar pentru upload in bucati: intre 5MiB si 64MiB),
+# maxConcurrentRequests (cereri paralele per instanta, bulkhead). Un camp necunoscut sau o valoare invalida la
+# recitire se logheaza si se pastreaza politica anterioara.
+category: OUTAGE_RECORD
+primaryStorage: S3
+fallbackStorage: DB
+maxSize: 20MB
+encryption: false
+maxConcurrentRequests: 20

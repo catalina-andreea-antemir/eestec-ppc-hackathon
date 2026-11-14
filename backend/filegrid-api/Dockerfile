@@ -20,7 +20,11 @@ WORKDIR /app
 COPY --from=build /tmp/app.jar /app/app.jar
 # Flyway (profilul db) gestioneaza doar FileGridMeta, din db/migrations copiat in imagine.
 COPY db/migrations /app/db/migrations
+# Politica per categorie (4.2). docker-compose monteaza directorul din repo peste el, ca schimbarile din YAML sa fie
+# recitite fara restart (PolicyEngine); fara montare se folosesc fisierele din imagine.
+COPY backend/filegrid-api/src/main/resources/policies /app/policies
 ENV FLYWAY_LOCATIONS=filesystem:/app/db/migrations \
+    FILEGRID_POLICY_DIR=/app/policies \
     SERVER_PORT=8080 \
     JAVA_OPTS=""
 USER filegrid
