@@ -22,6 +22,43 @@ BEGIN
 END;
 GO
 
+-- Opțiunile de sesiune cerute de indexul filtrat. Nu modifică setările bazei.
+SET ANSI_NULLS ON;
+SET ANSI_PADDING ON;
+SET ANSI_WARNINGS ON;
+SET ARITHABORT ON;
+SET CONCAT_NULL_YIELDS_NULL ON;
+SET QUOTED_IDENTIFIER ON;
+SET NUMERIC_ROUNDABORT OFF;
+GO
+
+IF OBJECT_ID(N'dbo.blob_versions', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.blob_versions (
+        version_key NVARCHAR(128) COLLATE Latin1_General_100_BIN2 NOT NULL,
+        logical_key NVARCHAR(128) COLLATE Latin1_General_100_BIN2 NOT NULL,
+        size_bytes BIGINT NOT NULL,
+        published BIT NOT NULL,
+
+        -- blob_chunks.storage_key folosește version_key pentru versiunile gestionate de adaptor.
+        -- Rândurile preexistente rămân intacte și nu sunt publicate implicit.
+        CONSTRAINT PK_blob_versions PRIMARY KEY CLUSTERED (version_key),
+        CONSTRAINT CK_blob_versions_key CHECK (LEN(logical_key) > 0),
+        CONSTRAINT CK_blob_versions_size CHECK (size_bytes > 0)
+    );
+END;
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID(N'dbo.blob_versions')
+    AND name = N'UX_blob_versions_published')
+    CREATE UNIQUE INDEX UX_blob_versions_published ON dbo.blob_versions (logical_key)
+        INCLUDE (size_bytes) WHERE published = 1;
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID(N'dbo.blob_versions')
+    AND name = N'IX_blob_versions_logical_key')
+    CREATE INDEX IX_blob_versions_logical_key ON dbo.blob_versions (logical_key);
+GO
+
 IF USER_ID(N'filegrid_storage_app') IS NULL
     CREATE USER [filegrid_storage_app] FOR LOGIN [filegrid_storage_app] WITH DEFAULT_SCHEMA = [dbo];
 
@@ -36,4 +73,6 @@ IF NOT EXISTS (
 
 GRANT CONNECT TO [filegrid_storage_app];
 GRANT SELECT, INSERT, DELETE ON OBJECT::dbo.blob_chunks TO [filegrid_storage_app];
+GRANT SELECT, INSERT, DELETE ON OBJECT::dbo.blob_versions TO [filegrid_storage_app];
+GRANT UPDATE ON OBJECT::dbo.blob_versions (published) TO [filegrid_storage_app];
 GO

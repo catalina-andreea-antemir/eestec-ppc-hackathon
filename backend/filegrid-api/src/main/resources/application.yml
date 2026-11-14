@@ -119,6 +119,19 @@ filegrid:
     password: ${STORAGE_DB_PASSWORD}
     hikari:
       pool-name: storage
-      connection-timeout: 3000
-      validation-timeout: 2000
+      # Lasă timp pentru SELECT 1 în bugetul total de 2 s al verificării health.
+      connection-timeout: 750
+      validation-timeout: 500
       initialization-fail-timeout: -1
+      data-source-properties:
+        loginTimeout: 2
+        connectRetryCount: 0
+        lockTimeout: 1000
+        cancelQueryTimeout: 1
+        socketTimeout: 6000
+        responseBuffering: adaptive
+      # Opțiunile JDBC necesare pentru scrieri într-o tabelă cu index filtrat.
+      connection-init-sql: >-
+        SET ANSI_NULLS ON; SET ANSI_PADDING ON; SET ANSI_WARNINGS ON;
+        SET ARITHABORT ON; SET CONCAT_NULL_YIELDS_NULL ON;
+        SET QUOTED_IDENTIFIER ON; SET NUMERIC_ROUNDABORT OFF;

@@ -1,0 +1,363 @@
+package ro.filegrid.storage.db;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Random;
+import java.util.Set;
+
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
+import org.springframework.boot.context.properties.bind.Bindable;
+import org.springframework.boot.context.properties.bind.Binder;
+import org.springframework.boot.context.properties.source.ConfigurationPropertySources;
+import org.springframework.boot.env.YamlPropertySourceLoader;
+import org.springframework.boot.jdbc.DataSourceBuilder;
+import org.springframework.core.io.ClassPathResource;
+
+import com.zaxxer.hikari.HikariDataSource;
+
+import ro.filegrid.storage.ByteRange;
+import ro.filegrid.storage.StorageException;
+import ro.filegrid.storage.StorageKeys;
+import ro.filegrid.storage.StorageObjectNotFoundException;
+import ro.filegrid.storage.StorageUnavailableException;
+
+/** Din modulul Maven: ./mvnw -Dfilegrid.sql.integration=true -Dtest=DbStorageAdapterSqlServerTest test */
+@EnabledIfSystemProperty(named = "filegrid.sql.integration", matches = "true")
+class DbStorageAdapterSqlServerTest {
+
+    private static final String USER = "filegrid_storage_app";
+    private static final String DB = "FileGridStorage";
+    private static final int ROW_SIZE = 4 * 1024 * 1024;
+    private static final String JDBC_URL = "jdbc:sqlserver://127.0.0.1:1433;databaseName=" + DB
+            + ";encrypt=true;trustServerCertificate=true";
+
+    private static HikariDataSource pool;
+    private final Set<String> testVersions = new HashSet<>();
+    private DbStorageAdapter adapter;
+    private Connection observer;
+    private String key;
+
+    @BeforeAll
+    static void connect() throws IOException, SQLException {
+        pool = DataSourceBuilder.create().type(HikariDataSource.class)
+                .url(JDBC_URL).username(USER).password(password()).build();
+        var properties = new YamlPropertySourceLoader().load("config", new ClassPathResource("application.yml"));
+        new Binder(ConfigurationPropertySources.from(properties)).bind("filegrid.storage-db.hikari",
+                Bindable.ofInstance(pool));
+        pool.setMaximumPoolSize(3);
+        pool.setMinimumIdle(1);
+        try (Connection probe = pool.getConnection(); Statement statement = probe.createStatement();
+                ResultSet identity = statement.executeQuery("SELECT DB_NAME(), ORIGINAL_LOGIN(), USER_NAME()")) {
+            assertThat(identity.next()).isTrue();
+            assertThat(identity.getString(1)).isEqualTo(DB);
+            assertThat(identity.getString(2)).isEqualTo(USER);
+            assertThat(identity.getString(3)).isEqualTo(USER);
+        }
+    }
+
+    @AfterAll
+    static void disconnect() {
+        if (pool != null) {
+            pool.close();
+        }
+    }
+
+    @BeforeEach
+    void createTestKey() throws SQLException {
+        adapter = new DbStorageAdapter(pool);
+        observer = pool.getConnection();
+        String generated = "o3-a-it-" + StorageKeys.newKey();
+        assertThat(versions(generated)).isEmpty();
+        key = generated;
+    }
+
+    @AfterEach
+    void cleanTestRows() throws SQLException {
+        if (observer == null) {
+            return;
+        }
+        // Folosim JDBC direct pentru ca o problemă în adaptor să nu dezactiveze curățarea.
+        try (Connection cleanup = observer) {
+            if (key == null) {
+                return;
+            }
+            cleanup.setAutoCommit(false);
+            try {
+                versions(key).stream().map(Version::id).forEach(testVersions::add);
+                try (PreparedStatement chunks = prepare("DELETE FROM dbo.blob_chunks WHERE storage_key = ?")) {
+                    for (String version : testVersions) {
+                        chunks.setNString(1, version);
+                        chunks.executeUpdate();
+                    }
+                }
+                try (PreparedStatement metadata = prepare("DELETE FROM dbo.blob_versions WHERE logical_key = ?")) {
+                    metadata.setNString(1, key);
+                    metadata.executeUpdate();
+                }
+                cleanup.commit();
+            } catch (SQLException | RuntimeException | Error e) {
+                try {
+                    cleanup.rollback();
+                } catch (SQLException rollback) {
+                    e.addSuppressed(rollback);
+                }
+                throw e;
+            }
+        }
+        try (Connection verification = pool.getConnection()) {
+            observer = verification;
+            assertThat(versions(key)).isEmpty();
+            for (String version : testVersions) {
+                assertThat(chunkCount(version)).isZero();
+            }
+        }
+    }
+
+    @Test
+    void streamsExactLengthAcrossSqlRowsAndDeletesIdempotently() throws Exception {
+        assertThat(adapter.exists(key)).isFalse();
+        assertThatThrownBy(() -> adapter.get(key, ByteRange.full()))
+                .isInstanceOf(StorageObjectNotFoundException.class);
+        byte[] bytes = new byte[ROW_SIZE + 8];
+        new Random(1).nextBytes(bytes);
+        ByteArrayInputStream source = new ByteArrayInputStream(bytes);
+
+        assertThat(adapter.put(key, source, bytes.length - 1L, null)).isEqualTo(bytes.length - 1L);
+        Version committed = publishedVersion();
+        assertThat(source.available()).isOne();
+        assertThat(adapter.exists(key)).isTrue();
+        assertThat(chunkCount(committed.id())).isEqualTo(2);
+        assertThat(read(ByteRange.full())).isEqualTo(Arrays.copyOf(bytes, bytes.length - 1));
+        assertThat(read(ByteRange.of(ROW_SIZE - 3L, 9)))
+                .isEqualTo(Arrays.copyOfRange(bytes, ROW_SIZE - 3, ROW_SIZE + 6));
+        assertThat(read(ByteRange.of(ROW_SIZE + 5L, Long.MAX_VALUE)))
+                .isEqualTo(Arrays.copyOfRange(bytes, ROW_SIZE + 5, bytes.length - 1));
+        assertThat(read(ByteRange.from(bytes.length - 1L))).isEmpty();
+
+        assertThat(adapter.delete(key)).isTrue();
+        assertThat(adapter.delete(key)).isFalse();
+        assertThat(adapter.exists(key)).isFalse();
+        assertThat(versions(key)).isEmpty();
+        assertThat(chunkCount(committed.id())).isZero();
+    }
+
+    @Test
+    void replacementCommitsOnePublishedVersionAndRemovesOldRows() throws Exception {
+        put(new byte[]{1, 2, 3});
+        Version first = publishedVersion();
+
+        put(new byte[]{4, 5});
+        Version second = publishedVersion();
+
+        assertThat(second.id()).isNotEqualTo(first.id());
+        assertThat(second.size()).isEqualTo(2);
+        assertThat(read(ByteRange.full())).containsExactly(4, 5);
+        assertThat(chunkCount(first.id())).isZero();
+        assertThat(canAcquireExclusiveLock()).isTrue();
+    }
+
+    @Test
+    void prematureEofRollsBackInsertedRowsAndPreservesExistingObject() throws Exception {
+        put(new byte[]{7, 8, 9});
+        Version original = publishedVersion();
+        InputStream truncated = new ByteArrayInputStream(new byte[ROW_SIZE + 1]) {
+            @Override
+            public synchronized int read(byte[] bytes, int offset, int length) {
+                if (available() == 1) {
+                    // Primul INSERT a terminat. Citim numai metadatele neconfirmate ale cheii noastre.
+                    try {
+                        versions(key, " WITH (READUNCOMMITTED)").stream().map(Version::id)
+                                .forEach(testVersions::add);
+                    } catch (SQLException e) {
+                        throw new AssertionError("Nu pot urmări versiunea de test înainte de rollback", e);
+                    }
+                }
+                return super.read(bytes, offset, length);
+            }
+        };
+
+        try (truncated) {
+            assertThatThrownBy(() -> adapter.put(key, truncated, ROW_SIZE + 2L, null))
+                    .isExactlyInstanceOf(StorageException.class).hasMessageContaining("sursa");
+        }
+
+        assertThat(testVersions).hasSize(2);
+        assertThat(publishedVersion()).isEqualTo(original);
+        for (String version : testVersions) {
+            if (!version.equals(original.id())) {
+                assertThat(chunkCount(version)).isZero();
+            }
+        }
+        assertThat(read(ByteRange.full())).containsExactly(7, 8, 9);
+        assertThat(chunkCount(original.id())).isOne();
+        assertThat(canAcquireExclusiveLock()).isTrue();
+        put(new byte[]{10});
+        assertThat(read(ByteRange.full())).containsExactly(10);
+    }
+
+    @Test
+    void transactionLockIsHeldDuringWritesAndReadsAndReleasedAfterCommitOrClose() throws Exception {
+        int[] checkedDuringWrite = {0};
+        try (InputStream source = new ByteArrayInputStream(new byte[]{3, 2, 1}) {
+            @Override
+            public synchronized int read(byte[] bytes, int offset, int length) {
+                try {
+                    assertThat(canAcquireExclusiveLock()).isFalse();
+                    checkedDuringWrite[0]++;
+                } catch (SQLException e) {
+                    throw new AssertionError("Verificarea lockului în timpul scrierii a eșuat", e);
+                }
+                return super.read(bytes, offset, length);
+            }
+        }) {
+            assertThat(adapter.put(key, source, 3, null)).isEqualTo(3);
+        }
+        assertThat(checkedDuringWrite[0]).isPositive();
+        Version committed = publishedVersion();
+        assertThat(canAcquireExclusiveLock()).isTrue();
+
+        try (InputStream stream = adapter.get(key, ByteRange.full())) {
+            assertThat(stream.read()).isEqualTo(3);
+            assertThat(canAcquireExclusiveLock()).isFalse();
+            assertThatThrownBy(() -> adapter.delete(key)).isInstanceOf(StorageUnavailableException.class);
+            assertThat(stream.read()).isEqualTo(2);
+        }
+
+        assertThat(canAcquireExclusiveLock()).isTrue();
+        assertThat(publishedVersion()).isEqualTo(committed);
+        try (Connection reused = pool.getConnection(); Statement statement = reused.createStatement();
+                ResultSet transaction = statement.executeQuery("SELECT @@TRANCOUNT")) {
+            assertThat(transaction.next()).isTrue();
+            assertThat(transaction.getInt(1)).isZero();
+        }
+    }
+
+    @Test
+    void applicationAccountHasOnlyTheRequiredStoragePrivileges() throws SQLException {
+        assertThat(adapter.health().up()).isTrue();
+        try (Statement statement = observer.createStatement(); ResultSet permissions = statement.executeQuery("""
+                SELECT HAS_PERMS_BY_NAME('dbo.blob_versions', 'OBJECT', 'SELECT'),
+                    HAS_PERMS_BY_NAME('dbo.blob_versions', 'OBJECT', 'INSERT'),
+                    HAS_PERMS_BY_NAME('dbo.blob_versions', 'OBJECT', 'DELETE'),
+                    HAS_PERMS_BY_NAME('dbo.blob_versions', 'OBJECT', 'UPDATE', 'published', 'COLUMN'),
+                    HAS_PERMS_BY_NAME('dbo.blob_versions', 'OBJECT', 'UPDATE', 'size_bytes', 'COLUMN'),
+                    HAS_PERMS_BY_NAME('dbo.blob_chunks', 'OBJECT', 'SELECT'),
+                    HAS_PERMS_BY_NAME('dbo.blob_chunks', 'OBJECT', 'INSERT'),
+                    HAS_PERMS_BY_NAME('dbo.blob_chunks', 'OBJECT', 'DELETE'),
+                    HAS_PERMS_BY_NAME('dbo.blob_chunks', 'OBJECT', 'UPDATE'),
+                    HAS_PERMS_BY_NAME(DB_NAME(), 'DATABASE', 'CREATE TABLE')
+                """)) {
+            assertThat(permissions.next()).isTrue();
+            List<Integer> granted = new ArrayList<>();
+            for (int column = 1; column <= 10; column++) {
+                granted.add(permissions.getObject(column, Integer.class));
+            }
+            assertThat(granted).containsExactly(1, 1, 1, 1, 0, 1, 1, 1, 0, 0);
+        }
+    }
+
+    private void put(byte[] bytes) throws SQLException {
+        assertThat(adapter.put(key, new ByteArrayInputStream(bytes), bytes.length, null)).isEqualTo(bytes.length);
+        versions(key).stream().map(Version::id).forEach(testVersions::add);
+    }
+
+    private byte[] read(ByteRange range) throws IOException {
+        try (InputStream stream = adapter.get(key, range)) {
+            return stream.readAllBytes();
+        }
+    }
+
+    private Version publishedVersion() throws SQLException {
+        List<Version> found = versions(key);
+        found.stream().map(Version::id).forEach(testVersions::add);
+        assertThat(found).singleElement().satisfies(version -> assertThat(version.published()).isTrue());
+        return found.getFirst();
+    }
+
+    private List<Version> versions(String logicalKey) throws SQLException {
+        return versions(logicalKey, "");
+    }
+
+    private List<Version> versions(String logicalKey, String tableHint) throws SQLException {
+        try (PreparedStatement statement = prepare("SELECT version_key, size_bytes, published FROM dbo.blob_versions"
+                + tableHint + " WHERE logical_key = ?")) {
+            statement.setNString(1, logicalKey);
+            try (ResultSet result = statement.executeQuery()) {
+                List<Version> found = new ArrayList<>();
+                while (result.next()) {
+                    found.add(new Version(result.getString(1), result.getLong(2), result.getBoolean(3)));
+                }
+                return found;
+            }
+        }
+    }
+
+    private int chunkCount(String version) throws SQLException {
+        try (PreparedStatement statement = prepare("SELECT COUNT(*) FROM dbo.blob_chunks WHERE storage_key = ?")) {
+            statement.setNString(1, version);
+            try (ResultSet result = statement.executeQuery()) {
+                assertThat(result.next()).isTrue();
+                return result.getInt(1);
+            }
+        }
+    }
+
+    private boolean canAcquireExclusiveLock() throws SQLException {
+        try (PreparedStatement statement = prepare("SELECT APPLOCK_TEST(N'public', ?, N'Exclusive', N'Session')")) {
+            statement.setNString(1, "FileGridStorage:" + key);
+            try (ResultSet result = statement.executeQuery()) {
+                assertThat(result.next()).isTrue();
+                assertThat(result.getObject(1, Integer.class)).isIn(0, 1);
+                return result.getInt(1) == 1;
+            }
+        }
+    }
+
+    private PreparedStatement prepare(String sql) throws SQLException {
+        PreparedStatement statement = observer.prepareStatement(sql);
+        statement.setQueryTimeout(4);
+        return statement;
+    }
+
+    private static String password() throws IOException {
+        String password = System.getenv("STORAGE_DB_PASSWORD");
+        if (password == null || password.isBlank()) {
+            Path env = Path.of("..", "..", ".env");
+            String prefix = "STORAGE_DB_PASSWORD=";
+            if (Files.isRegularFile(env)) {
+                // Același format KEY=value folosit de scripts/start.*. Fișierul nu este executat.
+                try (var lines = Files.lines(env)) {
+                    password = lines.filter(line -> line.startsWith(prefix)).map(line -> line.substring(prefix.length()))
+                            .reduce((first, last) -> last).orElse(null);
+                }
+            }
+        }
+        if (password == null || password.isBlank()) {
+            throw new IllegalStateException("STORAGE_DB_PASSWORD lipsește din mediu și din .env");
+        }
+        return password;
+    }
+
+    private record Version(String id, long size, boolean published) {
+    }
+}
