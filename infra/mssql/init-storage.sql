@@ -49,6 +49,15 @@ BEGIN
 END;
 GO
 
+-- NULL în upload_chunk_size identifică versiunile create prin put().
+IF COL_LENGTH(N'dbo.blob_versions', N'upload_chunk_size') IS NULL
+    ALTER TABLE dbo.blob_versions ADD upload_chunk_size INT NULL;
+
+-- Pentru o sesiune multipart înlocuită se păstrează confirmarea finish(), fără datele binare.
+IF COL_LENGTH(N'dbo.blob_versions', N'retired_at') IS NULL
+    ALTER TABLE dbo.blob_versions ADD retired_at DATETIME2(7) NULL;
+GO
+
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID(N'dbo.blob_versions')
     AND name = N'UX_blob_versions_published')
     CREATE UNIQUE INDEX UX_blob_versions_published ON dbo.blob_versions (logical_key)
@@ -75,4 +84,5 @@ GRANT CONNECT TO [filegrid_storage_app];
 GRANT SELECT, INSERT, DELETE ON OBJECT::dbo.blob_chunks TO [filegrid_storage_app];
 GRANT SELECT, INSERT, DELETE ON OBJECT::dbo.blob_versions TO [filegrid_storage_app];
 GRANT UPDATE ON OBJECT::dbo.blob_versions (published) TO [filegrid_storage_app];
+GRANT UPDATE ON OBJECT::dbo.blob_versions (retired_at) TO [filegrid_storage_app];
 GO

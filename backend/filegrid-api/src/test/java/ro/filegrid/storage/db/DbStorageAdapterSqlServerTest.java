@@ -36,6 +36,8 @@ import org.springframework.core.io.ClassPathResource;
 import com.zaxxer.hikari.HikariDataSource;
 
 import ro.filegrid.storage.ByteRange;
+import ro.filegrid.storage.ChunkReceipt;
+import ro.filegrid.storage.ChunkedUpload;
 import ro.filegrid.storage.StorageException;
 import ro.filegrid.storage.StorageKeys;
 import ro.filegrid.storage.StorageObjectNotFoundException;
@@ -48,6 +50,7 @@ class DbStorageAdapterSqlServerTest {
     private static final String USER = "filegrid_storage_app";
     private static final String DB = "FileGridStorage";
     private static final int ROW_SIZE = 4 * 1024 * 1024;
+    private static final int CHUNK_SIZE = 5 * 1024 * 1024;
     private static final String JDBC_URL = "jdbc:sqlserver://127.0.0.1:1433;databaseName=" + DB
             + ";encrypt=true;trustServerCertificate=true";
 
@@ -261,6 +264,8 @@ class DbStorageAdapterSqlServerTest {
                     HAS_PERMS_BY_NAME('dbo.blob_versions', 'OBJECT', 'DELETE'),
                     HAS_PERMS_BY_NAME('dbo.blob_versions', 'OBJECT', 'UPDATE', 'published', 'COLUMN'),
                     HAS_PERMS_BY_NAME('dbo.blob_versions', 'OBJECT', 'UPDATE', 'size_bytes', 'COLUMN'),
+                    HAS_PERMS_BY_NAME('dbo.blob_versions', 'OBJECT', 'UPDATE', 'retired_at', 'COLUMN'),
+                    HAS_PERMS_BY_NAME('dbo.blob_versions', 'OBJECT', 'UPDATE', 'upload_chunk_size', 'COLUMN'),
                     HAS_PERMS_BY_NAME('dbo.blob_chunks', 'OBJECT', 'SELECT'),
                     HAS_PERMS_BY_NAME('dbo.blob_chunks', 'OBJECT', 'INSERT'),
                     HAS_PERMS_BY_NAME('dbo.blob_chunks', 'OBJECT', 'DELETE'),
@@ -269,10 +274,187 @@ class DbStorageAdapterSqlServerTest {
                 """)) {
             assertThat(permissions.next()).isTrue();
             List<Integer> granted = new ArrayList<>();
-            for (int column = 1; column <= 10; column++) {
+            for (int column = 1; column <= 12; column++) {
                 granted.add(permissions.getObject(column, Integer.class));
             }
-            assertThat(granted).containsExactly(1, 1, 1, 1, 0, 1, 1, 1, 0, 0);
+            assertThat(granted).containsExactly(1, 1, 1, 1, 0, 1, 0, 1, 1, 1, 0, 0);
+        }
+    }
+
+    @Test
+    void resumesMultipartAcrossInstancesAndAtomicallyReplacesARetransmittedPart() throws Exception {
+        ChunkedUpload upload = open(CHUNK_SIZE + 3L);
+        byte[] first = new byte[CHUNK_SIZE + 1];
+        first[ROW_SIZE - 1] = 5;
+        first[ROW_SIZE] = 6;
+        first[CHUNK_SIZE - 1] = 7;
+        ByteArrayInputStream source = new ByteArrayInputStream(first);
+        DbStorageAdapter secondInstance = new DbStorageAdapter(pool);
+
+        ChunkReceipt one = secondInstance.append(upload, 1, source, CHUNK_SIZE);
+        assertThat(source.available()).isOne();
+        append(upload, 2, new byte[]{1, 2, 3});
+        ChunkReceipt two = append(upload, 2, new byte[]{8, 9, 10});
+        assertThat(adapter.exists(key)).isFalse();
+        assertThatThrownBy(() -> adapter.get(key, ByteRange.full())).isInstanceOf(StorageObjectNotFoundException.class);
+
+        assertThat(secondInstance.finish(upload, List.of(one, two))).isEqualTo(CHUNK_SIZE + 3L);
+        assertThat(adapter.finish(upload, List.of(one, two))).isEqualTo(CHUNK_SIZE + 3L);
+        assertThat(publishedVersion().id()).isEqualTo("~" + upload.uploadRef());
+        assertThat(read(ByteRange.of(ROW_SIZE - 1L, 2))).containsExactly(5, 6);
+        assertThat(read(ByteRange.from(CHUNK_SIZE - 1L))).containsExactly(7, 8, 9, 10);
+        assertThatThrownBy(() -> append(upload, 2, new byte[]{1, 1, 1})).isInstanceOf(StorageException.class);
+        assertThat(read(ByteRange.from(CHUNK_SIZE))).containsExactly(8, 9, 10);
+    }
+
+    @Test
+    void prematureEofDuringRetransmissionRestoresPreviousPart() throws Exception {
+        ChunkedUpload upload = open(CHUNK_SIZE);
+        byte[] first = new byte[CHUNK_SIZE];
+        first[0] = 11;
+        first[CHUNK_SIZE - 1] = 12;
+        ChunkReceipt receipt = append(upload, 1, first);
+
+        assertThatThrownBy(() -> adapter.append(upload, 1, new ByteArrayInputStream(new byte[ROW_SIZE + 1]),
+                CHUNK_SIZE)).isExactlyInstanceOf(StorageException.class).hasMessageContaining("sursa");
+
+        assertThat(adapter.finish(upload, List.of(receipt))).isEqualTo(CHUNK_SIZE);
+        assertThat(read(ByteRange.full())).isEqualTo(first);
+    }
+
+    @Test
+    void incompleteFinishPreservesPublishedObjectUntilMissingPartIsStored() throws Exception {
+        put(new byte[]{14});
+        Version original = publishedVersion();
+        ChunkedUpload upload = open(CHUNK_SIZE + 2L);
+        ChunkReceipt one = append(upload, 1, new byte[CHUNK_SIZE]);
+        ChunkReceipt missing = new ChunkReceipt(2, 2, null);
+
+        assertThatThrownBy(() -> adapter.finish(upload, List.of(one))).isInstanceOf(StorageException.class);
+        assertThatThrownBy(() -> adapter.finish(upload, List.of(one, missing))).isInstanceOf(StorageException.class);
+        assertThat(adapter.exists(key)).isTrue();
+        assertThat(read(ByteRange.full())).containsExactly(14);
+        assertThat(chunkCount(original.id())).isOne();
+
+        ChunkReceipt two = append(upload, 2, new byte[]{15, 16});
+        assertThat(adapter.finish(upload, List.of(one, two))).isEqualTo(CHUNK_SIZE + 2L);
+        assertThat(chunkCount(original.id())).isZero();
+        assertThat(read(ByteRange.from(CHUNK_SIZE))).containsExactly(15, 16);
+    }
+
+    @Test
+    void finishRejectsOverlappingOrIncompletePhysicalRows() throws Exception {
+        ChunkedUpload upload = open(4);
+        ChunkReceipt receipt = append(upload, 1, new byte[]{1, 2, 3, 4});
+        String version = "~" + upload.uploadRef();
+        insertTestRow(version, 1, 2);
+        assertThatThrownBy(() -> adapter.finish(upload, List.of(receipt))).isInstanceOf(StorageException.class);
+
+        try (PreparedStatement delete = prepare("DELETE FROM dbo.blob_chunks WHERE storage_key = ?")) {
+            delete.setNString(1, version);
+            assertThat(delete.executeUpdate()).isEqualTo(2);
+        }
+        insertTestRow(version, 0, 3);
+        assertThatThrownBy(() -> adapter.finish(upload, List.of(receipt))).isInstanceOf(StorageException.class);
+        assertThat(adapter.exists(key)).isFalse();
+
+        append(upload, 1, new byte[]{1, 2, 3, 4});
+        assertThat(adapter.finish(upload, List.of(receipt))).isEqualTo(4);
+    }
+
+    @Test
+    void abortBeforeFinishPreservesOlderPublishedObjectAndOtherSession() throws Exception {
+        put(new byte[]{17});
+        ChunkedUpload abandoned = open(1);
+        ChunkedUpload remaining = open(1);
+        append(abandoned, 1, new byte[]{18});
+        ChunkReceipt receipt = append(remaining, 1, new byte[]{19});
+
+        adapter.abort(abandoned);
+        adapter.abort(abandoned);
+        assertThat(chunkCount("~" + abandoned.uploadRef())).isZero();
+        assertThat(read(ByteRange.full())).containsExactly(17);
+        assertThat(adapter.finish(remaining, List.of(receipt))).isOne();
+        assertThat(read(ByteRange.full())).containsExactly(19);
+
+        adapter.abort(remaining);
+        adapter.abort(remaining);
+        assertThat(adapter.exists(key)).isFalse();
+        assertThat(chunkCount("~" + remaining.uploadRef())).isZero();
+    }
+
+    @Test
+    void staleAbortAndFinishCannotChangeNewerPublishedObject() throws Exception {
+        ChunkedUpload first = open(1);
+        ChunkedUpload second = open(1);
+        List<ChunkReceipt> firstReceipts = List.of(append(first, 1, new byte[]{20}));
+        List<ChunkReceipt> secondReceipts = List.of(append(second, 1, new byte[]{21}));
+        adapter.finish(first, firstReceipts);
+        assertThat(read(ByteRange.full())).containsExactly(20);
+        adapter.finish(second, secondReceipts);
+
+        assertThat(chunkCount("~" + first.uploadRef())).isZero();
+        assertThat(adapter.finish(first, firstReceipts)).isOne();
+        adapter.abort(first);
+        assertThat(read(ByteRange.full())).containsExactly(21);
+
+        put(new byte[]{22});
+        adapter.abort(second);
+        assertThat(adapter.finish(second, secondReceipts)).isOne();
+        assertThat(read(ByteRange.full())).containsExactly(22);
+    }
+
+    @Test
+    void deleteInvalidatesPendingSessionsAndRemovesTheirChunks() throws Exception {
+        ChunkedUpload replaced = open(1);
+        adapter.finish(replaced, List.of(append(replaced, 1, new byte[]{22})));
+        put(new byte[]{23});
+        ChunkedUpload upload = open(1);
+        ChunkReceipt receipt = append(upload, 1, new byte[]{24});
+
+        assertThat(adapter.delete(key)).isTrue();
+        assertThat(adapter.delete(key)).isFalse();
+        assertThat(versions(key)).isEmpty();
+        assertThat(chunkCount("~" + upload.uploadRef())).isZero();
+        assertThatThrownBy(() -> adapter.finish(upload, List.of(receipt))).isInstanceOf(StorageException.class);
+        adapter.abort(upload);
+    }
+
+    @Test
+    void uploadReferenceCannotModifyDataThroughADifferentKeyOrDimensions() throws Exception {
+        ChunkedUpload upload = open(2);
+        ChunkReceipt receipt = append(upload, 1, new byte[]{24, 25});
+        ChunkedUpload foreign = new ChunkedUpload(StorageKeys.newKey(), upload.uploadRef(), 2, CHUNK_SIZE);
+        ChunkedUpload changedSize = new ChunkedUpload(key, upload.uploadRef(), 2, CHUNK_SIZE + 1);
+
+        assertThatThrownBy(() -> append(foreign, 1, new byte[]{26, 27})).isInstanceOf(StorageException.class);
+        assertThatThrownBy(() -> adapter.finish(foreign, List.of(receipt))).isInstanceOf(StorageException.class);
+        adapter.abort(foreign);
+        assertThatThrownBy(() -> append(changedSize, 1, new byte[]{26, 27})).isInstanceOf(StorageException.class);
+
+        assertThat(adapter.finish(upload, List.of(receipt))).isEqualTo(2);
+        assertThat(read(ByteRange.full())).containsExactly(24, 25);
+    }
+
+    private ChunkedUpload open(long size) {
+        String ref = adapter.open(key, size, CHUNK_SIZE);
+        testVersions.add("~" + ref);
+        return new ChunkedUpload(key, ref, size, CHUNK_SIZE);
+    }
+
+    private ChunkReceipt append(ChunkedUpload upload, int n, byte[] bytes) {
+        return adapter.append(upload, n, new ByteArrayInputStream(bytes), bytes.length);
+    }
+
+    private void insertTestRow(String version, long offset, int length) throws SQLException {
+        assertThat(testVersions).contains(version);
+        try (PreparedStatement insert = prepare("""
+                INSERT INTO dbo.blob_chunks (storage_key, chunk_offset, chunk_data) VALUES (?, ?, ?)
+                """)) {
+            insert.setNString(1, version);
+            insert.setLong(2, offset);
+            insert.setBytes(3, new byte[length]);
+            insert.executeUpdate();
         }
     }
 
