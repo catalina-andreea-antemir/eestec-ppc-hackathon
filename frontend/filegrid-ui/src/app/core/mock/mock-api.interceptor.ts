@@ -1,27 +1,29 @@
-import { HttpErrorResponse, HttpInterceptorFn, HttpRequest, HttpResponse } from '@angular/common/http';
+import { HttpErrorResponse, HttpHeaders, HttpInterceptorFn, HttpRequest, HttpResponse } from '@angular/common/http';
 import { delay, Observable, of, switchMap, throwError, timer } from 'rxjs';
 
 import { environment } from '../../../environments/environment';
-import { LoginRequest, RefreshRequest, Role, TokenResponse } from '../auth/auth.models';
+import { ApiError } from '../api/api-error';
+import { AccessToken, LoginRequest, RefreshRequest, Role, TokenPair } from '../auth/auth.models';
 
 /**
  * Backend fals pentru `ng serve`, activ doar când environment.useMocks e true.
  * Imită contractul din docs/api/openapi.yaml până există API-ul real.
  *
- * Utilizatori de test: numele de mai jos, cu orice parolă nevidă
- * (nu ținem parole în repo; parolele reale sunt generate de scripts/start.* în .env).
+ * Utilizatori de test: numele de mai jos, opțional cu cifre la final (teren1, racordari2),
+ * cu orice parolă nevidă. Nu ținem parole în repo; parolele reale sunt generate de
+ * scripts/start.* în .env.
  */
-const MOCK_USERS: Record<string, Role[]> = {
-  dispecer: ['DISPATCH'],
-  teren: ['FIELD'],
-  racordari: ['CONNECTIONS'],
-  contor: ['METER_SERVICE'],
-  admin: ['ADMIN'],
+const MOCK_USERS: Record<string, Role> = {
+  dispecer: 'DISPATCH',
+  teren: 'FIELD',
+  racordari: 'CONNECTIONS',
+  contor: 'METER_SERVICE',
+  admin: 'ADMIN',
 };
 
 /**
  * Contractul spune 15 minute. În mock e mai scurt, ca reînnoirea prin
- * /auth/refresh să poată fi văzută repede în Network.
+ * /auth/refresh să poată fi văzută repede.
  */
 const ACCESS_TTL_SECONDS = 120;
 const REFRESH_TTL_SECONDS = 8 * 60 * 60;
@@ -45,42 +47,45 @@ export const mockApiInterceptor: HttpInterceptorFn = (req, next) => {
 
   // Orice alt endpoint cere un accessToken valid, ca în backend-ul real.
   if (!isValidToken(bearerToken(req), 'access')) {
-    return error(401, 'Token lipsă sau expirat');
+    return error(401, 'UNAUTHORIZED', 'Token lipsă, expirat sau invalid.');
   }
-  return error(404, `Endpoint-ul ${req.method} ${path} nu are încă mock`);
+  return error(404, 'NOT_FOUND', `Endpoint-ul ${req.method} ${path} nu are încă mock.`);
 };
 
-function login(req: HttpRequest<LoginRequest>): Observable<HttpResponse<TokenResponse>> {
+function login(req: HttpRequest<LoginRequest>): Observable<HttpResponse<TokenPair>> {
   const username = req.body?.username?.trim().toLowerCase() ?? '';
-  const roles = MOCK_USERS[username];
-  if (!roles || !req.body?.password) {
-    return error(401, 'Utilizator sau parolă greșită');
+  if (!username || !req.body?.password) {
+    return error(400, 'VALIDATION_ERROR', 'Utilizatorul și parola sunt obligatorii.');
   }
-  return ok(issueTokens(username, roles));
+  const role = MOCK_USERS[username.replace(/\d+$/, '')];
+  if (!role) {
+    return error(401, 'UNAUTHORIZED', 'Utilizator sau parolă greșită.');
+  }
+  return ok(issueTokens(username, role));
 }
 
-function refresh(req: HttpRequest<RefreshRequest>): Observable<HttpResponse<TokenResponse>> {
+function refresh(req: HttpRequest<RefreshRequest>): Observable<HttpResponse<AccessToken>> {
   const token = req.body?.refreshToken ?? '';
   if (!isValidToken(token, 'refresh')) {
-    return error(401, 'Refresh token invalid sau expirat');
+    return error(401, 'UNAUTHORIZED', 'Refresh token invalid sau expirat.');
   }
   const payload = decode(token)!;
-  const { refreshToken: _unchanged, ...rest } = issueTokens(payload.sub, payload.roles);
-  return ok(rest);
+  const { accessToken, expiresIn } = issueTokens(payload.sub, payload.role);
+  return ok({ accessToken, expiresIn });
 }
 
 interface MockPayload {
   sub: string;
-  roles: Role[];
+  role: Role;
   typ: 'access' | 'refresh';
   exp: number;
 }
 
-function issueTokens(username: string, roles: Role[]): TokenResponse {
+function issueTokens(username: string, role: Role): TokenPair {
   const now = Math.floor(Date.now() / 1000);
   return {
-    accessToken: encode({ sub: username, roles, typ: 'access', exp: now + ACCESS_TTL_SECONDS }),
-    refreshToken: encode({ sub: username, roles, typ: 'refresh', exp: now + REFRESH_TTL_SECONDS }),
+    accessToken: encode({ sub: username, role, typ: 'access', exp: now + ACCESS_TTL_SECONDS }),
+    refreshToken: encode({ sub: username, role, typ: 'refresh', exp: now + REFRESH_TTL_SECONDS }),
     expiresIn: ACCESS_TTL_SECONDS,
   };
 }
@@ -111,15 +116,24 @@ function bearerToken(req: HttpRequest<unknown>): string | null {
   return header?.startsWith('Bearer ') ? header.substring(7) : null;
 }
 
-function ok<T>(body: T): Observable<HttpResponse<T>> {
-  return of(new HttpResponse({ status: 200, body })).pipe(delay(LATENCY_MS));
+function traceId(): string {
+  return crypto.randomUUID().replace(/-/g, '');
 }
 
-function error(status: number, message: string): Observable<never> {
+function ok<T>(body: T): Observable<HttpResponse<T>> {
+  const headers = new HttpHeaders({ 'X-Trace-Id': traceId() });
+  return of(new HttpResponse({ status: 200, body, headers })).pipe(delay(LATENCY_MS));
+}
+
+/** Eroare în formatul Error din contract, cu header-ul X-Trace-Id. */
+function error(status: number, code: string, message: string): Observable<never> {
+  const id = traceId();
+  const body: ApiError = { status, code, message, traceId: id };
+  const headers = new HttpHeaders({ 'X-Trace-Id': id });
   // `delay` nu întârzie erorile, deci așteptăm întâi cu `timer`.
   return timer(LATENCY_MS).pipe(
     switchMap(() =>
-      throwError(() => new HttpErrorResponse({ status, statusText: message, error: { message } })),
+      throwError(() => new HttpErrorResponse({ status, statusText: message, error: body, headers })),
     ),
   );
 }

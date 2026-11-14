@@ -1,4 +1,4 @@
-// Tipurile din contractul API (docs/api/openapi.yaml, secțiunea „Autentificare”).
+// Tipurile din contractul API (docs/api/openapi.yaml: LoginRequest, TokenPair, RefreshRequest, AccessToken, Role).
 
 export type Role = 'DISPATCH' | 'FIELD' | 'CONNECTIONS' | 'METER_SERVICE' | 'ADMIN';
 
@@ -7,12 +7,19 @@ export interface LoginRequest {
   password: string;
 }
 
-/** Răspunsul de la POST /auth/login și POST /auth/refresh. */
-export interface TokenResponse {
+/** Răspunsul de la POST /auth/login (schema TokenPair). */
+export interface TokenPair {
+  /** JWT, valabil 15 minute; claim-uri `sub` (utilizator) și `role`. */
   accessToken: string;
-  /** Lipsește la /auth/refresh dacă serverul nu emite un refresh token nou. */
-  refreshToken?: string;
-  /** Durata de viață a accessToken-ului, în secunde (900 = 15 minute). */
+  /** Token stateless, valabil 8 ore. */
+  refreshToken: string;
+  /** Secunde de valabilitate ale accessToken (900). */
+  expiresIn: number;
+}
+
+/** Răspunsul de la POST /auth/refresh (schema AccessToken): fără refreshToken nou. */
+export interface AccessToken {
+  accessToken: string;
   expiresIn: number;
 }
 
@@ -23,5 +30,5 @@ export interface RefreshRequest {
 /** Ce extragem din payload-ul JWT pentru afișare și pentru verificări în interfață. */
 export interface AuthUser {
   username: string;
-  roles: Role[];
+  role: Role | null;
 }
