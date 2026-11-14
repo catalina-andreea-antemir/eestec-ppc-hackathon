@@ -1,0 +1,33 @@
+<main class="login">
+  <form class="card" [formGroup]="form" (ngSubmit)="submit()" novalidate>
+    <h1>FileGrid</h1>
+    <p class="subtitle">Rețele Electrice România</p>
+
+    <label for="username">Utilizator</label>
+    <input id="username" type="text" formControlName="username" autocomplete="username" />
+    @if (form.controls.username.touched && form.controls.username.invalid) {
+      <span class="field-error">Introdu utilizatorul.</span>
+    }
+
+    <label for="password">Parolă</label>
+    <input id="password" type="password" formControlName="password" autocomplete="current-password" />
+    @if (form.controls.password.touched && form.controls.password.invalid) {
+      <span class="field-error">Introdu parola.</span>
+    }
+
+    @if (errorMessage(); as message) {
+      <p class="form-error" role="alert">{{ message }}</p>
+    }
+
+    <button type="submit" [disabled]="submitting()">
+      {{ submitting() ? 'Se autentifică…' : 'Autentificare' }}
+    </button>
+
+    @if (useMocks) {
+      <p class="hint">
+        Mod mock: <code>dispecer</code>, <code>teren</code>, <code>racordari</code>,
+        <code>contor</code> sau <code>admin</code>, cu orice parolă.
+      </p>
+    }
+  </form>
+</main>
