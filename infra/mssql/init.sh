@@ -19,8 +19,9 @@ fi
 run_sql() {
     local host=$1 login=$2 password=$3 database=$4
     shift 4
+    # -I = QUOTED_IDENTIFIER ON; fara el, CREATE TABLE cu coloana calculata persistata (blob_chunks) esueaza.
     SQLCMDPASSWORD="$password" "$sqlcmd" -S "$host" -U "$login" -d "$database" \
-        -C -b -x -l 3 "$@"
+        -C -I -b -x -l 3 "$@"
 }
 
 wait_for_sql() {

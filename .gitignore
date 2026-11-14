@@ -1,0 +1,22 @@
+# Secrete generate de scripts/start.* (doar .env.example, fara valori, se comite)
+.env
+.env.*
+!.env.example
+
+# IDE si sistem
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+
+# Fisiere mari generate local (video-uri de test) si artefacte de build
+sample-data/**/*.mp4
+sample-data/**/*.bin
+**/target/
+**/node_modules/
+**/dist/
+
+# PDF-urile din radacina (cerinta si impartirea taskurilor; copia de lucru este in docs/)
+/FileGrid PPC.pdf
+/Impartirea-taskurilor-FileGrid.pdf
