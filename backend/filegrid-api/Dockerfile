@@ -5,11 +5,12 @@
 # Ce intra in context e filtrat de Dockerfile.dockerignore (langa acest fisier).
 
 FROM maven:3.9.16-eclipse-temurin-21-noble AS build
-WORKDIR /src
+WORKDIR /src/backend/filegrid-api
 COPY backend/filegrid-api/pom.xml ./
 # Cache BuildKit pentru ~/.m2: dependentele se descarca o singura data, si dupa schimbari in pom.xml.
 RUN --mount=type=cache,target=/root/.m2 mvn -B -q -ntp dependency:go-offline || true
 COPY backend/filegrid-api/src ./src
+COPY db/analytics-queries /src/db/analytics-queries
 RUN --mount=type=cache,target=/root/.m2 mvn -B -ntp -DskipTests package \
     && cp target/filegrid-api-*.jar /tmp/app.jar
 

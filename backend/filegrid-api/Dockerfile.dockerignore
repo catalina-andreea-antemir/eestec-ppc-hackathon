@@ -3,4 +3,6 @@
 !backend/filegrid-api/pom.xml
 !backend/filegrid-api/src/
 !db/migrations/
+!db/analytics-queries/
+db/analytics-queries/verification/
 **/target/
