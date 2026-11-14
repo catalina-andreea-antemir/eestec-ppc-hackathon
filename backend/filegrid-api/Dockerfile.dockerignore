@@ -1,0 +1,6 @@
+# Context de build = radacina repo-ului; intra doar ce foloseste backend/filegrid-api/Dockerfile.
+*
+!backend/filegrid-api/pom.xml
+!backend/filegrid-api/src/
+!db/migrations/
+**/target/
