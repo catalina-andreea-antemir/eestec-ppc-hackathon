@@ -1,0 +1,63 @@
+# Configurare de baza (C1). Portul se ia din SERVER_PORT (implicit 8080), iar parolele si URL-urile
+# din variabile de mediu; nicio valoare secreta in repo.
+spring:
+  application:
+    name: filegrid-api
+  autoconfigure:
+    # Nu vrem parola generata si logata de Spring Security; utilizatorii vin din config la C5.
+    exclude:
+      - org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration
+
+# Loguri JSON structurate pe consola (nativ, Spring Boot 3.4+). MDC-ul (traceId, spanId) apare in JSON.
+logging:
+  structured:
+    format:
+      console: logstash
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+  endpoint:
+    health:
+      show-details: never
+  tracing:
+    sampling:
+      probability: 1.0
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+
+---
+# Profil implicit: FARA baza de date (SQL Server vine la C3). Datasource, JDBC si Flyway sunt dezactivate;
+# se activeaza cu profilul "db" (SPRING_PROFILES_ACTIVE=db).
+spring:
+  config:
+    activate:
+      on-profile: "!db"
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration
+      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
+      - org.springframework.boot.autoconfigure.jdbc.DataSourceTransactionManagerAutoConfiguration
+      - org.springframework.boot.autoconfigure.jdbc.JdbcClientAutoConfiguration
+      - org.springframework.boot.autoconfigure.jdbc.JdbcTemplateAutoConfiguration
+      - org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration
+      - org.springframework.boot.actuate.autoconfigure.jdbc.DataSourceHealthContributorAutoConfiguration
+
+---
+# Profil "db": FileGridMeta pe Microsoft SQL Server + Flyway. Fara valori implicite pentru credentiale:
+# daca variabilele lipsesc, aplicatia nu porneste cu acest profil.
+spring:
+  config:
+    activate:
+      on-profile: db
+  datasource:
+    url: ${META_DB_URL}
+    username: ${META_DB_USER}
+    password: ${META_DB_PASSWORD}
+  flyway:
+    enabled: true
+    locations: ${FLYWAY_LOCATIONS:filesystem:../../db/migrations}
