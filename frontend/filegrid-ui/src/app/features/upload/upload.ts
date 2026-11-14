@@ -85,7 +85,7 @@ export class Upload implements OnInit {
 
   protected readonly percent = computed(() => {
     const s = this.state();
-    return s.totalBytes > 0 ? Math.floor((s.sentBytes / s.totalBytes) * 100) : 0;
+    return s.totalBytes > 0 ? Math.min(100, Math.floor((s.sentBytes / s.totalBytes) * 100)) : 0;
   });
 
   protected readonly eta = computed(() => {

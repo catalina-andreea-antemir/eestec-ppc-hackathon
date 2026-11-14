@@ -48,4 +48,16 @@ describe('describeFileError', () => {
   it('503 cu Retry-After', () => {
     expect(describeFileError(apiError(503, 'STORAGE_UNAVAILABLE', { retryAfterSeconds: 2 }))).toContain('peste 2 s');
   });
+
+  it('405 de la Spring (endpoint încă neimplementat, de exemplu GET /files)', () => {
+    const springError = new HttpErrorResponse({
+      status: 405,
+      error: { status: 405, error: 'Method Not Allowed', path: '/api/v1/files' },
+    });
+    expect(describeFileError(springError)).toBe('Funcția aceasta nu este încă disponibilă pe server.');
+  });
+
+  it('un cod necunoscut fără mesaj arată codul HTTP', () => {
+    expect(describeFileError(new HttpErrorResponse({ status: 418 }))).toBe('Eroare neașteptată (418).');
+  });
 });

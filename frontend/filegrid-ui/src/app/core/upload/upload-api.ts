@@ -6,7 +6,8 @@ import { environment } from '../../../environments/environment';
 import { abortError } from './retry';
 import { ChunkAck, FileMetadata, OutageDetails, UploadInit, UploadSession } from './upload.models';
 
-export type ProgressFn = (loadedBytes: number) => void;
+/** `loadedBytes` = octeți trimiși din corpul cererii; `totalBytes` = mărimea corpului, dacă browserul o știe. */
+export type ProgressFn = (loadedBytes: number, totalBytes?: number) => void;
 
 /** Operațiile de upload în bucăți, ca promisiuni care se pot opri cu un AbortSignal. */
 export interface ChunkTransport {
@@ -44,7 +45,12 @@ export class UploadApi implements ChunkTransport {
         form.append('stationId', outage.stationId);
       }
     }
-    return send(this.http.request(new HttpRequest<FormData>('POST', `${this.base}/files`, form, { reportProgress: true })), signal, onProgress);
+    // Corpul multipart e mai mare decât fișierul (câmpuri, separatori), deci progresul
+    // se raportează proporțional cu mărimea fișierului, ca să nu treacă de 100%.
+    const fileProgress: ProgressFn | undefined = onProgress
+      ? (loaded, total) => onProgress(scaleToFile(loaded, total, file.size))
+      : undefined;
+    return send(this.http.request(new HttpRequest<FormData>('POST', `${this.base}/files`, form, { reportProgress: true })), signal, fileProgress);
   }
 
   initUpload(init: UploadInit, signal?: AbortSignal): Promise<UploadSession> {
@@ -77,6 +83,14 @@ export class UploadApi implements ChunkTransport {
   }
 }
 
+/** Octeții din corpul cererii, transformați în octeți din fișier (niciodată peste mărimea lui). */
+export function scaleToFile(loaded: number, total: number | undefined, fileSize: number): number {
+  if (!total || total <= 0) {
+    return Math.min(loaded, fileSize);
+  }
+  return Math.min(fileSize, Math.round((loaded / total) * fileSize));
+}
+
 /**
  * Transformă cererea HTTP într-o promisiune: raportează progresul upload-ului și,
  * la abort, anulează cererea (unsubscribe oprește XHR-ul).
@@ -98,7 +112,7 @@ function send<T>(events$: Observable<HttpEvent<T>>, signal?: AbortSignal, onProg
     subscription = events$.subscribe({
       next: (event) => {
         if (event.type === HttpEventType.UploadProgress) {
-          onProgress?.(event.loaded);
+          onProgress?.(event.loaded, event.total);
         } else if (event.type === HttpEventType.Response) {
           cleanup();
           resolve(event.body as T);
