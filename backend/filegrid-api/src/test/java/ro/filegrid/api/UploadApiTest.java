@@ -53,6 +53,11 @@ class UploadApiTest {
     @MockitoBean
     UploadService uploads;
 
+    @org.junit.jupiter.api.BeforeEach
+    void category() {
+        when(uploads.categoryOf(any(), any())).thenReturn(Category.INSPECTION_VIDEO); // bulkhead (C9)
+    }
+
     @DynamicPropertySource
     static void secrets(DynamicPropertyRegistry registry) {
         TestSecrets.register(registry);

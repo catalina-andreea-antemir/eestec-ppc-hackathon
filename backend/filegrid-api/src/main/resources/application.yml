@@ -1,5 +1,14 @@
 # Configurare de baza (C1). Portul se ia din SERVER_PORT (implicit 8080), iar parolele si URL-urile
 # din variabile de mediu; nicio valoare secreta in repo.
+server:
+  tomcat:
+    threads:
+      # C9: suma maxConcurrentRequests din politici (acum 50+20+10+4 = 84) rămâne sub plafon, cu rezervă de ~100 de
+      # fire pentru health, auth, căutare și cererile respinse imediat de bulkhead (care nu ocupă fire).
+      max: 200
+      min-spare: 20
+    # Conexiuni în așteptare când toate firele sunt ocupate (peste: conexiune refuzată).
+    accept-count: 100
 spring:
   application:
     name: filegrid-api
@@ -129,7 +138,11 @@ spring:
     password: ${META_DB_PASSWORD}
     hikari:
       pool-name: meta
-      # Fara asteptari lungi cand SQL Server nu raspunde (health si 503 rapide); dimensiunile pool-urilor la C9.
+      # C9: pool separat de cel de storage. Metadatele (citiri, sesiuni de upload, audit) sunt scurte; 40 acoperă
+      # cererile concurente ale categoriilor cu metadate pe cale, iar peste pool cererea primeste 503 rapid.
+      maximum-pool-size: 40
+      minimum-idle: 5
+      # Fara asteptari lungi cand SQL Server nu raspunde (health si 503 rapide).
       connection-timeout: 3000
       validation-timeout: 2000
   flyway:
@@ -143,6 +156,9 @@ filegrid:
     password: ${STORAGE_DB_PASSWORD}
     hikari:
       pool-name: storage
+      # C9: pool separat (FileGridStorage); mai mic, fiindcă tine conexiunea cat dureaza scrierea/citirea continutului.
+      maximum-pool-size: 30
+      minimum-idle: 2
       # Lasă timp pentru SELECT 1 în bugetul total de 2 s al verificării health.
       connection-timeout: 750
       validation-timeout: 500
