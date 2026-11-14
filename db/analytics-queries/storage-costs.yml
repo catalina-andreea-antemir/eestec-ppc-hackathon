@@ -1,0 +1,7 @@
+# Relative cost per GB, normalized to FTP = 1.0. Assumptions, not provider prices.
+# Source: the costAssumption example in docs/api/openapi.yaml (/stats/storage-advisor).
+# Keep the declared defaults in 06_storage_recommendations.sql aligned with these values.
+relativeCostPerGb:
+  FTP: 1.0
+  S3: 1.4
+  DB: 3.2
