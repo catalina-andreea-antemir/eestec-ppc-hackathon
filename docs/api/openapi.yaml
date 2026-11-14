@@ -2396,14 +2396,18 @@ components:
                 type: integer
               sharePercent:
                 type: number
+                nullable: true
+                description: Procentul avariilor din zonă din totalul avariilor. Este `null` când intervalul nu conține nicio avarie.
               vsAverageRatio:
                 type: number
-                description: Raport față de media pe zone.
+                nullable: true
+                description: Raport față de media pe zone. Este `null` când intervalul nu conține nicio avarie.
               peakHour:
                 type: integer
+                nullable: true
                 minimum: 0
                 maximum: 23
-                description: Ora (UTC) cu cele mai multe avarii.
+                description: Ora (UTC) cu cele mai multe avarii. Este `null` când zona nu are avarii în interval.
         byHour:
           type: array
           items:
