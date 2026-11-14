@@ -20,7 +20,7 @@ import org.springframework.security.web.util.matcher.RequestMatcher;
 import jakarta.servlet.DispatcherType;
 
 /**
- * Securitatea HTTP (C4: login minim; rolurile pe endpoint-uri vin la C10, matricea 4.4).
+ * Securitatea HTTP (C4: login; C10: rolurile pe endpoint-uri, matricea 4.4).
  *
  * <ul>
  *   <li>Publice: {@code GET /api/v1/health}, {@code POST /api/v1/auth/login}, {@code POST /api/v1/auth/refresh} și
@@ -63,6 +63,14 @@ public class SecurityConfig {
                 .authorizeHttpRequests(a -> a
                         .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
                         .requestMatchers(PUBLIC_ENDPOINTS).permitAll()
+                        // Matricea rolurilor 4.4 (C10); rolul pe categorie se verifică în FileAccess.
+                        .requestMatchers(PATHS.matcher(HttpMethod.POST, "/api/v1/meter-readings"))
+                                .hasAnyRole("METER_SERVICE", "ADMIN")
+                        .requestMatchers(PATHS.matcher("/api/v1/stats/**")).hasAnyRole("DISPATCH", "ADMIN")
+                        .requestMatchers(PATHS.matcher("/api/v1/admin/**")).hasRole("ADMIN")
+                        .requestMatchers(PATHS.matcher("/api/v1/uploads/**")).hasAnyRole("FIELD", "ADMIN")
+                        .requestMatchers(PATHS.matcher("/api/v1/files/**"))
+                                .hasAnyRole("FIELD", "DISPATCH", "CONNECTIONS", "ADMIN")
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(o -> o
                         .bearerTokenResolver(bearerTokenResolver())

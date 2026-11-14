@@ -106,6 +106,7 @@ class DownloadStackTest {
                 "--filegrid.ftp.host=127.0.0.1", "--filegrid.ftp.user=" + env.get("FTP_USER"),
                 "--filegrid.ftp.password=" + env.get("FTP_PASSWORD"),
                 "--filegrid.policies.location=" + policies,
+                "--filegrid.encryption.key=" + Base64.getEncoder().encodeToString(random(32)),
                 "--filegrid.security.jwt.secret=" + Base64.getEncoder().encodeToString(random(48)),
                 "--filegrid.download.link-secret=" + Base64.getEncoder().encodeToString(random(48)),
                 "--spring.main.banner-mode=off", "--logging.level.root=WARN"));

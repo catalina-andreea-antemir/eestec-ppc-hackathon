@@ -15,6 +15,8 @@ public final class TestSecrets {
     private static final SecureRandom RANDOM = new SecureRandom();
 
     public static final String JWT_SECRET = Base64.getEncoder().encodeToString(bytes(48));
+    public static final byte[] DOC_KEY_BYTES = bytes(32);
+    public static final String DOC_KEY = Base64.getEncoder().encodeToString(DOC_KEY_BYTES);
     public static final String LINK_SECRET = Base64.getEncoder().encodeToString(bytes(48));
     public static final String DISPECER_PASSWORD = HexFormat.of().formatHex(bytes(12));
     public static final String ADMIN_PASSWORD = HexFormat.of().formatHex(bytes(12));
@@ -25,6 +27,7 @@ public final class TestSecrets {
     public static void register(DynamicPropertyRegistry registry) {
         registry.add("filegrid.security.jwt.secret", () -> JWT_SECRET);
         registry.add("filegrid.download.link-secret", () -> LINK_SECRET);
+        registry.add("filegrid.encryption.key", () -> DOC_KEY);
         registry.add("filegrid.security.users.dispecer.password", () -> DISPECER_PASSWORD);
         registry.add("filegrid.security.users.admin.password", () -> ADMIN_PASSWORD);
     }

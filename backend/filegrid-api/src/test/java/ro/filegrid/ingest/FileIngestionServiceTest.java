@@ -20,6 +20,7 @@ import org.springframework.dao.DataAccessResourceFailureException;
 import ro.filegrid.api.ApiException;
 import ro.filegrid.domain.Category;
 import ro.filegrid.domain.StorageType;
+import ro.filegrid.TestSecrets;
 import ro.filegrid.integrity.Sha256;
 import ro.filegrid.storage.ByteRange;
 
@@ -27,7 +28,7 @@ class FileIngestionServiceTest {
 
     private final IngestTestSupport env = new IngestTestSupport();
     private final FileMetadataRepository files = mock(FileMetadataRepository.class);
-    private final DocumentEncryption encryption = new EncryptionNotReady();
+    private final DocumentEncryption encryption = new AesGcmDocumentEncryption(TestSecrets.DOC_KEY_BYTES);
     private final FileIngestionService service = new FileIngestionService(env.policies, env.writer, files,
             env.transaction, encryption, Clock.systemUTC());
     private final byte[] content = random(300_000);
@@ -102,14 +103,29 @@ class FileIngestionServiceTest {
     }
 
     @Test
-    void encryptedCategoryIsRefusedUntilEncryptionExists() {
-        assertThatThrownBy(() -> service.upload(upload(Category.CONNECTION_DOC, content.length)))
-                .isInstanceOfSatisfying(ApiException.class, e -> {
-                    assertThat(e.status().value()).isEqualTo(503);
-                    assertThat(e.getMessage()).contains("Criptarea");
-                });
-        assertThat(env.db.puts.get() + env.s3.puts.get()).isZero();
-        verify(files, never()).insert(any());
+    void connectionDocIsEncryptedWithTwoHashesAndEncryptedName() throws Exception {
+        FileRecord stored = service.upload(upload(Category.CONNECTION_DOC, content.length));
+
+        assertThat(stored.encrypted()).isTrue();
+        assertThat(stored.originalName()).isEqualTo("avarie.csv"); // răspunsul poartă numele în clar
+        assertThat(stored.sha256Plain()).isEqualTo(Sha256.of(content));
+        assertThat(stored.sha256()).isNotEqualTo(stored.sha256Plain());
+        assertThat(stored.size()).isEqualTo(content.length);
+        org.mockito.ArgumentCaptor<FileRecord> row = org.mockito.ArgumentCaptor.forClass(FileRecord.class);
+        verify(files).insert(row.capture());
+        assertThat(row.getValue().originalName()).doesNotContain("avarie").isNotEqualTo("avarie.csv");
+        assertThat(encryption.decryptName(row.getValue().originalName())).isEqualTo("avarie.csv");
+        var adapter = stored.storage() == StorageType.S3 ? env.s3 : env.db;
+        byte[] raw;
+        try (InputStream back = adapter.get(stored.storageKey(), ByteRange.full())) {
+            raw = back.readAllBytes();
+        }
+        assertThat(raw).hasSize((int) encryption.encryptedLength(content.length));
+        assertThat(Sha256.of(raw)).isEqualTo(stored.sha256());
+        assertThat(new String(raw, java.nio.charset.StandardCharsets.ISO_8859_1)).doesNotContain("avarie");
+        try (InputStream plain = encryption.decrypt(new ByteArrayInputStream(raw))) {
+            assertThat(plain.readAllBytes()).isEqualTo(content);
+        }
     }
 
     private FileIngestionService.Upload upload(Category category, long size) {

@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 import ro.filegrid.domain.Category;
+import ro.filegrid.download.FileAccess;
 import ro.filegrid.ingest.IngestErrors;
 import ro.filegrid.resilience.CategoryBulkheads;
 import ro.filegrid.upload.ChunkAck;
@@ -32,8 +33,10 @@ public class UploadController {
 
     private final ObjectProvider<UploadService> service;
     private final CategoryBulkheads bulkheads;
+    private final FileAccess access;
 
-    public UploadController(ObjectProvider<UploadService> service, CategoryBulkheads bulkheads) {
+    public UploadController(ObjectProvider<UploadService> service, CategoryBulkheads bulkheads, FileAccess access) {
+        this.access = access;
         this.bulkheads = bulkheads;
         this.service = service;
     }
@@ -52,6 +55,7 @@ public class UploadController {
         if (body.totalSize() == null || body.totalSize() < 1) {
             throw IngestErrors.validation("totalSize", "Câmpul „totalSize” este obligatoriu și pozitiv.");
         }
+        access.requireRole(authentication, Category.INSPECTION_VIDEO, FileAccess.UPLOAD, null);
         try (var permit = bulkheads.acquire(Category.INSPECTION_VIDEO)) {
             UploadStatus created = uploads().init(Category.INSPECTION_VIDEO,
                     FileController.originalName(body.fileName()), body.totalSize(), caller(authentication));

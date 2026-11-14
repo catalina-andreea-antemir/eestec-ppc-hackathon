@@ -25,7 +25,10 @@ class FileContentServiceTest {
 
     private final InMemoryStorageAdapter storage = new InMemoryStorageAdapter(StorageType.S3);
     private final StorageAdapterRegistry registry = new StorageAdapterRegistry(List.of(storage), List.of());
-    private final DefaultFileAccess access = new DefaultFileAccess();
+    private final RoleBasedFileAccess access = new RoleBasedFileAccess(
+            org.mockito.Mockito.mock(org.springframework.beans.factory.ObjectProvider.class),
+            new ro.filegrid.ingest.AesGcmDocumentEncryption(ro.filegrid.TestSecrets.DOC_KEY_BYTES),
+            new io.micrometer.core.instrument.simple.SimpleMeterRegistry());
 
     private static byte[] data(int size) {
         byte[] b = new byte[size];
@@ -157,12 +160,91 @@ class FileContentServiceTest {
         });
     }
 
+
+    private static final ro.filegrid.ingest.AesGcmDocumentEncryption ENC =
+            new ro.filegrid.ingest.AesGcmDocumentEncryption(ro.filegrid.TestSecrets.DOC_KEY_BYTES);
+
+    /** Document criptat: octeții stocați sunt cifrați, sha256 pe ei, sha256_plain pe original, size = original. */
+    private FileRecord storeEncrypted(byte[] plain) throws IOException {
+        byte[] cipher = ENC.encrypt(new ByteArrayInputStream(plain)).readAllBytes();
+        UUID id = UUID.randomUUID();
+        storage.put(id.toString(), new ByteArrayInputStream(cipher), cipher.length, "application/octet-stream");
+        return new FileRecord(id, Category.CONNECTION_DOC, "cerere.pdf", "application/pdf", plain.length,
+                Sha256.of(cipher), Sha256.of(plain), StorageType.S3, id.toString(), FileRecord.CONFIRMED, true,
+                Instant.now(), "racordari", null);
+    }
+
+    private FileRecord tampered(FileRecord doc) throws IOException {
+        corruptOneByte(storage, doc);
+        byte[] now;
+        try (InputStream in = storage.get(doc.storageKey(), ro.filegrid.storage.ByteRange.full())) {
+            now = in.readAllBytes();
+        }
+        // sha256 pe octeții stocați "se potrivește" din nou: doar GCM mai poate prinde alterarea.
+        return new FileRecord(doc.id(), doc.category(), doc.originalName(), doc.contentType(), doc.size(),
+                Sha256.of(now), doc.sha256Plain(), doc.storage(), doc.storageKey(), doc.status(), true,
+                doc.createdAt(), doc.createdBy(), null);
+    }
+
     @Test
-    void encryptedFileIgnoresRangeAndUsesTheDecryptionHook() {
-        FileRecord doc = store(data(1000), true);
+    void encryptedFileIsDecryptedWithoutRangeAndShowsPlainHash() throws Exception {
+        byte[] plain = data(200_000);
+        FileRecord doc = storeEncrypted(plain);
         FileContentService service = new FileContentService(registry, access, 1 << 20);
-        // Până la C10 decriptarea nu există: hook-ul refuză, fără 206 și fără octeți necriptați.
-        assertThatThrownBy(() -> send(service, doc, "bytes=0-9")).isInstanceOfSatisfying(ApiException.class,
-                e -> assertThat(e.status().value()).isEqualTo(501));
+
+        MockHttpServletResponse r = send(service, doc, "bytes=0-9");
+
+        assertThat(r.getStatus()).isEqualTo(200);
+        assertThat(r.getHeader("Accept-Ranges")).isNull();
+        assertThat(r.getHeader("Content-Range")).isNull();
+        assertThat(r.getHeader("X-Content-SHA256")).isEqualTo(Sha256.hex(Sha256.of(plain)));
+        assertThat(r.getContentAsByteArray()).isEqualTo(plain);
+    }
+
+    @Test
+    void verifyChecksStoredHashAndDeepAlsoChecksPlainHash() throws Exception {
+        FileRecord doc = storeEncrypted(data(150_000));
+        FileContentService service = new FileContentService(registry, access, 1 << 20);
+
+        FileContentService.VerifyResult shallow = service.verify(doc, false);
+        FileContentService.VerifyResult deep = service.verify(doc, true);
+
+        assertThat(shallow.deep()).isFalse();
+        assertThat(shallow.expectedSha256Plain()).isNull();
+        assertThat(deep.ok()).isTrue();
+        assertThat(deep.deep()).isTrue();
+        assertThat(deep.actualSha256Plain()).isEqualTo(Sha256.hex(doc.sha256Plain()));
+    }
+
+    @Test
+    void alteredEncryptedSegmentGives409EverywhereEvenWhenStoredHashMatches() throws Exception {
+        FileContentService service = new FileContentService(registry, access, 1 << 20);
+        FileRecord plainHashCaught = storeEncrypted(data(150_000));
+        corruptOneByte(storage, plainHashCaught);
+        assertThatThrownBy(() -> service.verify(plainHashCaught, false)).isInstanceOfSatisfying(ApiException.class,
+                e -> assertThat(e.code()).isEqualTo("FILE_CORRUPT"));
+
+        FileRecord gcmCaught = tampered(storeEncrypted(data(150_000)));
+        assertThat(service.verify(gcmCaught, false).ok()).isTrue(); // hash pe octeții stocați: nu vede nimic
+        assertThatThrownBy(() -> service.verify(gcmCaught, true)).isInstanceOfSatisfying(ApiException.class, e -> {
+            assertThat(e.status().value()).isEqualTo(409);
+            assertThat(e.code()).isEqualTo("FILE_CORRUPT");
+        });
+        // Alterare în al doilea segment: primul bloc a plecat deja, deci conexiunea se întrerupe (ca la fișiere mari).
+        assertThatThrownBy(() -> send(service, tampered(storeEncrypted(data(150_000))), null))
+                .isInstanceOf(FileContentService.TransferAborted.class);
+        // Alterare în primul segment: nimic nu a plecat încă, deci 409 curat.
+        FileRecord early = storeEncrypted(data(150_000));
+        byte[] raw;
+        try (InputStream in = storage.get(early.storageKey(), ro.filegrid.storage.ByteRange.full())) {
+            raw = in.readAllBytes();
+        }
+        raw[30] ^= 1;
+        storage.put(early.storageKey(), new ByteArrayInputStream(raw), raw.length, "x");
+        FileRecord earlyRecord = new FileRecord(early.id(), early.category(), early.originalName(), early.contentType(),
+                early.size(), Sha256.of(raw), early.sha256Plain(), early.storage(), early.storageKey(), early.status(),
+                true, early.createdAt(), early.createdBy(), null);
+        assertThatThrownBy(() -> send(service, earlyRecord, null)).isInstanceOfSatisfying(ApiException.class,
+                e -> assertThat(e.code()).isEqualTo("FILE_CORRUPT"));
     }
 }

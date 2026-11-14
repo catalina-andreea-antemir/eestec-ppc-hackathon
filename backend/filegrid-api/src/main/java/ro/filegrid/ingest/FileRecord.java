@@ -22,6 +22,12 @@ public record FileRecord(UUID id, Category category, String originalName, String
         Objects.requireNonNull(storageKey, "storageKey");
     }
 
+    /** Aceeași înregistrare cu alt nume (numele criptat din baza de date ↔ numele în clar pentru răspuns). */
+    public FileRecord withOriginalName(String name) {
+        return new FileRecord(id, category, name, contentType, size, sha256, sha256Plain, storage, storageKey, status,
+                encrypted, createdAt, createdBy, outage);
+    }
+
     /** Zona, stația și momentul avariei ({@code outage_records}). */
     public record OutageInfo(String zone, String stationId, Instant occurredAt) {
         public OutageInfo {

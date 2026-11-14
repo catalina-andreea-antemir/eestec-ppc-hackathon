@@ -55,10 +55,13 @@ public class DownloadController {
                                                   @PathVariable String id,
                                                   @RequestParam(defaultValue = "false") String deep) {
         RequestScenario.read(request);
-        FileRecord file = queryService().get(authentication, FileReadController.fileId(id));
+        FileRecord file = queryService().get(authentication, FileReadController.fileId(id), "VERIFY");
         try (var permit = bulkheads.acquire(file.category())) {
             access.audit(authentication, file, "VERIFY");
             return contentService().verify(file, Boolean.parseBoolean(deep));
+        } catch (RuntimeException e) {
+            failed(file, "VERIFY", e);
+            throw e;
         }
     }
 
@@ -67,18 +70,21 @@ public class DownloadController {
                          @PathVariable String id, @RequestHeader(value = HttpHeaders.RANGE, required = false) String range)
             throws IOException {
         RequestScenario.read(request);
-        FileRecord file = queryService().get(authentication, FileReadController.fileId(id));
+        FileRecord file = queryService().get(authentication, FileReadController.fileId(id), "DOWNLOAD");
         // Permisul se eliberează abia când send() se întoarce: stream terminat, sau închis de un client căzut.
         try (var permit = bulkheads.acquire(file.category())) {
             access.audit(authentication, file, "DOWNLOAD");
             contentService().send(file, range, response);
+        } catch (RuntimeException e) {
+            failed(file, "DOWNLOAD", e);
+            throw e;
         }
     }
 
     @PostMapping("/api/v1/files/{id}/download-link")
     public DownloadLink link(HttpServletRequest request, Authentication authentication, @PathVariable String id) {
         RequestScenario.read(request);
-        FileRecord file = queryService().get(authentication, FileReadController.fileId(id));
+        FileRecord file = queryService().get(authentication, FileReadController.fileId(id), "DOWNLOAD_LINK");
         access.audit(authentication, file, "DOWNLOAD_LINK");
         DownloadTokenService.Link link = tokens.create(file.id(), authentication.getName());
         return new DownloadLink("/api/v1/downloads/" + link.token(), link.expiresAt());
@@ -92,7 +98,19 @@ public class DownloadController {
         DownloadTokenService.Claims claims = tokens.verify(token);
         FileRecord file = queryService().lookup(claims.fileId());
         try (var permit = bulkheads.acquire(file.category())) {
+            access.auditAs("link:" + claims.userTag(), file, "DOWNLOAD");
             contentService().send(file, range, response);
+        } catch (RuntimeException e) {
+            failed(file, "DOWNLOAD", e);
+            throw e;
+        }
+    }
+
+    /** Eșec propriu-zis (5xx, transfer întrerupt, fișier corupt) după ce accesul a fost permis: metrica {@code error}. */
+    private void failed(FileRecord file, String action, RuntimeException e) {
+        boolean clientError = e instanceof ApiException api && api.status().value() < 500 && !"FILE_CORRUPT".equals(api.code());
+        if (!clientError) {
+            access.failed(file.category(), action);
         }
     }
 

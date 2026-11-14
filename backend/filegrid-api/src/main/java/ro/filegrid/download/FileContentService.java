@@ -26,6 +26,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import jakarta.servlet.http.HttpServletResponse;
 
 import ro.filegrid.api.ApiException;
+import ro.filegrid.ingest.DocumentEncryption;
 import ro.filegrid.ingest.FileRecord;
 import ro.filegrid.ingest.IngestErrors;
 import ro.filegrid.integrity.Sha256;
@@ -75,13 +76,21 @@ public class FileContentService {
     }
 
     /**
-     * {@code GET /files/{id}/verify}: recalculează SHA-256 din storage, în streaming. {@code deep} (decriptare și
-     * {@code sha256Plain}, doar {@code CONNECTION_DOC}) vine la C10; până atunci verificarea e cea pe octeții stocați.
+     * {@code GET /files/{id}/verify}: recalculează SHA-256 din storage, în streaming. {@code deep} (doar documentele criptate) decriptează în
+     * streaming și verifică și {@code sha256Plain}; altfel verificarea e cea pe octeții stocați.
      */
     public VerifyResult verify(FileRecord file, boolean deep) {
         byte[] actual = hashStored(file);
         if (!Arrays.equals(actual, file.sha256())) {
             throw corrupt(file, actual);
+        }
+        if (deep && file.encrypted() && file.sha256Plain() != null) {
+            byte[] plain = hashDecrypted(file);
+            if (!Arrays.equals(plain, file.sha256Plain())) {
+                throw corrupt(file, actual);
+            }
+            return new VerifyResult(file.id(), true, "SHA-256", true, Sha256.hex(file.sha256()), Sha256.hex(actual),
+                    Sha256.hex(file.sha256Plain()), Sha256.hex(plain), Instant.now().truncatedTo(ChronoUnit.SECONDS));
         }
         return new VerifyResult(file.id(), true, "SHA-256", false, Sha256.hex(file.sha256()), Sha256.hex(actual),
                 null, null, Instant.now().truncatedTo(ChronoUnit.SECONDS));
@@ -170,6 +179,13 @@ public class FileContentService {
                 throw truncated(file, sent, length, null);
             }
             return n;
+        } catch (DocumentEncryption.CorruptCiphertextException e) {
+            log.error("Conținut criptat alterat: fileId={}, storage={}, trimiși {} octeți: {}", file.id(), file.storage(),
+                    sent, e.getMessage());
+            if (sent == 0) {
+                throw corruptContent(file);
+            }
+            throw new TransferAborted("Fișier corupt: " + file.id());
         } catch (IOException e) {
             throw truncated(file, sent, length, e);
         }
@@ -189,7 +205,8 @@ public class FileContentService {
         response.setStatus(range.isPresent() ? HttpStatus.PARTIAL_CONTENT.value() : HttpStatus.OK.value());
         response.setContentType(file.contentType() == null || file.contentType().isBlank()
                 ? MediaType.APPLICATION_OCTET_STREAM_VALUE : file.contentType());
-        response.setHeader("X-Content-SHA256", Sha256.hex(file.sha256()));
+        response.setHeader("X-Content-SHA256", Sha256.hex(file.encrypted() && file.sha256Plain() != null
+                ? file.sha256Plain() : file.sha256()));
         response.setHeader(HttpHeaders.CONTENT_DISPOSITION, disposition(file.originalName()));
         if (!file.encrypted()) {
             response.setHeader(HttpHeaders.ACCEPT_RANGES, "bytes");
@@ -231,6 +248,30 @@ public class FileContentService {
             throw IngestErrors.storageUnavailable("Storage-ul " + file.storage() + " nu poate citi fișierul acum.");
         }
         return digest.digest();
+    }
+
+    /** Decriptează din storage în streaming și întoarce SHA-256 pe conținutul în clar; segment alterat → 409. */
+    private byte[] hashDecrypted(FileRecord file) {
+        MessageDigest digest = Sha256.newDigest();
+        try (InputStream in = access.decrypt(file, open(file, ByteRange.full()))) {
+            byte[] buffer = new byte[BUFFER];
+            int n;
+            while ((n = in.read(buffer)) >= 0) {
+                digest.update(buffer, 0, n);
+            }
+        } catch (DocumentEncryption.CorruptCiphertextException e) {
+            throw corruptContent(file);
+        } catch (IOException e) {
+            log.warn("Citirea fișierului {} din {} a eșuat: {}", file.id(), file.storage(), e.getMessage());
+            throw IngestErrors.storageUnavailable("Storage-ul " + file.storage() + " nu poate citi fișierul acum.");
+        }
+        return digest.digest();
+    }
+
+    private ApiException corruptContent(FileRecord file) {
+        log.error("Conținut criptat alterat: fileId={}, storage={}", file.id(), file.storage());
+        return new ApiException(HttpStatus.CONFLICT, "FILE_CORRUPT", "fișier corupt", null,
+                Map.of("fileId", file.id().toString(), "expectedSha256", Sha256.hex(file.sha256())));
     }
 
     private ApiException corrupt(FileRecord file, byte[] actual) {

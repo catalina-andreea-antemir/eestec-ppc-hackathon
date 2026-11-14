@@ -109,7 +109,7 @@ class FileReadApiTest {
 
     @Test
     void getByIdReturnsMetadataAndNonUuidIs404() {
-        when(query.get(any(), eq(ID))).thenReturn(file());
+        when(query.get(any(), eq(ID), any())).thenReturn(file());
         ResponseEntity<Map<String, Object>> r = get("/api/v1/files/" + ID);
         assertThat(r.getStatusCode().value()).isEqualTo(200);
         assertThat(r.getBody()).containsEntry("id", ID.toString()).containsEntry("storage", "S3");
@@ -125,7 +125,7 @@ class FileReadApiTest {
 
     @Test
     void downloadLinkIsCreatedForTheCallerAndWorksWithoutAuthorization() throws Exception {
-        when(query.get(any(), eq(ID))).thenReturn(file());
+        when(query.get(any(), eq(ID), any())).thenReturn(file());
         when(query.lookup(ID)).thenReturn(file());
         doAnswer(inv -> {
             jakarta.servlet.http.HttpServletResponse response = inv.getArgument(2);
