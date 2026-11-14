@@ -12,7 +12,7 @@ import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 
 /**
  * Schelet (C1). Doar ca aplicatia sa porneasca si sa expuna health/prometheus; fara autentificare JWT inca.
- * Login-ul minim vine la C5, rolurile si matricea 4.4 la C10. Orice alta cale primeste 401.
+ * Login-ul minim vine la C4, rolurile si matricea 4.4 la C10. Orice alta cale primeste 401.
  */
 @Configuration
 public class SecurityConfig {

@@ -4,7 +4,7 @@ spring:
   application:
     name: filegrid-api
   autoconfigure:
-    # Nu vrem parola generata si logata de Spring Security; utilizatorii vin din config la C5.
+    # Nu vrem parola generata si logata de Spring Security; utilizatorii vin din config la C4.
     exclude:
       - org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration
 

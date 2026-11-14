@@ -4,7 +4,7 @@ info:
   version: 1.0.0
   description: |
     Contractul comun al FileGrid PPC (secțiunile 4, 4.1, 4.2, 4.3 și 4.4 din `docs/Impartirea-taskurilor-FileGrid.pdf`, v4).
-    Autor: Catalina (C2). Confirmat de: Ovidiu, Flavius. De la confirmare, contractul se schimbă doar cu acordul tuturor.
+    Autor: Catalina (C2). De confirmat de: Ovidiu, Flavius. De la confirmare, contractul se schimbă doar cu acordul tuturor.
 
     ## Convenții generale
     * Toate căile de mai jos sunt relative la `/api/v1`. Din exterior, singura intrare este nginx, pe HTTPS
@@ -1478,7 +1478,8 @@ paths:
       description: |
         Starea fiecărui storage (FTP, S3, DB) și a FileGridMeta, pe instanța care răspunde. Alimentează
         `filegrid_storage_up`. Un storage `DOWN` înseamnă că scrierile noi pentru categoriile lui merg pe rezervă sau
-        primesc `503`; fișierele deja confirmate rămân citibile.
+        primesc `503`; fișierele deja confirmate nu se pierd și redevin citibile la revenirea storage-ului (până
+        atunci, descărcarea lor primește `503` cu `Retry-After`).
       x-roles: [ADMIN]
       responses:
         '200':
