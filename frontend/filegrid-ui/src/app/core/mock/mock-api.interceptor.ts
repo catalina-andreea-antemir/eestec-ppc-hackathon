@@ -4,6 +4,7 @@ import { delay, Observable, of, switchMap, throwError, timer } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { ApiError } from '../api/api-error';
 import { AccessToken, LoginRequest, RefreshRequest, Role, TokenPair } from '../auth/auth.models';
+import { handleUploadRoutes } from './mock-uploads';
 
 /**
  * Backend fals pentru `ng serve`, activ doar când environment.useMocks e true.
@@ -46,8 +47,14 @@ export const mockApiInterceptor: HttpInterceptorFn = (req, next) => {
   }
 
   // Orice alt endpoint cere un accessToken valid, ca în backend-ul real.
-  if (!isValidToken(bearerToken(req), 'access')) {
+  const token = bearerToken(req);
+  if (!isValidToken(token, 'access')) {
     return error(401, 'UNAUTHORIZED', 'Token lipsă, expirat sau invalid.');
+  }
+  const { sub, role } = decode(token!)!;
+  const uploads = handleUploadRoutes(req, path, { sub, role });
+  if (uploads) {
+    return uploads;
   }
   return error(404, 'NOT_FOUND', `Endpoint-ul ${req.method} ${path} nu are încă mock.`);
 };

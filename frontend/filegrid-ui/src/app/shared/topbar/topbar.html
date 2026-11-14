@@ -1,0 +1,18 @@
+<header class="topbar">
+  <strong>FileGrid</strong>
+  <nav>
+    <a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">Acasă</a>
+    @if (canUpload()) {
+      <a routerLink="/upload" routerLinkActive="active">Upload</a>
+    }
+  </nav>
+  @if (auth.user(); as user) {
+    <span class="user">
+      {{ user.username }}
+      @if (user.role) {
+        <span class="role">{{ user.role }}</span>
+      }
+    </span>
+  }
+  <button type="button" class="secondary" (click)="auth.logout()">Ieșire</button>
+</header>
