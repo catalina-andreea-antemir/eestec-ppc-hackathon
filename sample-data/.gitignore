@@ -1,0 +1,7 @@
+# Datele de aici se genereaza cu scripts/generate-sample-data.ps1 (sau .sh) si NU se comit.
+# Raman in Git doar structura de directoare si acest fisier.
+# Un exemplu mic se poate adauga explicit, daca echipa vrea: git add -f sample-data/meter-readings/<fisier>.json
+*
+!.gitignore
+!*/
+!*/.gitkeep

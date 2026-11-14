@@ -1,10 +1,12 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { computed, inject, Injectable, signal } from '@angular/core';
 import { Router } from '@angular/router';
-import { finalize, map, Observable, shareReplay, tap } from 'rxjs';
+import { finalize, map, Observable, shareReplay, tap, throwError } from 'rxjs';
 
 import { environment } from '../../../environments/environment';
-import { AuthUser, LoginRequest, RefreshRequest, Role, TokenResponse } from './auth.models';
+import { AccessToken, AuthUser, LoginRequest, RefreshRequest, Role, TokenPair } from './auth.models';
+
+const ROLES: readonly Role[] = ['DISPATCH', 'FIELD', 'CONNECTIONS', 'METER_SERVICE', 'ADMIN'];
 
 const ACCESS_KEY = 'filegrid.accessToken';
 const REFRESH_KEY = 'filegrid.refreshToken';
@@ -32,13 +34,14 @@ export class AuthService {
     return this.accessToken();
   }
 
-  hasRole(role: Role): boolean {
-    const roles = this.user()?.roles ?? [];
-    return roles.includes(role) || roles.includes('ADMIN');
+  /** True dacă utilizatorul are unul dintre rolurile date. ADMIN are acces la tot (matricea 4.4). */
+  hasRole(...roles: Role[]): boolean {
+    const role = this.user()?.role;
+    return !!role && (role === 'ADMIN' || roles.includes(role));
   }
 
   login(request: LoginRequest): Observable<AuthUser> {
-    return this.http.post<TokenResponse>(`${environment.apiBaseUrl}/auth/login`, request).pipe(
+    return this.http.post<TokenPair>(`${environment.apiBaseUrl}/auth/login`, request).pipe(
       tap((tokens) => this.storeTokens(tokens)),
       map(() => this.user()!),
     );
@@ -54,10 +57,14 @@ export class AuthService {
       return this.refreshInFlight$;
     }
     const refreshToken = readStorage(REFRESH_KEY);
-    const body: RefreshRequest = { refreshToken: refreshToken ?? '' };
+    if (!refreshToken) {
+      // Fără refresh token sesiunea nu se poate reînnoi: tratat ca un refresh respins.
+      return throwError(() => new HttpErrorResponse({ status: 401, statusText: 'Fără refresh token' }));
+    }
+    const body: RefreshRequest = { refreshToken };
 
     this.refreshInFlight$ = this.http
-      .post<TokenResponse>(`${environment.apiBaseUrl}/auth/refresh`, body)
+      .post<AccessToken>(`${environment.apiBaseUrl}/auth/refresh`, body)
       .pipe(
         tap((tokens) => this.storeTokens(tokens)),
         map((tokens) => tokens.accessToken),
@@ -76,24 +83,28 @@ export class AuthService {
     }
   }
 
-  private storeTokens(tokens: TokenResponse): void {
+  private storeTokens(tokens: TokenPair | AccessToken): void {
     writeStorage(ACCESS_KEY, tokens.accessToken);
-    if (tokens.refreshToken) {
+    // /auth/login trimite și refreshToken; /auth/refresh trimite doar accessToken.
+    if ('refreshToken' in tokens && tokens.refreshToken) {
       writeStorage(REFRESH_KEY, tokens.refreshToken);
     }
     this.accessToken.set(tokens.accessToken);
   }
 }
 
-/** Citește `sub` și `roles` din payload-ul JWT. Semnătura o verifică doar backend-ul. */
+/**
+ * Citește claim-urile `sub` (utilizator) și `role` (un singur rol) din payload-ul JWT,
+ * cum fixează contractul. Semnătura o verifică doar backend-ul.
+ */
 function decodeUser(token: string | null): AuthUser | null {
   if (!token) {
     return null;
   }
   try {
     const payload = JSON.parse(base64UrlDecode(token.split('.')[1]));
-    const roles: Role[] = Array.isArray(payload.roles) ? payload.roles : [];
-    return { username: String(payload.sub ?? ''), roles };
+    const role = ROLES.includes(payload.role) ? (payload.role as Role) : null;
+    return { username: String(payload.sub ?? ''), role };
   } catch {
     return null;
   }
