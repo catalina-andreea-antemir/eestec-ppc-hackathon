@@ -4,6 +4,7 @@
 #   127.0.0.1:1433  SQL Server (SSMS / Azure Data Studio; login sa sau filegrid_*_app, parolele din .env)
 #   127.0.0.1:9000  MinIO S3 API
 #   127.0.0.1:9001  consola MinIO (MINIO_ROOT_USER / MINIO_ROOT_PASSWORD din .env)
+#   127.0.0.1:21 si 127.0.0.1:21000-21049  FTP (control + porturi pasive; vsftpd anunta 127.0.0.1 in PASV, vezi FTP_PASV_ADDRESS)
 #
 # Serviciile stau pe storage-net, care e interna, iar Docker nu publica porturi dintr-o retea interna; de aceea
 # serviciile de mai jos primesc si reteaua dev-net (bridge obisnuit), folosita doar pentru aceste porturi.
@@ -21,6 +22,17 @@ services:
     ports:
       - "127.0.0.1:9000:9000"
       - "127.0.0.1:9001:9001"
+    networks:
+      - storage-net
+      - dev-net
+
+  ftp:
+    environment:
+      # Numai in dev: adresa anuntata de vsftpd in raspunsul PASV, ca datele sa treaca prin porturile publicate.
+      FTP_PASV_ADDRESS: 127.0.0.1
+    ports:
+      - "127.0.0.1:21:21"
+      - "127.0.0.1:21000-21049:21000-21049"
     networks:
       - storage-net
       - dev-net
