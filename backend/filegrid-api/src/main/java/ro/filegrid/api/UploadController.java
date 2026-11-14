@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 import ro.filegrid.domain.Category;
 import ro.filegrid.ingest.IngestErrors;
+import ro.filegrid.resilience.CategoryBulkheads;
 import ro.filegrid.upload.ChunkAck;
 import ro.filegrid.upload.UploadService;
 import ro.filegrid.upload.UploadStatus;
@@ -30,8 +31,10 @@ import ro.filegrid.upload.UploadStatus;
 public class UploadController {
 
     private final ObjectProvider<UploadService> service;
+    private final CategoryBulkheads bulkheads;
 
-    public UploadController(ObjectProvider<UploadService> service) {
+    public UploadController(ObjectProvider<UploadService> service, CategoryBulkheads bulkheads) {
+        this.bulkheads = bulkheads;
         this.service = service;
     }
 
@@ -49,9 +52,11 @@ public class UploadController {
         if (body.totalSize() == null || body.totalSize() < 1) {
             throw IngestErrors.validation("totalSize", "Câmpul „totalSize” este obligatoriu și pozitiv.");
         }
-        UploadStatus created = uploads().init(Category.INSPECTION_VIDEO, FileController.originalName(body.fileName()),
-                body.totalSize(), caller(authentication));
-        return ResponseEntity.status(HttpStatus.CREATED).body(created);
+        try (var permit = bulkheads.acquire(Category.INSPECTION_VIDEO)) {
+            UploadStatus created = uploads().init(Category.INSPECTION_VIDEO,
+                    FileController.originalName(body.fileName()), body.totalSize(), caller(authentication));
+            return ResponseEntity.status(HttpStatus.CREATED).body(created);
+        }
     }
 
     @GetMapping("/api/v1/uploads/{id}")
@@ -63,20 +68,31 @@ public class UploadController {
     public ChunkAck putChunk(@PathVariable String id, @PathVariable int n, HttpServletRequest request,
                              Authentication authentication) throws IOException {
         RequestScenario.read(request);
-        return uploads().putChunk(uploadId(id), n, caller(authentication), request.getInputStream(),
-                request.getContentLengthLong());
+        UploadService.Caller caller = caller(authentication);
+        UUID uploadId = uploadId(id);
+        try (var permit = bulkheads.acquire(uploads().categoryOf(uploadId, caller))) { // înainte de citirea corpului
+            return uploads().putChunk(uploadId, n, caller, request.getInputStream(), request.getContentLengthLong());
+        }
     }
 
     @PostMapping("/api/v1/uploads/{id}/complete")
     public ResponseEntity<FileMetadata> complete(@PathVariable String id, Authentication authentication) {
-        UploadService.Completed done = uploads().complete(uploadId(id), caller(authentication));
-        return ResponseEntity.status(done.created() ? HttpStatus.CREATED : HttpStatus.OK)
-                .body(FileMetadata.of(done.file()));
+        UploadService.Caller caller = caller(authentication);
+        UUID uploadId = uploadId(id);
+        try (var permit = bulkheads.acquire(uploads().categoryOf(uploadId, caller))) {
+            UploadService.Completed done = uploads().complete(uploadId, caller);
+            return ResponseEntity.status(done.created() ? HttpStatus.CREATED : HttpStatus.OK)
+                    .body(FileMetadata.of(done.file()));
+        }
     }
 
     @PostMapping("/api/v1/uploads/{id}/abort")
     public UploadStatus abort(@PathVariable String id, Authentication authentication) {
-        return uploads().abort(uploadId(id), caller(authentication));
+        UploadService.Caller caller = caller(authentication);
+        UUID uploadId = uploadId(id);
+        try (var permit = bulkheads.acquire(uploads().categoryOf(uploadId, caller))) {
+            return uploads().abort(uploadId, caller);
+        }
     }
 
     private UploadService uploads() {

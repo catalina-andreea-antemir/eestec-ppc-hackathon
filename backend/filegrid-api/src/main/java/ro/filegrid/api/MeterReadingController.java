@@ -27,6 +27,7 @@ import ro.filegrid.ingest.IngestErrors;
 import ro.filegrid.ingest.MeterReadingIngestionService;
 import ro.filegrid.ingest.Zones;
 import ro.filegrid.policy.PolicyEngine;
+import ro.filegrid.resilience.CategoryBulkheads;
 import ro.filegrid.storage.db.MeterReadingBatch;
 
 /**
@@ -42,12 +43,14 @@ public class MeterReadingController {
     private final ObjectProvider<MeterReadingIngestionService> service;
     private final PolicyEngine policies;
     private final ObjectMapper json;
+    private final CategoryBulkheads bulkheads;
 
     public MeterReadingController(ObjectProvider<MeterReadingIngestionService> service, PolicyEngine policies,
-                                  ObjectMapper json) {
+                                  ObjectMapper json, CategoryBulkheads bulkheads) {
         this.service = service;
         this.policies = policies;
         this.json = json;
+        this.bulkheads = bulkheads;
     }
 
     @PostMapping("/api/v1/meter-readings")
@@ -55,15 +58,17 @@ public class MeterReadingController {
             HttpServletRequest request, Authentication authentication,
             @RequestHeader(name = IDEMPOTENCY_KEY, required = false) String idempotencyKey) throws IOException {
         RequestScenario.read(request);
-        byte[] body = readLimited(request, policies.policy(Category.METER_READING).maxSizeBytes());
-        MeterReadingBatch batch = parse(body);
-        checkIdempotencyKey(idempotencyKey, batch);
-        MeterReadingIngestionService ingestion = service.getIfAvailable();
-        if (ingestion == null) {
-            throw IngestErrors.storageUnavailable("Baza de metadate nu este configurată (profilul db).");
+        try (var permit = bulkheads.acquire(Category.METER_READING)) { // înainte de citirea corpului (C9)
+            byte[] body = readLimited(request, policies.policy(Category.METER_READING).maxSizeBytes());
+            MeterReadingBatch batch = parse(body);
+            checkIdempotencyKey(idempotencyKey, batch);
+            MeterReadingIngestionService ingestion = service.getIfAvailable();
+            if (ingestion == null) {
+                throw IngestErrors.storageUnavailable("Baza de metadate nu este configurată (profilul db).");
+            }
+            MeterReadingIngestionService.Result result = ingestion.ingest(body, batch, authentication.getName());
+            return ResponseEntity.status(result.duplicate() ? HttpStatus.OK : HttpStatus.CREATED).body(result);
         }
-        MeterReadingIngestionService.Result result = ingestion.ingest(body, batch, authentication.getName());
-        return ResponseEntity.status(result.duplicate() ? HttpStatus.OK : HttpStatus.CREATED).body(result);
     }
 
     private static byte[] readLimited(HttpServletRequest request, long maxBytes) throws IOException {

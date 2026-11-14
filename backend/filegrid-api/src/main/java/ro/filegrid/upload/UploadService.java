@@ -363,6 +363,11 @@ public class UploadService {
 
     // --- ajutoare --------------------------------------------------------------------------------------------
 
+    /** Categoria sesiunii din rând (după verificarea proprietarului); folosită de bulkhead (C9) înainte de munca grea. */
+    public Category categoryOf(UUID id, Caller caller) {
+        return authorized(id, caller).category();
+    }
+
     private UploadSession authorized(UUID id, Caller caller) {
         UploadSession session = find(id);
         if (!caller.admin() && !session.createdBy().equals(caller.name())) {

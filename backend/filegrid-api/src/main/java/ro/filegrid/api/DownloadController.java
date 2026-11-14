@@ -22,6 +22,7 @@ import ro.filegrid.download.FileContentService;
 import ro.filegrid.download.FileQueryService;
 import ro.filegrid.ingest.FileRecord;
 import ro.filegrid.ingest.IngestErrors;
+import ro.filegrid.resilience.CategoryBulkheads;
 
 /**
  * {@code /verify}, {@code /download}, {@code /download-link} și {@code GET /downloads/{token}} (C8). Corpul se scrie
@@ -34,9 +35,11 @@ public class DownloadController {
     private final ObjectProvider<FileContentService> content;
     private final DownloadTokenService tokens;
     private final FileAccess access;
+    private final CategoryBulkheads bulkheads;
 
     public DownloadController(ObjectProvider<FileQueryService> query, ObjectProvider<FileContentService> content,
-                              DownloadTokenService tokens, FileAccess access) {
+                              DownloadTokenService tokens, FileAccess access, CategoryBulkheads bulkheads) {
+        this.bulkheads = bulkheads;
         this.query = query;
         this.content = content;
         this.tokens = tokens;
@@ -53,8 +56,10 @@ public class DownloadController {
                                                   @RequestParam(defaultValue = "false") String deep) {
         RequestScenario.read(request);
         FileRecord file = queryService().get(authentication, FileReadController.fileId(id));
-        access.audit(authentication, file, "VERIFY");
-        return contentService().verify(file, Boolean.parseBoolean(deep));
+        try (var permit = bulkheads.acquire(file.category())) {
+            access.audit(authentication, file, "VERIFY");
+            return contentService().verify(file, Boolean.parseBoolean(deep));
+        }
     }
 
     @GetMapping("/api/v1/files/{id}/download")
@@ -63,8 +68,11 @@ public class DownloadController {
             throws IOException {
         RequestScenario.read(request);
         FileRecord file = queryService().get(authentication, FileReadController.fileId(id));
-        access.audit(authentication, file, "DOWNLOAD");
-        contentService().send(file, range, response);
+        // Permisul se eliberează abia când send() se întoarce: stream terminat, sau închis de un client căzut.
+        try (var permit = bulkheads.acquire(file.category())) {
+            access.audit(authentication, file, "DOWNLOAD");
+            contentService().send(file, range, response);
+        }
     }
 
     @PostMapping("/api/v1/files/{id}/download-link")
@@ -82,7 +90,10 @@ public class DownloadController {
             throws IOException {
         RequestScenario.read(request);
         DownloadTokenService.Claims claims = tokens.verify(token);
-        contentService().send(queryService().lookup(claims.fileId()), range, response);
+        FileRecord file = queryService().lookup(claims.fileId());
+        try (var permit = bulkheads.acquire(file.category())) {
+            contentService().send(file, range, response);
+        }
     }
 
     private FileQueryService queryService() {

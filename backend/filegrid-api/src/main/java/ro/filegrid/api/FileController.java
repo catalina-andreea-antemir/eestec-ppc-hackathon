@@ -23,6 +23,7 @@ import ro.filegrid.ingest.FileIngestionService;
 import ro.filegrid.ingest.FileRecord;
 import ro.filegrid.ingest.IngestErrors;
 import ro.filegrid.ingest.Zones;
+import ro.filegrid.resilience.CategoryBulkheads;
 
 /**
  * {@code POST /api/v1/files} (C7): upload multipart pentru {@code OUTAGE_RECORD} și {@code CONNECTION_DOC}.
@@ -38,8 +39,11 @@ public class FileController {
 
     private final ObjectProvider<FileIngestionService> service;
 
-    public FileController(ObjectProvider<FileIngestionService> service) {
+    private final CategoryBulkheads bulkheads;
+
+    public FileController(ObjectProvider<FileIngestionService> service, CategoryBulkheads bulkheads) {
         this.service = service;
+        this.bulkheads = bulkheads;
     }
 
     @PostMapping("/api/v1/files")
@@ -59,10 +63,13 @@ public class FileController {
         if (ingestion == null) {
             throw IngestErrors.storageUnavailable("Baza de metadate nu este configurată (profilul db).");
         }
-        FileRecord stored = ingestion.upload(new FileIngestionService.Upload(category,
-                originalName(file.getOriginalFilename()), contentType(file.getContentType()), file.getSize(),
-                file::getInputStream, outage, authentication.getName()));
-        return ResponseEntity.status(HttpStatus.CREATED).body(FileMetadata.of(stored));
+        // Categoria vine din corpul multipart, deja parsat de container; permisul se ia înainte de munca grea (storage).
+        try (var permit = bulkheads.acquire(category)) {
+            FileRecord stored = ingestion.upload(new FileIngestionService.Upload(category,
+                    originalName(file.getOriginalFilename()), contentType(file.getContentType()), file.getSize(),
+                    file::getInputStream, outage, authentication.getName()));
+            return ResponseEntity.status(HttpStatus.CREATED).body(FileMetadata.of(stored));
+        }
     }
 
     private static Category category(String value) {
