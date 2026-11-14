@@ -1,6 +1,8 @@
 import { Routes } from '@angular/router';
 
 import { authGuard } from './core/auth/auth.guard';
+import { roleGuard } from './core/auth/role.guard';
+import { STATS_ROLES } from './core/stats/stats.models';
 
 export const routes: Routes = [
   {
@@ -16,6 +18,12 @@ export const routes: Routes = [
     path: 'search',
     canActivate: [authGuard],
     loadComponent: () => import('./features/search/search').then((m) => m.Search),
+  },
+  {
+    path: 'stats',
+    // x-roles din contract pentru /stats/*: DISPATCH și ADMIN.
+    canActivate: [authGuard, roleGuard(...STATS_ROLES)],
+    loadComponent: () => import('./features/dashboard/dashboard').then((m) => m.Dashboard),
   },
   {
     path: '',

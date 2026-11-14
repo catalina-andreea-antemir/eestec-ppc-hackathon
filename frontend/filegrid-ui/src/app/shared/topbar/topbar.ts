@@ -3,6 +3,7 @@ import { RouterLink, RouterLinkActive } from '@angular/router';
 
 import { AuthService } from '../../core/auth/auth.service';
 import { searchableCategories } from '../../core/files/files.models';
+import { canViewStats } from '../../core/stats/stats.models';
 import { CATEGORY_RULES, MANUAL_CATEGORIES } from '../../core/upload/upload.models';
 
 /** Bara de sus, comună paginilor protejate: navigare, utilizator, ieșire. */
@@ -23,4 +24,7 @@ export class Topbar {
 
   /** Link-ul Căutare apare doar pentru rolurile care pot căuta ceva (METER_SERVICE nu poate). */
   protected readonly canSearch = computed(() => searchableCategories(this.auth.user()?.role).length > 0);
+
+  /** Link-ul Statistici apare doar pentru DISPATCH și ADMIN (x-roles pe /stats/*). */
+  protected readonly canViewStats = computed(() => canViewStats(this.auth.user()?.role));
 }

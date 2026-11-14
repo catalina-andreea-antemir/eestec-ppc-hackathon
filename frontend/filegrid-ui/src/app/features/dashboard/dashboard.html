@@ -1,0 +1,25 @@
+<app-topbar />
+
+<main class="content">
+  <div class="title">
+    <div>
+      <h1>Statistici</h1>
+      <p class="lead">
+        Ce spun datele și ce decizie sugerează. Fiecare carte începe cu interpretarea. Orele sunt în UTC.
+      </p>
+    </div>
+    <button type="button" class="secondary" (click)="reload.set(reload() + 1)">Reîncarcă</button>
+  </div>
+  @if (useMocks) {
+    <p class="mock">Date de test (mock), după exemplele din contractul API.</p>
+  }
+
+  <app-requirements-card [reload]="reload()" />
+
+  <div class="grid">
+    <app-storage-advisor-card class="wide" [reload]="reload()" />
+    <app-peak-card [reload]="reload()" />
+    <app-outage-zones-card [reload]="reload()" />
+    <app-anomalies-card class="wide" [reload]="reload()" />
+  </div>
+</main>

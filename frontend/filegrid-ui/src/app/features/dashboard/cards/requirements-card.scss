@@ -1,0 +1,54 @@
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 10px;
+}
+
+.tile {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 2px solid;
+}
+
+.tile.green {
+  background: var(--ok-soft);
+  border-color: var(--ok);
+}
+
+.tile.red {
+  background: var(--danger-soft);
+  border-color: var(--danger);
+}
+
+.tile-head {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px;
+  font-size: 0.75rem;
+}
+
+.status {
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.green .status {
+  color: var(--ok);
+}
+
+.red .status {
+  color: var(--danger);
+}
+
+.id {
+  color: var(--muted);
+}
+
+p {
+  margin: 0;
+  font-size: 0.85rem;
+}

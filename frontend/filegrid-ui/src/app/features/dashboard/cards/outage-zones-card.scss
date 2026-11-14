@@ -1,0 +1,66 @@
+.zones {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.zone-head {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  font-size: 0.9rem;
+}
+
+.track {
+  height: 14px;
+  margin-top: 4px;
+  border-radius: 4px;
+  background: var(--accent-soft);
+}
+
+.bar {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  background: var(--accent);
+}
+
+.hours {
+  display: grid;
+  grid-template-columns: repeat(24, 1fr);
+  gap: 1px;
+  margin-top: 4px;
+}
+
+.h {
+  height: 10px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.h.peak {
+  outline: 2px solid var(--danger);
+  outline-offset: -1px;
+}
+
+.ticks {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  color: var(--muted);
+  font-size: 0.7rem;
+  margin-top: -8px;
+}
+
+.peak-note,
+.note,
+.muted {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.note {
+  margin: 0;
+  font-size: 0.85rem;
+}
