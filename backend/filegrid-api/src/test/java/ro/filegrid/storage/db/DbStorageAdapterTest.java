@@ -6,7 +6,6 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.matches;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
@@ -94,14 +93,15 @@ class DbStorageAdapterTest {
     @Test
     void replacementPublishesOnlyAfterAllRowsHaveBeenWrittenAndOldVersionRemoved() throws Exception {
         PreparedStatement insert = preparePut();
-        PreparedStatement oldRows = statement("DELETE c FROM");
-        PreparedStatement oldVersion = statement("AND published = 1 AND upload_chunk_size IS NULL");
+        PreparedStatement oldRows = statement("DELETE FROM dbo.blob_chunks WHERE storage_key = ?");
+        PreparedStatement oldVersion = statement("DELETE FROM dbo.blob_versions WHERE version_key = ?");
         PreparedStatement publish = statement("UPDATE dbo.blob_versions SET published = 1");
         when(publish.executeUpdate()).thenReturn(1);
 
         assertThat(adapter.put(KEY, new ByteArrayInputStream(new byte[]{1, 2}), 2, null)).isEqualTo(2);
 
-        verify(connection).prepareStatement(matches("(?s).*WHERE v\\.logical_key = \\?\\s+AND v\\.published = 1.*"));
+        verify(oldRows).setNString(1, VERSION);
+        verify(oldVersion).setNString(1, VERSION);
         InOrder order = inOrder(connection, insert, oldRows, oldVersion, publish);
         order.verify(connection).setAutoCommit(false);
         order.verify(insert).executeUpdate();
@@ -128,8 +128,8 @@ class DbStorageAdapterTest {
     @Test
     void publicationFailureRollsBackTheDeletionAndReportsSqlFailure() throws Exception {
         preparePut();
-        PreparedStatement oldRows = statement("DELETE c FROM");
-        PreparedStatement oldVersion = statement("AND published = 1 AND upload_chunk_size IS NULL");
+        PreparedStatement oldRows = statement("DELETE FROM dbo.blob_chunks WHERE storage_key = ?");
+        PreparedStatement oldVersion = statement("DELETE FROM dbo.blob_versions WHERE version_key = ?");
         PreparedStatement publish = statement("UPDATE dbo.blob_versions SET published = 1");
         when(publish.executeUpdate()).thenThrow(new SQLException("sensitive SQL error", "23000", 2601));
 
@@ -147,17 +147,18 @@ class DbStorageAdapterTest {
 
     @Test
     void deleteReportsRemovedVersionOnlyOnceIncludingPendingVersions() throws Exception {
-        PreparedStatement chunks = statement("DELETE c FROM");
-        PreparedStatement versions = statement("AND retired_at IS NULL");
-        statement("AND retired_at IS NOT NULL");
-        when(versions.executeUpdate()).thenReturn(1, 0);
+        ResultSet targets = removalTargets();
+        when(targets.next()).thenReturn(true, false, false);
+        PreparedStatement chunks = statement("DELETE FROM dbo.blob_chunks WHERE storage_key = ?");
+        PreparedStatement versions = statement("DELETE FROM dbo.blob_versions WHERE version_key = ?");
 
         assertThat(adapter.delete(KEY)).isTrue();
         assertThat(adapter.delete(KEY)).isFalse();
 
-        verify(chunks, times(2)).executeUpdate();
-        verify(connection, times(2)).prepareStatement(contains(
-                "DELETE FROM dbo.blob_versions WHERE logical_key = ? AND retired_at IS NULL"));
+        verify(chunks).setNString(1, VERSION);
+        verify(versions).setNString(1, VERSION);
+        verify(chunks).executeUpdate();
+        verify(versions).executeUpdate();
         verify(connection, times(2)).commit();
     }
 
@@ -413,12 +414,44 @@ class DbStorageAdapterTest {
 
     private PreparedStatement preparePut() throws Exception {
         statement("INSERT INTO dbo.blob_versions");
-        statement("DELETE c FROM");
-        statement("AND published = 1 AND upload_chunk_size IS NULL");
+        removalTargets();
+        statement("DELETE FROM dbo.blob_chunks WHERE storage_key = ?");
+        statement("DELETE FROM dbo.blob_versions WHERE version_key = ?");
         statement("SET published = 0, retired_at");
         PreparedStatement publish = statement("UPDATE dbo.blob_versions SET published = 1");
         when(publish.executeUpdate()).thenReturn(1);
         return prepareChunkInsert();
+    }
+
+    private ResultSet removalTargets() throws SQLException {
+        ResultSet targets = resultOf(statement("WITH (FORCESEEK, INDEX(IX_blob_versions_logical_key))"));
+        when(targets.next()).thenReturn(true, false);
+        when(targets.getString(1)).thenReturn(VERSION);
+        return targets;
+    }
+
+    @Test
+    void deadlockAfterConsumingSourceRollsBackWithoutReplayingIt() throws Exception {
+        preparePut();
+        PreparedStatement publish = statement("UPDATE dbo.blob_versions SET published = 1");
+        when(publish.executeUpdate()).thenThrow(new SQLException("deadlock victim", "40001", 1205));
+        InputStream nonRepeatable = new ByteArrayInputStream(new byte[]{1, 2, 3}) {
+            @Override
+            public synchronized void reset() {
+                throw new AssertionError("Consumed source must never be replayed");
+            }
+            @Override
+            public void close() {
+                throw new AssertionError("Source belongs to caller");
+            }
+        };
+        assertThatThrownBy(() -> adapter.put(KEY, nonRepeatable, 3, null))
+                .isInstanceOf(StorageUnavailableException.class);
+        verify(dataSource).getConnection();
+        verify(publish).executeUpdate();
+        verify(connection).rollback();
+        verify(connection).close();
+        verify(connection, never()).commit();
     }
 
     private PreparedStatement prepareChunkInsert() throws SQLException {
