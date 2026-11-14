@@ -1,0 +1,2612 @@
+openapi: 3.0.3
+info:
+  title: FileGrid PPC API
+  version: 1.0.0
+  description: |
+    Contractul comun al FileGrid PPC (secțiunile 4, 4.1, 4.2, 4.3 și 4.4 din `docs/Impartirea-taskurilor-FileGrid.pdf`, v4).
+    Autor: Catalina (C2). Confirmat de: Ovidiu, Flavius. De la confirmare, contractul se schimbă doar cu acordul tuturor.
+
+    ## Convenții generale
+    * Toate căile de mai jos sunt relative la `/api/v1`. Din exterior, singura intrare este nginx, pe HTTPS
+      (`https://localhost`); portul 80 redirecționează la HTTPS. `/actuator` nu este expus de nginx.
+    * Autentificare: `Authorization: Bearer <accessToken>` (JWT, 15 minute). Excepții, fără token: `GET /health`,
+      `POST /auth/login`, `POST /auth/refresh` și `GET /downloads/{token}` (token-ul semnat din URL este autorizarea).
+    * Roluri: `DISPATCH`, `FIELD`, `CONNECTIONS`, `METER_SERVICE`, `ADMIN`. Fiecare operație are `x-roles`; matricea
+      completă pe categorii este în `components.x-role-matrix` și în descrierea schemei `Role`.
+    * Fiecare răspuns (și cele de eroare) poartă header-ul `X-Trace-Id`; același identificator apare în loguri (Loki)
+      și permite urmărirea operației de la cerere până la storage.
+    * Toate momentele sunt ISO-8601 UTC (`2026-11-14T06:00:00Z`).
+    * Erorile au mereu formatul `Error` (JSON), cu un câmp `code` stabil, pe care clienții îl pot testa.
+    * `429` și `503` poartă header-ul `Retry-After` (secunde); clientul reîncearcă cu aceeași cheie / aceeași bucată.
+    * Metricile Prometheus au nume fixe (secțiunea 4.3), listate în `components.x-metrics`.
+
+    ## Puncte propuse, de confirmat (Ovidiu, Flavius)
+    Planul v4 nu fixează aceste detalii; sunt propuse aici ca să existe un contract complet. Dacă nu se confirmă,
+    se schimbă doar în acest fișier.
+
+    1. **Format `Idempotency-Key`**: `meterId + "_" + ts` al primei citiri (exact ca în corp), de exemplu
+       `RO-MUN-0004821_2026-11-14T00:00:00Z`. Serverul compară șirul întreg, nu îl parsează.
+    2. **429 vs 503**: `429` când bulkhead-ul categoriei e saturat (limită din politică); `503` când un storage /
+       FileGridMeta e indisponibil sau un lot e în curs de procesare. Ambele cu `Retry-After`.
+    3. **Coduri 409** (câmpul `code`): `FILE_CORRUPT`, `BATCH_OVERLAP`, `CHUNK_OUT_OF_ORDER`, `UPLOAD_BUSY`
+       (lease ocupat, cu `Retry-After`), `UPLOAD_INCOMPLETE` (complete înainte de toate bucățile),
+       `UPLOAD_NOT_ACTIVE` (sesiune încheiată, anulată sau abandonată).
+    4. **Coduri în plus față de lista din plan**: `404` (resursă inexistentă), `413` (peste mărimea maximă din
+       politică), `416` (Range invalid).
+    5. **`POST /files`** acceptă doar `OUTAGE_RECORD` și `CONNECTION_DOC` (fișiere mici, până la 20 MB);
+       **`POST /uploads`** acceptă doar `INSPECTION_VIDEO` (singura categorie cu `chunkSize` în 4.2).
+       `METER_READING` intră doar prin `POST /meter-readings`.
+    6. **`GET /files`**: paginare cu `page` (de la 1) și `size` (implicit 20, maxim 100); `from`/`to` filtrează
+       `createdAt`. Fără `category`, rezultatele se restrâng la categoriile permise rolului; cu o categorie
+       nepermisă răspunsul e `403`.
+    7. **Hash la descărcare**: `X-Content-SHA256` este hash-ul bytes-ilor trimiși (la `CONNECTION_DOC`, care se
+       descarcă decriptat, este `sha256Plain`). `/verify` fără `deep` compară `sha256` (bytes-ii stocați).
+    8. **Link expirat sau invalid** la `GET /downloads/{token}`: `401`.
+    9. **Claim JWT** pentru rol: `role` (un singur șir); subiectul este `sub` (numele de utilizator).
+    10. **`POST /admin/benchmark/run`** este sincron (răspunde `200` cu rezultatele celor 12 combinații; timeout nginx
+        300 s), fără corp.
+    11. **`X-Scenario`**: șir liber (`^[a-z0-9_-]{1,32}$`), valori așteptate `normal`, `peak`, `storm`; benchmark-ul
+        folosește `benchmark`.
+    12. **Formele JSON ale `/stats/*`** (planul fixează doar numele endpoint-urilor și faptul că fiecare răspuns are
+        o propoziție de interpretare în română, în câmpul `interpretation`).
+    13. **Valorile etichetelor de metrici** `operation`, `outcome`, `error` (vezi `x-metrics`).
+  contact:
+    name: Catalina (lead tehnic)
+servers:
+  - url: https://localhost/api/v1
+    description: Din exterior, prin nginx (TLS self-signed, generat la prima pornire)
+  - url: http://api:8080/api/v1
+    description: Doar pe rețeaua internă storage-net (folosit de meter-simulator, fără nginx)
+tags:
+  - name: Sistem
+    description: Health fără autentificare.
+  - name: Autentificare
+    description: Login și reînnoirea token-ului.
+  - name: Citiri contoare
+    description: Loturi de citiri, idempotente.
+  - name: Fișiere
+    description: Upload fișier mic, căutare, detalii, verificare.
+  - name: Upload în bucăți
+    description: Upload cu reluare pentru fișiere mari (video).
+  - name: Descărcare
+    description: Descărcare directă și prin link semnat.
+  - name: Statistici
+    description: Statistici și interpretări pentru decizie (secțiunea 5 din cerință).
+  - name: Administrare
+    description: Benchmark și health per storage (doar ADMIN).
+security:
+  - bearerAuth: []
+paths:
+  /health:
+    get:
+      tags: [Sistem]
+      operationId: getHealth
+      summary: Health simplu (api și FileGridMeta)
+      description: |
+        Fără autentificare. Răspunde `{"status":"UP"}` doar când api și FileGridMeta răspund; altfel `503` cu
+        `{"status":"DOWN"}`. Folosit de scriptul de start și de healthcheck-ul nginx.
+      security: []
+      x-roles: [public]
+      responses:
+        '200':
+          description: api și FileGridMeta răspund.
+          headers:
+            X-Trace-Id:
+              $ref: '#/components/headers/X-Trace-Id'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+              example:
+                status: UP
+        '503':
+          description: api sau FileGridMeta nu răspund.
+          headers:
+            X-Trace-Id:
+              $ref: '#/components/headers/X-Trace-Id'
+            Retry-After:
+              $ref: '#/components/headers/Retry-After'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+              example:
+                status: DOWN
+  /auth/login:
+    post:
+      tags: [Autentificare]
+      operationId: login
+      summary: Autentificare, întoarce JWT și token de reîmprospătare
+      description: |
+        `accessToken` (JWT) este valabil 15 minute, `refreshToken` 8 ore. JWT-ul are claim-urile `sub` (utilizator) și
+        `role` (unul dintre cele 5 roluri). Parola greșită sau utilizator necunoscut: `401`.
+      security: []
+      x-roles: [public]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            example:
+              username: dispecer
+              password: parola-generata-in-env
+      responses:
+        '200':
+          description: Autentificat.
+          headers:
+            X-Trace-Id:
+              $ref: '#/components/headers/X-Trace-Id'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenPair'
+              example:
+                accessToken: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJkaXNwZWNlciIsInJvbGUiOiJESVNQQVRDSCIsImV4cCI6MTc5NDY1MjMwMH0.c2lnbmF0dXJh
+                refreshToken: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJkaXNwZWNlciIsInR5cCI6InJlZnJlc2giLCJleHAiOjE3OTQ2NzczMDB9.c2lnbmF0dXJh
+                expiresIn: 900
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /auth/refresh:
+    post:
+      tags: [Autentificare]
+      operationId: refreshToken
+      summary: Reînnoiește accessToken, fără parolă
+      description: |
+        Token de reîmprospătare stateless; revocarea nu este suportată. Interfața și simulatorul apelează acest
+        endpoint la `401` și repetă cererea o singură dată.
+      security: []
+      x-roles: [public]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+            example:
+              refreshToken: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJkaXNwZWNlciIsInR5cCI6InJlZnJlc2giLCJleHAiOjE3OTQ2NzczMDB9.c2lnbmF0dXJh
+      responses:
+        '200':
+          description: accessToken nou.
+          headers:
+            X-Trace-Id:
+              $ref: '#/components/headers/X-Trace-Id'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessToken'
+              example:
+                accessToken: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJkaXNwZWNlciIsInJvbGUiOiJESVNQQVRDSCIsImV4cCI6MTc5NDY1MzIwMH0.c2lnbmF0dXJh
+                expiresIn: 900
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /meter-readings:
+    post:
+      tags: [Citiri contoare]
+      operationId: ingestMeterReadings
+      summary: Primește un lot de citiri de la un contor (idempotent)
+      description: |
+        Un lot are 1–50 KB (~70 de octeți per citire, deci 15–700 de citiri; implicit 96 = o zi la 15 minute).
+        Fiecare citire rămâne unică prin `(meter_id, reading_ts)`. Corpul brut se salvează ca fișier
+        `METER_READING` prin politică (cu SHA-256 și rând în `files`).
+
+        **Idempotency-Key** = `meterId + "_" + ts` al primei citiri; trebuie să coincidă cu corpul, altfel `400`.
+
+        | Rezultat | Cod | Când |
+        |---|---|---|
+        | Lot nou | `201` | citirile s-au inserat și fișierul a fost confirmat în storage |
+        | Lot deja confirmat | `200` | toate rândurile au `file_id`; se numără un duplicat respins |
+        | Suprapunere parțială cu alt lot | `409` `BATCH_OVERLAP` | eroare de client, nu se retrimite |
+        | Lot în curs sau storage indisponibil | `503` + `Retry-After` | clientul retrimite cu aceeași cheie |
+        | Bulkhead METER_READING saturat | `429` + `Retry-After` | doar pentru această categorie |
+
+        Header-ul opțional `X-Scenario` etichetează rularea în `operation_metrics` (`normal`, `peak`, `storm`).
+      x-roles: [METER_SERVICE, ADMIN]
+      x-metrics: [filegrid_operation_seconds, filegrid_operation_errors_total, filegrid_meter_duplicates_total, filegrid_meter_unconfirmed, filegrid_bulkhead_rejected_total]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/Scenario'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MeterReadingBatch'
+            example:
+              meterId: RO-MUN-0004821
+              zone: Muntenia
+              readings:
+                - ts: '2026-11-14T00:00:00Z'
+                  kwh: 0.412
+                - ts: '2026-11-14T00:15:00Z'
+                  kwh: 0.397
+                - ts: '2026-11-14T00:30:00Z'
+                  kwh: 0.388
+      responses:
+        '201':
+          description: Lot nou, confirmat.
+          headers:
+            X-Trace-Id:
+              $ref: '#/components/headers/X-Trace-Id'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeterReadingResult'
+              example:
+                fileId: 3f1c8a52-7b6e-4c1d-9a38-2e5d0f9b7a14
+                meterId: RO-MUN-0004821
+                readingsCount: 96
+                sha256: 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08
+                duplicate: false
+        '200':
+          description: Lot deja confirmat; duplicat ignorat (același `fileId` ca la prima trimitere).
+          headers:
+            X-Trace-Id:
+              $ref: '#/components/headers/X-Trace-Id'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeterReadingResult'
+              example:
+                fileId: 3f1c8a52-7b6e-4c1d-9a38-2e5d0f9b7a14
+                meterId: RO-MUN-0004821
+                readingsCount: 96
+                sha256: 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08
+                duplicate: true
+        '400':
+          description: |
+            Corp invalid, zonă necunoscută, listă goală sau `Idempotency-Key` diferit de `meterId + "_" + ts` al
+            primei citiri.
+          headers:
+            X-Trace-Id:
+              $ref: '#/components/headers/X-Trace-Id'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                status: 400
+                code: IDEMPOTENCY_KEY_MISMATCH
+                message: Idempotency-Key nu coincide cu meterId și ts-ul primei citiri din corp.
+                traceId: 7d2f0c9e4a1b4c38b6a5e1f20d3c8a91
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Lotul se suprapune parțial cu un alt lot deja primit (eroare de client).
+          headers:
+            X-Trace-Id:
+              $ref: '#/components/headers/X-Trace-Id'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                status: 409
+                code: BATCH_OVERLAP
+                message: Lotul se suprapune parțial cu un lot existent pentru același contor.
+                traceId: 1b9e4d7c0f2a4e63a8d1c5b7e9f30a24
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /files:
+    post:
+      tags: [Fișiere]
+      operationId: uploadFile
+      summary: Upload fișier mic (multipart)
+      description: |
+        Pentru `OUTAGE_RECORD` și `CONNECTION_DOC`, până la 20 MB (limita din politică, 4.2). Pentru `OUTAGE_RECORD`
+        sunt obligatorii `zone` (Muntenia / Banat / Dobrogea) și `occurredAt` (implicit momentul încărcării);
+        `stationId` e opțional; lipsa lor sau valori invalide: `400`. Fluxul: SHA-256 în streaming, scriere în
+        storage-ul din politică, abia apoi metadate cu stare `CONFIRMED`. `CONNECTION_DOC` se criptează (AES-GCM) înainte
+        de storage; răspunsul conține `sha256` (bytes-ii stocați) și `sha256Plain` (originalul).
+
+        Rolurile permise per categorie: `OUTAGE_RECORD` → FIELD, ADMIN; `CONNECTION_DOC` → CONNECTIONS, ADMIN.
+        Orice alt acces: `403` (la documente incrementează `filegrid_doc_access_total{result="denied"}`).
+      x-roles: [FIELD, CONNECTIONS, ADMIN]
+      x-metrics: [filegrid_operation_seconds, filegrid_operation_errors_total, filegrid_bulkhead_rejected_total, filegrid_doc_access_total]
+      parameters:
+        - $ref: '#/components/parameters/Scenario'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [category, file]
+              properties:
+                category:
+                  type: string
+                  enum: [OUTAGE_RECORD, CONNECTION_DOC]
+                file:
+                  type: string
+                  format: binary
+                zone:
+                  $ref: '#/components/schemas/Zone'
+                occurredAt:
+                  type: string
+                  format: date-time
+                  description: Doar OUTAGE_RECORD. ISO-8601 UTC; implicit momentul încărcării.
+                stationId:
+                  type: string
+                  description: Doar OUTAGE_RECORD, opțional.
+            encoding:
+              file:
+                contentType: application/octet-stream, application/pdf, image/jpeg, image/png
+      responses:
+        '201':
+          description: Fișier confirmat în storage.
+          headers:
+            X-Trace-Id:
+              $ref: '#/components/headers/X-Trace-Id'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileMetadata'
+              examples:
+                outage:
+                  summary: Înregistrare de avarie
+                  value:
+                    id: 5b7e2c1a-90d4-4f6e-8a13-c4d2e7f0b9a6
+                    category: OUTAGE_RECORD
+                    originalName: avarie-ST-Brasov-114.csv
+                    contentType: text/csv
+                    size: 4718592
+                    sha256: 2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae
+                    sha256Plain: null
+                    storage: S3
+                    status: CONFIRMED
+                    encrypted: false
+                    createdAt: '2026-11-14T09:41:12Z'
+                    createdBy: teren1
+                    outage:
+                      zone: Muntenia
+                      stationId: ST-BRASOV-114
+                      occurredAt: '2026-11-14T09:32:00Z'
+                document:
+                  summary: Document de racordare (criptat)
+                  value:
+                    id: a1d94f30-6c2b-4e87-b5f0-3d8e91c7a2b4
+                    category: CONNECTION_DOC
+                    originalName: cerere-racordare-fictiv-001.pdf
+                    contentType: application/pdf
+                    size: 1048576
+                    sha256: fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9
+                    sha256Plain: 3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a
+                    storage: DB
+                    status: CONFIRMED
+                    encrypted: true
+                    createdAt: '2026-11-14T09:44:03Z'
+                    createdBy: racordari1
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    get:
+      tags: [Fișiere]
+      operationId: searchFiles
+      summary: Căutare fișiere (filtre și paginare)
+      description: |
+        Filtre: `category`, `q` (text în numele fișierului), `from` / `to` (interval pe `createdAt`), `page` (de la 1),
+        `size`. Fără `category`, rezultatele se restrâng la categoriile permise rolului; cu o categorie nepermisă: `403`.
+        Pentru `CONNECTION_DOC` numele original e criptat în storage, deci `q` nu se aplică numelui (documentele
+        se pot filtra doar după celelalte filtre); numele decriptat se întoarce rolurilor autorizate, iar accesul
+        se auditează.
+
+        Categorii vizibile: DISPATCH → OUTAGE_RECORD, METER_READING; FIELD → OUTAGE_RECORD, INSPECTION_VIDEO;
+        CONNECTIONS → CONNECTION_DOC; ADMIN → toate; METER_SERVICE → niciuna.
+      x-roles: [DISPATCH, FIELD, CONNECTIONS, ADMIN]
+      parameters:
+        - name: category
+          in: query
+          schema:
+            $ref: '#/components/schemas/Category'
+        - name: q
+          in: query
+          description: Text căutat în numele fișierului (nu se aplică la CONNECTION_DOC).
+          schema:
+            type: string
+            maxLength: 200
+        - name: from
+          in: query
+          description: Început de interval, inclusiv (după `createdAt`).
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          description: Sfârșit de interval, exclusiv (după `createdAt`).
+          schema:
+            type: string
+            format: date-time
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: size
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: Pagină de rezultate.
+          headers:
+            X-Trace-Id:
+              $ref: '#/components/headers/X-Trace-Id'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FilePage'
+              example:
+                items:
+                  - id: 5b7e2c1a-90d4-4f6e-8a13-c4d2e7f0b9a6
+                    category: OUTAGE_RECORD
+                    originalName: avarie-ST-Brasov-114.csv
+                    contentType: text/csv
+                    size: 4718592
+                    sha256: 2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae
+                    sha256Plain: null
+                    storage: S3
+                    status: CONFIRMED
+                    encrypted: false
+                    createdAt: '2026-11-14T09:41:12Z'
+                    createdBy: teren1
+                    outage:
+                      zone: Muntenia
+                      stationId: ST-BRASOV-114
+                      occurredAt: '2026-11-14T09:32:00Z'
+                  - id: 8e0a6d47-1f3b-4a52-b9c8-7d5e2a4f1c03
+                    category: OUTAGE_RECORD
+                    originalName: avarie-ST-Constanta-020.csv
+                    contentType: text/csv
+                    size: 2097152
+                    sha256: 4e07408562bedb8b60ce05c1decfe3ad16b72230967de01f640b7e4729b49fce
+                    sha256Plain: null
+                    storage: S3
+                    status: CONFIRMED
+                    encrypted: false
+                    createdAt: '2026-11-14T08:15:40Z'
+                    createdBy: teren2
+                    outage:
+                      zone: Dobrogea
+                      stationId: ST-CONSTANTA-020
+                      occurredAt: '2026-11-14T08:10:00Z'
+                page: 1
+                size: 20
+                totalItems: 2
+                totalPages: 1
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /files/{id}:
+    get:
+      tags: [Fișiere]
+      operationId: getFile
+      summary: Metadatele unui fișier
+      description: "Rolurile permise sunt cele ale categoriei fișierului (vezi `GET /files`). Alt rol: `403`."
+      x-roles: [DISPATCH, FIELD, CONNECTIONS, ADMIN]
+      parameters:
+        - $ref: '#/components/parameters/FileId'
+      responses:
+        '200':
+          description: Metadate.
+          headers:
+            X-Trace-Id:
+              $ref: '#/components/headers/X-Trace-Id'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileMetadata'
+              example:
+                id: 6c4b1e9d-3a70-4d25-8f6b-0e9a2d7c5b31
+                category: INSPECTION_VIDEO
+                originalName: drona-linie-110kV-tronson-7.mp4
+                contentType: video/mp4
+                size: 1181116006
+                sha256: 6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b
+                sha256Plain: null
+                storage: FTP
+                status: CONFIRMED
+                encrypted: false
+                createdAt: '2026-11-14T10:20:55Z'
+                createdBy: teren1
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /files/{id}/verify:
+    get:
+      tags: [Fișiere]
+      operationId: verifyFile
+      summary: Verificarea integrității (recalcul SHA-256)
+      description: |
+        Citește fișierul din storage în streaming, recalculează SHA-256 și compară cu cel stocat (`sha256`, pe bytes-ii
+        stocați). Nepotrivire: `409` cu `code: FILE_CORRUPT` și mesajul „fișier corupt”; se incrementează
+        `filegrid_integrity_failures_total`. Cu `deep=true`, pentru `CONNECTION_DOC` se decriptează și se verifică
+        și `sha256Plain`; la celelalte categorii `deep` nu are efect.
+      x-roles: [DISPATCH, FIELD, CONNECTIONS, ADMIN]
+      x-metrics: [filegrid_operation_seconds, filegrid_integrity_failures_total, filegrid_doc_access_total]
+      parameters:
+        - $ref: '#/components/parameters/FileId'
+        - name: deep
+          in: query
+          description: "Doar CONNECTION_DOC: decriptează și verifică și `sha256Plain`."
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Hash potrivit.
+          headers:
+            X-Trace-Id:
+              $ref: '#/components/headers/X-Trace-Id'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerifyResult'
+              example:
+                fileId: a1d94f30-6c2b-4e87-b5f0-3d8e91c7a2b4
+                ok: true
+                algorithm: SHA-256
+                deep: true
+                expectedSha256: fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9
+                actualSha256: fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9
+                expectedSha256Plain: 3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a
+                actualSha256Plain: 3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a
+                verifiedAt: '2026-11-14T11:02:31Z'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Hash nepotrivit, fișier corupt.
+          headers:
+            X-Trace-Id:
+              $ref: '#/components/headers/X-Trace-Id'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                status: 409
+                code: FILE_CORRUPT
+                message: fișier corupt
+                traceId: c0e57a1d93f84b26a4d8e1b7f52c6a09
+                details:
+                  fileId: 6c4b1e9d-3a70-4d25-8f6b-0e9a2d7c5b31
+                  expectedSha256: 6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b
+                  actualSha256: d4735e3a265e16eee03f59718b9b5d03019c07d8b6c51f90da3a666eec13ab35
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /files/{id}/download:
+    get:
+      tags: [Descărcare]
+      operationId: downloadFile
+      summary: Descărcare directă, în streaming, cu reluare (Range)
+      description: |
+        Trimite fișierul în streaming, cu `Accept-Ranges: bytes`; cu `Range` răspunde `206` și `Content-Range`, ca
+        descărcarea să se poată relua. **`CONNECTION_DOC` nu suportă `Range`** (criptat în segmente): header-ul se
+        ignoră, răspunsul e `200` complet, fără `Accept-Ranges`. Header-ul `X-Content-SHA256` pleacă înaintea
+        corpului.
+
+        Corupere: fișierele sub pragul din politică se verifică înainte de trimitere (răspuns `409` corect,
+        `FILE_CORRUPT`); la cele mari, hash-ul pleacă înainte, iar conexiunea se întrerupe la nepotrivire și
+        incidentul se loghează. `/verify` rămâne calea principală. Interfața descarcă prin link semnat
+        (`POST /files/{id}/download-link`), nu prin acest endpoint.
+      x-roles: [DISPATCH, FIELD, CONNECTIONS, ADMIN]
+      x-metrics: [filegrid_operation_seconds, filegrid_integrity_failures_total, filegrid_doc_access_total]
+      parameters:
+        - $ref: '#/components/parameters/FileId'
+        - $ref: '#/components/parameters/Range'
+      responses:
+        '200':
+          $ref: '#/components/responses/FileContent'
+        '206':
+          $ref: '#/components/responses/PartialFileContent'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/FileCorrupt'
+        '416':
+          $ref: '#/components/responses/RangeNotSatisfiable'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /files/{id}/download-link:
+    post:
+      tags: [Descărcare]
+      operationId: createDownloadLink
+      summary: Creează un URL semnat de descărcare (15 minute)
+      description: |
+        Rolul se verifică și accesul se auditează **la crearea link-ului**. URL-ul este semnat (HMAC), legat de fișier
+        și de utilizator, valabil 15 minute (suficient ca descărcarea să se reia după o întrerupere) și nu conține
+        date personale. Browserul descarcă apoi nativ, în streaming și cu reluare (`Range`), fără token în
+        antet. nginx nu loghează calea `/api/v1/downloads/` (token în cale).
+      x-roles: [DISPATCH, FIELD, CONNECTIONS, ADMIN]
+      x-metrics: [filegrid_doc_access_total]
+      parameters:
+        - $ref: '#/components/parameters/FileId'
+      responses:
+        '200':
+          description: Link creat.
+          headers:
+            X-Trace-Id:
+              $ref: '#/components/headers/X-Trace-Id'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DownloadLink'
+              example:
+                url: /api/v1/downloads/eyJmIjoiNmM0YjFlOWQtM2E3MC00ZDI1LThmNmItMGU5YTJkN2M1YjMxIiwiZSI6MTc5NDY1MzMwMH0.q8Zr3kT1Yw0
+                expiresAt: '2026-11-14T10:36:55Z'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /downloads/{token}:
+    get:
+      tags: [Descărcare]
+      operationId: downloadByToken
+      summary: Descărcare prin link semnat (fără Authorization)
+      description: |
+        Autorizarea este token-ul semnat din cale. Comportamentul și header-ele sunt cele de la
+        `GET /files/{id}/download` (streaming, `Range` / `206`, `X-Content-SHA256`; fără `Range` la `CONNECTION_DOC`).
+        Token expirat, invalid sau modificat: `401`. Corpul răspunsului cu `Content-Disposition: attachment` permite
+        descărcarea nativă a browserului.
+      security: []
+      x-roles: [public (token semnat)]
+      x-metrics: [filegrid_operation_seconds, filegrid_integrity_failures_total, filegrid_doc_access_total]
+      parameters:
+        - name: token
+          in: path
+          required: true
+          description: Token semnat (HMAC), obținut din `download-link`.
+          schema:
+            type: string
+        - $ref: '#/components/parameters/Range'
+      responses:
+        '200':
+          $ref: '#/components/responses/FileContent'
+        '206':
+          $ref: '#/components/responses/PartialFileContent'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/FileCorrupt'
+        '416':
+          $ref: '#/components/responses/RangeNotSatisfiable'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /uploads:
+    post:
+      tags: [Upload în bucăți]
+      operationId: initUpload
+      summary: Inițializează un upload în bucăți
+      description: |
+        Pentru fișiere mari (`INSPECTION_VIDEO`). Întoarce `uploadId` și `chunkSize` din politică (minim 5 MiB,
+        maxim 64 MiB; implicit 16 MiB). Sesiunea rămâne legată de storage-ul ales la `init`; funcționează pe toate cele 3
+        storage-uri. `totalSize` peste maximul din politică (5 GB): `413`.
+
+        Dacă storage-ul sesiunii cade, bucățile primesc `503` cu `Retry-After`, iar clientul reia după revenire.
+        Dacă storage-ul nu revine în 10 minute sau clientul apelează `abort`, sesiunea se abandonează, iar un upload
+        nou alege storage-ul de rezervă (după health). Sesiunile inactive peste 24 h se curăță automat.
+      x-roles: [FIELD, ADMIN]
+      x-metrics: [filegrid_operation_seconds, filegrid_operation_errors_total, filegrid_transfers_failed_total, filegrid_bulkhead_rejected_total]
+      parameters:
+        - $ref: '#/components/parameters/Scenario'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UploadInit'
+            example:
+              category: INSPECTION_VIDEO
+              fileName: drona-linie-110kV-tronson-7.mp4
+              totalSize: 1181116006
+      responses:
+        '201':
+          description: Sesiune creată.
+          headers:
+            X-Trace-Id:
+              $ref: '#/components/headers/X-Trace-Id'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadSession'
+              example:
+                uploadId: d2f7a914-6b3e-4c80-91a5-e8c0b72d4f16
+                category: INSPECTION_VIDEO
+                fileName: drona-linie-110kV-tronson-7.mp4
+                storage: FTP
+                totalSize: 1181116006
+                chunkSize: 16777216
+                totalChunks: 71
+                nextChunk: 1
+                receivedBytes: 0
+                status: IN_PROGRESS
+                createdAt: '2026-11-14T10:20:55Z'
+                lastActivityAt: '2026-11-14T10:20:55Z'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /uploads/{id}:
+    get:
+      tags: [Upload în bucăți]
+      operationId: getUpload
+      summary: Starea unui upload (pentru reluare, inclusiv după refresh de pagină)
+      description: |
+        `nextChunk` este următoarea bucată așteptată. După refresh, browserul nu mai are acces la fișier: interfața
+        cere re-selectarea lui și verifică numele și mărimea (`fileName`, `totalSize`) înainte de reluare.
+        Doar rolul care a inițiat upload-ul (sau ADMIN) poate citi starea.
+      x-roles: [FIELD, ADMIN]
+      parameters:
+        - $ref: '#/components/parameters/UploadId'
+      responses:
+        '200':
+          description: Starea sesiunii.
+          headers:
+            X-Trace-Id:
+              $ref: '#/components/headers/X-Trace-Id'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadSession'
+              example:
+                uploadId: d2f7a914-6b3e-4c80-91a5-e8c0b72d4f16
+                category: INSPECTION_VIDEO
+                fileName: drona-linie-110kV-tronson-7.mp4
+                storage: FTP
+                totalSize: 1181116006
+                chunkSize: 16777216
+                totalChunks: 71
+                nextChunk: 36
+                receivedBytes: 587202560
+                status: IN_PROGRESS
+                createdAt: '2026-11-14T10:20:55Z'
+                lastActivityAt: '2026-11-14T10:27:09Z'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /uploads/{id}/chunks/{n}:
+    put:
+      tags: [Upload în bucăți]
+      operationId: putChunk
+      summary: Trimite o bucată (corp binar, strict secvențial)
+      description: |
+        `n` pornește de la 1 și se trimite strict secvențial: `n` = următorul așteptat (`nextChunk`), altfel `409`
+        `CHUNK_OUT_OF_ORDER`. Toate bucățile au exact `chunkSize` octeți, cu excepția ultimei (mai mică). Corpul se
+        scrie în streaming, fără buffer de dimensiunea lui. Hash-ul SHA-256 al bucății se calculează la primire și
+        se întoarce în `ChunkAck`.
+
+        **Retrimiterea aceleiași bucăți este sigură**: o bucată deja primită se confirmă idempotent (`200`,
+        `duplicate: true`). Dacă altă cerere scrie în același moment aceeași sesiune (lease per upload), răspunsul
+        este `409` `UPLOAD_BUSY` cu `Retry-After`. Storage-ul sesiunii indisponibil: `503` cu `Retry-After`.
+        Clientul reîncearcă cu backoff exponențial până la un timeout de 2 minute.
+      x-roles: [FIELD, ADMIN]
+      x-metrics: [filegrid_operation_seconds, filegrid_operation_errors_total, filegrid_transfers_failed_total, filegrid_bulkhead_rejected_total]
+      parameters:
+        - $ref: '#/components/parameters/UploadId'
+        - name: n
+          in: path
+          required: true
+          description: Numărul bucății, de la 1.
+          schema:
+            type: integer
+            minimum: 1
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '200':
+          description: Bucată primită (sau deja primită, confirmată idempotent).
+          headers:
+            X-Trace-Id:
+              $ref: '#/components/headers/X-Trace-Id'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChunkAck'
+              example:
+                n: 36
+                size: 16777216
+                sha256: ef2d127de37b942baad06145e54b0c619a1f22327b2ebbcfbec78f5564afe39d
+                nextChunk: 37
+                duplicate: false
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: |
+            `CHUNK_OUT_OF_ORDER` (n diferit de `nextChunk`), `UPLOAD_BUSY` (lease ocupat de altă cerere, cu `Retry-After`) sau
+            `UPLOAD_NOT_ACTIVE` (sesiune încheiată, anulată sau abandonată).
+          headers:
+            X-Trace-Id:
+              $ref: '#/components/headers/X-Trace-Id'
+            Retry-After:
+              $ref: '#/components/headers/Retry-After'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                outOfOrder:
+                  summary: Bucată în afara ordinii
+                  value:
+                    status: 409
+                    code: CHUNK_OUT_OF_ORDER
+                    message: Se aștepta bucata 36, s-a primit 38.
+                    traceId: 5a3e91c7d0b24f68a1c4e7b92d08f3a5
+                    details:
+                      expectedChunk: 36
+                      receivedChunk: 38
+                busy:
+                  summary: Lease ocupat de altă cerere
+                  value:
+                    status: 409
+                    code: UPLOAD_BUSY
+                    message: Altă cerere scrie în acest moment în aceeași sesiune; reîncearcă.
+                    traceId: 9e1b6f40c7d34a85b2e8d1f60a3c7b92
+                    retryAfterSeconds: 1
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /uploads/{id}/complete:
+    post:
+      tags: [Upload în bucăți]
+      operationId: completeUpload
+      summary: Finalizează upload-ul
+      description: |
+        Verifică că toate bucățile au fost primite (`UPLOAD_INCOMPLETE` dacă nu), calculează hash-ul final citind din
+        storage în streaming, apoi înregistrează metadatele cu stare `CONFIRMED`. Un `complete` repetat pe o sesiune
+        deja finalizată întoarce `200` cu aceleași metadate.
+      x-roles: [FIELD, ADMIN]
+      x-metrics: [filegrid_operation_seconds, filegrid_operation_errors_total, filegrid_transfers_failed_total]
+      parameters:
+        - $ref: '#/components/parameters/UploadId'
+      responses:
+        '201':
+          description: Fișier confirmat.
+          headers:
+            X-Trace-Id:
+              $ref: '#/components/headers/X-Trace-Id'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileMetadata'
+              example:
+                id: 6c4b1e9d-3a70-4d25-8f6b-0e9a2d7c5b31
+                category: INSPECTION_VIDEO
+                originalName: drona-linie-110kV-tronson-7.mp4
+                contentType: video/mp4
+                size: 1181116006
+                sha256: 6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b
+                sha256Plain: null
+                storage: FTP
+                status: CONFIRMED
+                encrypted: false
+                createdAt: '2026-11-14T10:31:48Z'
+                createdBy: teren1
+        '200':
+          description: Sesiunea era deja finalizată; aceleași metadate.
+          headers:
+            X-Trace-Id:
+              $ref: '#/components/headers/X-Trace-Id'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileMetadata'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: |
+            `UPLOAD_INCOMPLETE` (lipsesc bucăți sau mărimea primită diferă de `totalSize`),
+            `UPLOAD_NOT_ACTIVE` (sesiune anulată sau abandonată) sau `UPLOAD_BUSY` (lease ocupat, cu `Retry-After`).
+          headers:
+            X-Trace-Id:
+              $ref: '#/components/headers/X-Trace-Id'
+            Retry-After:
+              $ref: '#/components/headers/Retry-After'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                status: 409
+                code: UPLOAD_INCOMPLETE
+                message: Lipsesc bucăți; următoarea așteptată este 36 din 71.
+                traceId: 2d7c40e9a1b84f35c6e0d8a39b51f7c2
+                details:
+                  nextChunk: 36
+                  totalChunks: 71
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /uploads/{id}/abort:
+    post:
+      tags: [Upload în bucăți]
+      operationId: abortUpload
+      summary: Anulează upload-ul
+      description: |
+        Abandonează sesiunea (abort multipart pe S3, ștergerea bucăților de pe FTP/DB). Un upload nou alege
+        storage-ul de rezervă, după health. Idempotent: pe o sesiune deja anulată întoarce `200`.
+      x-roles: [FIELD, ADMIN]
+      parameters:
+        - $ref: '#/components/parameters/UploadId'
+      responses:
+        '200':
+          description: Sesiune anulată.
+          headers:
+            X-Trace-Id:
+              $ref: '#/components/headers/X-Trace-Id'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadSession'
+              example:
+                uploadId: d2f7a914-6b3e-4c80-91a5-e8c0b72d4f16
+                category: INSPECTION_VIDEO
+                fileName: drona-linie-110kV-tronson-7.mp4
+                storage: FTP
+                totalSize: 1181116006
+                chunkSize: 16777216
+                totalChunks: 71
+                nextChunk: 36
+                receivedBytes: 587202560
+                status: ABORTED
+                createdAt: '2026-11-14T10:20:55Z'
+                lastActivityAt: '2026-11-14T10:41:02Z'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Sesiunea a fost deja finalizată (`UPLOAD_NOT_ACTIVE`) sau lease-ul e ocupat (`UPLOAD_BUSY`, cu `Retry-After`).
+          headers:
+            X-Trace-Id:
+              $ref: '#/components/headers/X-Trace-Id'
+            Retry-After:
+              $ref: '#/components/headers/Retry-After'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                status: 409
+                code: UPLOAD_NOT_ACTIVE
+                message: Upload-ul a fost deja finalizat.
+                traceId: 6f0a8b3d5c1e4972a4d9e2b7c80f1a63
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /stats/storage-advisor:
+    get:
+      tags: [Statistici]
+      operationId: getStorageAdvisor
+      summary: Recomandare de storage per categorie (matrice 4×3 cu scor)
+      description: |
+        Matricea 4 categorii × 3 storage-uri vine din benchmark (`source=benchmark`) completat cu date live; are mereu
+        12 celule (fără celule goale). `score` (0–100) combină latență, erori și cost relativ. „Costul” este o
+        presupunere explicită, relativă per GB, dintr-un YAML documentat (`costAssumption`).
+        Forma răspunsului este propusă (punctul 12 din descrierea generală).
+      x-roles: [DISPATCH, ADMIN]
+      responses:
+        '200':
+          description: Matricea de scoruri și recomandările.
+          headers:
+            X-Trace-Id:
+              $ref: '#/components/headers/X-Trace-Id'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StorageAdvisor'
+              example:
+                generatedAt: '2026-11-14T13:05:00Z'
+                basis:
+                  benchmarkRunAt: '2026-11-14T11:40:12Z'
+                  benchmarkSamples: 231
+                  liveSamples: 18432
+                costAssumption:
+                  unit: cost relativ per GB (FTP = 1,0)
+                  FTP: 1.0
+                  S3: 1.4
+                  DB: 3.2
+                matrix:
+                  - {category: METER_READING, storage: FTP, score: 58, latencyP50Ms: 38, latencyP95Ms: 96, errorRatePercent: 0.4, relativeCostPerGb: 1.0, samples: 200, benchmarked: true}
+                  - {category: METER_READING, storage: S3, score: 71, latencyP50Ms: 21, latencyP95Ms: 54, errorRatePercent: 0.0, relativeCostPerGb: 1.4, samples: 200, benchmarked: true}
+                  - {category: METER_READING, storage: DB, score: 84, latencyP50Ms: 9, latencyP95Ms: 23, errorRatePercent: 0.0, relativeCostPerGb: 3.2, samples: 18000, benchmarked: true}
+                  - {category: OUTAGE_RECORD, storage: FTP, score: 64, latencyP50Ms: 410, latencyP95Ms: 880, errorRatePercent: 0.8, relativeCostPerGb: 1.0, samples: 10, benchmarked: true}
+                  - {category: OUTAGE_RECORD, storage: S3, score: 88, latencyP50Ms: 190, latencyP95Ms: 340, errorRatePercent: 0.0, relativeCostPerGb: 1.4, samples: 112, benchmarked: true}
+                  - {category: OUTAGE_RECORD, storage: DB, score: 70, latencyP50Ms: 520, latencyP95Ms: 1040, errorRatePercent: 0.0, relativeCostPerGb: 3.2, samples: 10, benchmarked: true}
+                  - {category: CONNECTION_DOC, storage: FTP, score: 52, latencyP50Ms: 120, latencyP95Ms: 260, errorRatePercent: 0.5, relativeCostPerGb: 1.0, samples: 20, benchmarked: true}
+                  - {category: CONNECTION_DOC, storage: S3, score: 74, latencyP50Ms: 70, latencyP95Ms: 150, errorRatePercent: 0.0, relativeCostPerGb: 1.4, samples: 20, benchmarked: true}
+                  - {category: CONNECTION_DOC, storage: DB, score: 81, latencyP50Ms: 95, latencyP95Ms: 190, errorRatePercent: 0.0, relativeCostPerGb: 3.2, samples: 41, benchmarked: true}
+                  - {category: INSPECTION_VIDEO, storage: FTP, score: 79, latencyP50Ms: 9800, latencyP95Ms: 9800, errorRatePercent: 0.0, relativeCostPerGb: 1.0, samples: 1, benchmarked: true}
+                  - {category: INSPECTION_VIDEO, storage: S3, score: 86, latencyP50Ms: 7400, latencyP95Ms: 7400, errorRatePercent: 0.0, relativeCostPerGb: 1.4, samples: 1, benchmarked: true}
+                  - {category: INSPECTION_VIDEO, storage: DB, score: 41, latencyP50Ms: 31200, latencyP95Ms: 31200, errorRatePercent: 0.0, relativeCostPerGb: 3.2, samples: 1, benchmarked: true}
+                recommendations:
+                  - category: METER_READING
+                    recommendedStorage: DB
+                    currentPolicyStorage: DB
+                    matchesPolicy: true
+                    rationale: Fișiere de 1–50 KB, foarte multe; DB are cea mai mică latență p95 (23 ms).
+                  - category: OUTAGE_RECORD
+                    recommendedStorage: S3
+                    currentPolicyStorage: S3
+                    matchesPolicy: true
+                    rationale: Cel mai bun raport latență/cost pentru fișiere de 1–10 MB.
+                  - category: CONNECTION_DOC
+                    recommendedStorage: DB
+                    currentPolicyStorage: DB
+                    matchesPolicy: true
+                    rationale: Scor apropiat de S3, dar datele personale rămân într-un singur loc, cu acces controlat.
+                  - category: INSPECTION_VIDEO
+                    recommendedStorage: S3
+                    currentPolicyStorage: FTP
+                    matchesPolicy: false
+                    rationale: S3 transferă un video de 100 MB cu 24% mai rapid decât FTP; costul e doar cu 40% mai mare.
+                interpretation: >-
+                  Politica actuală este optimă pentru 3 din 4 categorii. Pentru video-uri de dronă, S3 ar fi cu 24% mai
+                  rapid decât FTP la un cost cu 40% mai mare; recomandăm evaluarea schimbării în YAML, fără modificări de cod.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /stats/peak-vs-normal:
+    get:
+      tags: [Statistici]
+      operationId: getPeakVsNormal
+      summary: Zi normală vs. zi de vârf (doar date live)
+      description: |
+        Compară rulările `source=live` etichetate cu `normalScenario` și `peakScenario` (din header-ul `X-Scenario`).
+        Benchmark-ul nu intră în comparație. Per categorie: cereri, throughput, latențe p50/p95/p99, rata de erori
+        și numărul de respingeri ale bulkhead-ului.
+      x-roles: [DISPATCH, ADMIN]
+      parameters:
+        - name: normalScenario
+          in: query
+          schema:
+            type: string
+            default: normal
+        - name: peakScenario
+          in: query
+          schema:
+            type: string
+            default: storm
+      responses:
+        '200':
+          description: Comparația pe categorii.
+          headers:
+            X-Trace-Id:
+              $ref: '#/components/headers/X-Trace-Id'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PeakVsNormal'
+              example:
+                generatedAt: '2026-11-14T13:05:00Z'
+                normal:
+                  scenario: normal
+                  from: '2026-11-14T10:00:00Z'
+                  to: '2026-11-14T10:30:00Z'
+                peak:
+                  scenario: storm
+                  from: '2026-11-14T11:00:00Z'
+                  to: '2026-11-14T11:30:00Z'
+                categories:
+                  - category: METER_READING
+                    normal: {requests: 5400, throughputPerMinute: 180.0, latencyP50Ms: 9, latencyP95Ms: 23, latencyP99Ms: 41, errorRatePercent: 0.0, rejected: 0}
+                    peak: {requests: 5392, throughputPerMinute: 179.7, latencyP50Ms: 9, latencyP95Ms: 24, latencyP99Ms: 44, errorRatePercent: 0.0, rejected: 0}
+                    p95ChangePercent: 4.3
+                  - category: OUTAGE_RECORD
+                    normal: {requests: 36, throughputPerMinute: 1.2, latencyP50Ms: 190, latencyP95Ms: 340, latencyP99Ms: 410, errorRatePercent: 0.0, rejected: 0}
+                    peak: {requests: 480, throughputPerMinute: 16.0, latencyP50Ms: 260, latencyP95Ms: 710, latencyP99Ms: 1250, errorRatePercent: 0.6, rejected: 14}
+                    p95ChangePercent: 108.8
+                  - category: CONNECTION_DOC
+                    normal: {requests: 240, throughputPerMinute: 8.0, latencyP50Ms: 95, latencyP95Ms: 190, latencyP99Ms: 260, errorRatePercent: 0.0, rejected: 0}
+                    peak: {requests: 238, throughputPerMinute: 7.9, latencyP50Ms: 96, latencyP95Ms: 195, latencyP99Ms: 270, errorRatePercent: 0.0, rejected: 0}
+                    p95ChangePercent: 2.6
+                  - category: INSPECTION_VIDEO
+                    normal: {requests: 3, throughputPerMinute: 0.1, latencyP50Ms: 9800, latencyP95Ms: 9800, latencyP99Ms: 9800, errorRatePercent: 0.0, rejected: 0}
+                    peak: {requests: 3, throughputPerMinute: 0.1, latencyP50Ms: 9900, latencyP95Ms: 9900, latencyP99Ms: 9900, errorRatePercent: 0.0, rejected: 0}
+                    p95ChangePercent: 1.0
+                interpretation: >-
+                  În ziua de furtună avariile au crescut de 13 ori (de la 36 la 480 de cereri), iar latența lor p95 a
+                  crescut de la 340 ms la 710 ms; celelalte categorii au rămas neschimbate (sub 5%). Izolarea pe
+                  categorii funcționează: 14 cereri de avarie au fost respinse, fără impact asupra citirilor sau documentelor.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /stats/anomalies:
+    get:
+      tags: [Statistici]
+      operationId: getAnomalies
+      summary: Anomalii în citiri, contoare tăcute și citiri pe zonă și oră
+      description: |
+        (a) citiri cu consum > mediană + 3 × abatere standard (per contor); (b) contoare fără citiri mai mult de
+        `silentMinutes`; (c) citiri pe zonă și pe oră. Anomaliile sunt paginate.
+      x-roles: [DISPATCH, ADMIN]
+      parameters:
+        - name: from
+          in: query
+          description: Început de interval (implicit ultimele 24 h).
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: silentMinutes
+          in: query
+          description: Un contor este „tăcut” dacă nu a trimis nicio citire de atâtea minute.
+          schema:
+            type: integer
+            minimum: 1
+            default: 60
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: size
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: Anomalii și tipare.
+          headers:
+            X-Trace-Id:
+              $ref: '#/components/headers/X-Trace-Id'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Anomalies'
+              example:
+                generatedAt: '2026-11-14T13:05:00Z'
+                from: '2026-11-13T13:05:00Z'
+                to: '2026-11-14T13:05:00Z'
+                rule: kwh > mediană + 3 × abatere standard, per contor
+                anomalies:
+                  items:
+                    - meterId: RO-BAN-0001377
+                      zone: Banat
+                      readingTs: '2026-11-14T03:15:00Z'
+                      kwh: 6.84
+                      median: 0.62
+                      stddev: 0.41
+                      threshold: 1.85
+                      deviations: 15.2
+                    - meterId: RO-MUN-0009920
+                      zone: Muntenia
+                      readingTs: '2026-11-14T08:45:00Z'
+                      kwh: 4.12
+                      median: 0.55
+                      stddev: 0.38
+                      threshold: 1.69
+                      deviations: 9.4
+                  page: 1
+                  size: 20
+                  totalItems: 2
+                  totalPages: 1
+                silentMeters:
+                  - meterId: RO-DOB-0000412
+                    zone: Dobrogea
+                    lastReadingTs: '2026-11-14T10:30:00Z'
+                    silentMinutes: 155
+                readingsByZoneHour:
+                  - {zone: Muntenia, hour: '2026-11-14T08:00:00Z', readings: 1240, totalKwh: 515.3}
+                  - {zone: Banat, hour: '2026-11-14T08:00:00Z', readings: 610, totalKwh: 244.9}
+                  - {zone: Dobrogea, hour: '2026-11-14T08:00:00Z', readings: 480, totalKwh: 198.2}
+                interpretation: >-
+                  Au fost detectate 2 consumuri anormale, dintre care unul la contorul RO-BAN-0001377 (de 15 ori peste
+                  abaterea normală, la 03:15, posibilă defecțiune sau consum neautorizat). Contorul RO-DOB-0000412 din
+                  Dobrogea nu a mai trimis nimic de 155 de minute: recomandăm verificarea comunicației.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /stats/outage-zones:
+    get:
+      tags: [Statistici]
+      operationId: getOutageZones
+      summary: Zone cu cele mai multe avarii (clasament și distribuție pe oră)
+      description: |
+        Din `outage_records` (zona, momentul avariei). Clasament descrescător după numărul de avarii.
+      x-roles: [DISPATCH, ADMIN]
+      parameters:
+        - name: from
+          in: query
+          description: Început de interval (implicit ultimele 30 de zile).
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Clasamentul zonelor.
+          headers:
+            X-Trace-Id:
+              $ref: '#/components/headers/X-Trace-Id'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OutageZones'
+              example:
+                generatedAt: '2026-11-14T13:05:00Z'
+                from: '2026-10-15T13:05:00Z'
+                to: '2026-11-14T13:05:00Z'
+                totalOutages: 142
+                ranking:
+                  - {rank: 1, zone: Muntenia, outages: 78, sharePercent: 54.9, vsAverageRatio: 1.65, peakHour: 9}
+                  - {rank: 2, zone: Dobrogea, outages: 41, sharePercent: 28.9, vsAverageRatio: 0.87, peakHour: 8}
+                  - {rank: 3, zone: Banat, outages: 23, sharePercent: 16.2, vsAverageRatio: 0.49, peakHour: 14}
+                byHour:
+                  - {zone: Muntenia, hour: 8, outages: 12}
+                  - {zone: Muntenia, hour: 9, outages: 19}
+                  - {zone: Dobrogea, hour: 8, outages: 9}
+                  - {zone: Banat, hour: 14, outages: 6}
+                interpretation: >-
+                  Muntenia a avut de 3,4 ori mai multe avarii decât Banat (78 față de 23), cu un vârf la ora 09:00;
+                  recomandăm capacitate suplimentară de intervenție în zonă în intervalul 08:00–10:00.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /stats/requirements:
+    get:
+      tags: [Statistici]
+      operationId: getRequirements
+      summary: Starea celor 4 cerințe de business (plăcuțe verzi/roșii)
+      description: |
+        Praguri din `resources/requirements.yml`: (1) citiri: `filegrid_meter_unconfirmed = 0` și nicio citire
+        abandonată; (2) avarii: p95 sub 2 s pe ultimele 5 minute; (3) documente: criptarea activă și niciun acces
+        refuzat în ultimele 5 minute; (4) video: sub 5% transferuri eșuate. Aceleași praguri alimentează alertele.
+        `status`: `OK` (verde) sau `AT_RISK` (roșu, cerința e în pericol).
+      x-roles: [DISPATCH, ADMIN]
+      responses:
+        '200':
+          description: Starea cerințelor.
+          headers:
+            X-Trace-Id:
+              $ref: '#/components/headers/X-Trace-Id'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Requirements'
+              example:
+                generatedAt: '2026-11-14T13:05:00Z'
+                requirements:
+                  - id: R1
+                    category: METER_READING
+                    title: Nicio citire nu se pierde și nu se dublează
+                    status: OK
+                    message: 0 citiri neconfirmate, 0 citiri abandonate.
+                    thresholds: {unconfirmedMax: 0, abandonedMax: 0}
+                    current: {unconfirmed: 0, abandoned: 0}
+                  - id: R2
+                    category: OUTAGE_RECORD
+                    title: Avariile sunt disponibile imediat pentru dispecerat
+                    status: AT_RISK
+                    message: Latența p95 pentru avarii este 2,4 s în ultimele 5 minute (prag 2 s).
+                    thresholds: {p95MaxSeconds: 2.0, windowMinutes: 5}
+                    current: {p95Seconds: 2.4}
+                  - id: R3
+                    category: CONNECTION_DOC
+                    title: Datele personale rămân protejate și verificabile la audit
+                    status: OK
+                    message: Criptare activă, 0 accesuri refuzate în ultimele 5 minute.
+                    thresholds: {encryptionRequired: true, deniedMax: 0, windowMinutes: 5}
+                    current: {encryptionActive: true, denied: 0}
+                  - id: R4
+                    category: INSPECTION_VIDEO
+                    title: Transferul rezistă pe conexiuni lente sau instabile
+                    status: OK
+                    message: 0 transferuri eșuate din 9 (0%), sub pragul de 5%.
+                    thresholds: {failedMaxPercent: 5.0}
+                    current: {failedPercent: 0.0, transfers: 9}
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /admin/benchmark/run:
+    post:
+      tags: [Administrare]
+      operationId: runBenchmark
+      summary: Rulează benchmark-ul pe cele 12 combinații categorie × storage
+      description: |
+        Rulează prin `StorageAdapter` dimensiuni reprezentative (citiri 10 KB × 200, avarie 5 MB × 10,
+        document 1 MB × 20, video 100 MB × 1) pe toate cele 12 combinații și le înregistrează în `operation_metrics`
+        cu `source=benchmark` și `scenario=benchmark`. Sincron: poate dura minute (timeout nginx 300 s). Fișierele
+        de test se șterg la final. Alimentează `/stats/storage-advisor`.
+      x-roles: [ADMIN]
+      responses:
+        '200':
+          description: Rezultatele celor 12 combinații.
+          headers:
+            X-Trace-Id:
+              $ref: '#/components/headers/X-Trace-Id'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BenchmarkResult'
+              example:
+                startedAt: '2026-11-14T11:38:20Z'
+                finishedAt: '2026-11-14T11:40:12Z'
+                source: benchmark
+                scenario: benchmark
+                results:
+                  - {category: METER_READING, storage: DB, operation: upload, samples: 200, sizeBytes: 10240, latencyP50Ms: 9, latencyP95Ms: 23, throughputMBps: 1.1, errors: 0}
+                  - {category: OUTAGE_RECORD, storage: S3, operation: upload, samples: 10, sizeBytes: 5242880, latencyP50Ms: 190, latencyP95Ms: 340, throughputMBps: 26.3, errors: 0}
+                  - {category: CONNECTION_DOC, storage: DB, operation: upload, samples: 20, sizeBytes: 1048576, latencyP50Ms: 95, latencyP95Ms: 190, throughputMBps: 10.5, errors: 0}
+                  - {category: INSPECTION_VIDEO, storage: FTP, operation: upload, samples: 1, sizeBytes: 104857600, latencyP50Ms: 9800, latencyP95Ms: 9800, throughputMBps: 10.2, errors: 0}
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Un alt benchmark rulează deja (`BENCHMARK_RUNNING`).
+          headers:
+            X-Trace-Id:
+              $ref: '#/components/headers/X-Trace-Id'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                status: 409
+                code: BENCHMARK_RUNNING
+                message: Un benchmark este deja în curs.
+                traceId: 3c8e0f5a7d1b4926b4a9e3d7c1f06b58
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /admin/health:
+    get:
+      tags: [Administrare]
+      operationId: getAdminHealth
+      summary: Starea fiecărui storage și a bazei de metadate
+      description: |
+        Starea fiecărui storage (FTP, S3, DB) și a FileGridMeta, pe instanța care răspunde. Alimentează
+        `filegrid_storage_up`. Un storage `DOWN` înseamnă că scrierile noi pentru categoriile lui merg pe rezervă sau
+        primesc `503`; fișierele deja confirmate rămân citibile.
+      x-roles: [ADMIN]
+      responses:
+        '200':
+          description: Starea sistemului (200 chiar dacă un storage e DOWN; starea e în corp).
+          headers:
+            X-Trace-Id:
+              $ref: '#/components/headers/X-Trace-Id'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminHealth'
+              example:
+                status: DEGRADED
+                instance: filegrid-api-2
+                checkedAt: '2026-11-14T12:15:33Z'
+                metadataDb:
+                  status: UP
+                storages:
+                  - {storage: FTP, status: DOWN, circuitBreaker: OPEN, detail: conexiune refuzată}
+                  - {storage: S3, status: UP, circuitBreaker: CLOSED}
+                  - {storage: DB, status: UP, circuitBreaker: CLOSED}
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT obținut la `POST /auth/login`, valabil 15 minute (`expiresIn`). Claim-uri: `sub` (utilizator),
+        `role` (DISPATCH | FIELD | CONNECTIONS | METER_SERVICE | ADMIN). Lipsă sau expirat: `401`; rol nepermis: `403`.
+        Reînnoire cu `POST /auth/refresh`.
+  headers:
+    X-Trace-Id:
+      description: Identificatorul operației, același în loguri (JSON, Loki) de la cerere până la storage.
+      schema:
+        type: string
+        example: 7d2f0c9e4a1b4c38b6a5e1f20d3c8a91
+    Retry-After:
+      description: Secunde până la următoarea încercare.
+      schema:
+        type: integer
+        minimum: 0
+        example: 5
+    X-Content-SHA256:
+      description: SHA-256 (hex) al bytes-ilor trimiși (la CONNECTION_DOC, `sha256Plain`).
+      schema:
+        type: string
+        pattern: '^[0-9a-f]{64}$'
+        example: 6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b
+    Accept-Ranges:
+      description: '`bytes` când descărcarea poate fi reluată; absent la CONNECTION_DOC.'
+      schema:
+        type: string
+        enum: [bytes]
+    Content-Range:
+      description: Intervalul trimis, ca `bytes <start>-<end>/<total>`.
+      schema:
+        type: string
+        example: bytes 0-16777215/1181116006
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: |
+        `meterId + "_" + ts` al primei citiri din lot (identic cu corpul), de exemplu
+        `RO-MUN-0004821_2026-11-14T00:00:00Z`. Altfel `400`. Aceeași cheie la fiecare reîncercare.
+      schema:
+        type: string
+        minLength: 3
+        maxLength: 256
+        example: RO-MUN-0004821_2026-11-14T00:00:00Z
+    Scenario:
+      name: X-Scenario
+      in: header
+      required: false
+      description: Etichetă a rulării, scrisă în `operation_metrics.scenario` (`normal`, `peak`, `storm`; benchmark-ul folosește `benchmark`).
+      schema:
+        type: string
+        pattern: '^[a-z0-9_-]{1,32}$'
+        example: peak
+    FileId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    UploadId:
+      name: id
+      in: path
+      required: true
+      description: '`uploadId` întors de `POST /uploads`.'
+      schema:
+        type: string
+        format: uuid
+    Range:
+      name: Range
+      in: header
+      required: false
+      description: 'Interval de octeți, de exemplu `bytes=16777216-` (nu se aplică la CONNECTION_DOC).'
+      schema:
+        type: string
+        example: bytes=16777216-
+  responses:
+    BadRequest:
+      description: Cerere invalidă (câmp lipsă, valoare nepermisă, corp sau parametri greșiți).
+      headers:
+        X-Trace-Id:
+          $ref: '#/components/headers/X-Trace-Id'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            status: 400
+            code: VALIDATION_ERROR
+            message: Câmpul „zone” este obligatoriu pentru OUTAGE_RECORD.
+            traceId: 7d2f0c9e4a1b4c38b6a5e1f20d3c8a91
+            details:
+              field: zone
+    Unauthorized:
+      description: "Fără token, token expirat sau invalid (la `/downloads/{token}`: link expirat sau invalid)."
+      headers:
+        X-Trace-Id:
+          $ref: '#/components/headers/X-Trace-Id'
+        WWW-Authenticate:
+          description: '`Bearer`'
+          schema:
+            type: string
+            example: Bearer
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            status: 401
+            code: UNAUTHORIZED
+            message: Autentificare necesară sau token expirat.
+            traceId: 4e1a7c93b0d54f28a6c3e9d1b7f02a85
+    Forbidden:
+      description: Rolul nu are voie pe această operație sau categorie (matricea 4.4). La documente de racordare incrementează `filegrid_doc_access_total{result="denied"}`.
+      headers:
+        X-Trace-Id:
+          $ref: '#/components/headers/X-Trace-Id'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            status: 403
+            code: FORBIDDEN
+            message: Rolul DISPATCH nu are acces la categoria CONNECTION_DOC.
+            traceId: 8b2d6f1e0c9a4375a1e4d7c3b0f58e92
+    NotFound:
+      description: Resursa nu există (sau nu e vizibilă rolului).
+      headers:
+        X-Trace-Id:
+          $ref: '#/components/headers/X-Trace-Id'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            status: 404
+            code: NOT_FOUND
+            message: Fișierul nu există.
+            traceId: 0f9c5a2e7b1d4836c4a8e1d6b3f07a29
+    PayloadTooLarge:
+      description: Corpul depășește mărimea maximă din politica categoriei sau din limita nginx (`client_max_body_size 100m` per cerere).
+      headers:
+        X-Trace-Id:
+          $ref: '#/components/headers/X-Trace-Id'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            status: 413
+            code: PAYLOAD_TOO_LARGE
+            message: Fișierul depășește mărimea maximă permisă pentru categorie (20 MB).
+            traceId: a5c8e1d3f0b24976b2d9e4a7c1f60b38
+            details:
+              maxBytes: 20971520
+    RangeNotSatisfiable:
+      description: Interval `Range` invalid sau în afara fișierului.
+      headers:
+        X-Trace-Id:
+          $ref: '#/components/headers/X-Trace-Id'
+        Content-Range:
+          description: '`bytes */<total>`'
+          schema:
+            type: string
+            example: bytes */1181116006
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            status: 416
+            code: RANGE_NOT_SATISFIABLE
+            message: Intervalul cerut este în afara fișierului.
+            traceId: d1e7b4a0c5f94836a2c8e3d9b6f01a57
+    FileCorrupt:
+      description: Fișierul este corupt (hash nepotrivit, detectat înainte de trimitere).
+      headers:
+        X-Trace-Id:
+          $ref: '#/components/headers/X-Trace-Id'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            status: 409
+            code: FILE_CORRUPT
+            message: fișier corupt
+            traceId: c0e57a1d93f84b26a4d8e1b7f52c6a09
+            details:
+              fileId: 6c4b1e9d-3a70-4d25-8f6b-0e9a2d7c5b31
+              expectedSha256: 6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b
+              actualSha256: d4735e3a265e16eee03f59718b9b5d03019c07d8b6c51f90da3a666eec13ab35
+    TooManyRequests:
+      description: Bulkhead-ul categoriei este saturat (limita de cereri paralele din politică). Afectează doar categoria respectivă.
+      headers:
+        X-Trace-Id:
+          $ref: '#/components/headers/X-Trace-Id'
+        Retry-After:
+          $ref: '#/components/headers/Retry-After'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            status: 429
+            code: CATEGORY_SATURATED
+            message: Prea multe cereri paralele pentru categoria OUTAGE_RECORD; reîncearcă.
+            traceId: 6a0d3e9c1f7b4285b8e2d5a1c4f09b73
+            retryAfterSeconds: 2
+    ServiceUnavailable:
+      description: |
+        Storage-ul sau FileGridMeta e indisponibil (circuit breaker deschis, SQL Server căzut), sau lotul e în curs de
+        procesare. Nimic confirmat nu se pierde; clientul reîncearcă cu aceeași cheie / aceeași bucată.
+      headers:
+        X-Trace-Id:
+          $ref: '#/components/headers/X-Trace-Id'
+        Retry-After:
+          $ref: '#/components/headers/Retry-After'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            storageDown:
+              summary: Storage indisponibil, fără rezervă disponibilă
+              value:
+                status: 503
+                code: STORAGE_UNAVAILABLE
+                message: Storage-ul FTP este indisponibil; reîncearcă.
+                traceId: 9b4e1d7a0c3f4852a6d8e2c1b5f07a34
+                retryAfterSeconds: 10
+            batchInProgress:
+              summary: Lot în curs de procesare (Idempotency-Key)
+              value:
+                status: 503
+                code: BATCH_IN_PROGRESS
+                message: Lotul este în curs de procesare; retrimite cu aceeași cheie.
+                traceId: e3a8c5d1b7f04962a1d4e8c0b6f27a95
+                retryAfterSeconds: 5
+    FileContent:
+      description: Conținutul complet al fișierului, în streaming.
+      headers:
+        X-Trace-Id:
+          $ref: '#/components/headers/X-Trace-Id'
+        X-Content-SHA256:
+          $ref: '#/components/headers/X-Content-SHA256'
+        Accept-Ranges:
+          $ref: '#/components/headers/Accept-Ranges'
+        Content-Disposition:
+          description: '`attachment; filename="..."`'
+          schema:
+            type: string
+        Content-Length:
+          schema:
+            type: integer
+            format: int64
+      content:
+        application/octet-stream:
+          schema:
+            type: string
+            format: binary
+    PartialFileContent:
+      description: Intervalul cerut (nu la CONNECTION_DOC).
+      headers:
+        X-Trace-Id:
+          $ref: '#/components/headers/X-Trace-Id'
+        X-Content-SHA256:
+          $ref: '#/components/headers/X-Content-SHA256'
+        Accept-Ranges:
+          $ref: '#/components/headers/Accept-Ranges'
+        Content-Range:
+          $ref: '#/components/headers/Content-Range'
+        Content-Length:
+          schema:
+            type: integer
+            format: int64
+      content:
+        application/octet-stream:
+          schema:
+            type: string
+            format: binary
+  schemas:
+    Category:
+      type: string
+      enum: [METER_READING, OUTAGE_RECORD, CONNECTION_DOC, INSPECTION_VIDEO]
+      description: |
+        Categoriile de date. Politica implicită (4.2, `resources/policies/*.yml`):
+
+        | Categorie | Principal | Rezervă | Mărime max | Chunk | Cereri paralele / instanță | Criptare |
+        |---|---|---|---|---|---|---|
+        | METER_READING | DB | S3 | 256 KB | – | 50 | nu |
+        | OUTAGE_RECORD | S3 | DB | 20 MB | – | 20 | nu |
+        | CONNECTION_DOC | DB | S3 | 20 MB | – | 10 | da (AES-GCM) |
+        | INSPECTION_VIDEO | FTP | S3 | 5 GB | 16 MiB (min 5 MiB) | 4 | nu |
+    StorageType:
+      type: string
+      enum: [FTP, S3, DB]
+      description: FTP (serviciul `ftp`), S3 (MinIO) și DB (SQL Server, baza FileGridStorage).
+    Zone:
+      type: string
+      enum: [Muntenia, Banat, Dobrogea]
+    Role:
+      type: string
+      enum: [DISPATCH, FIELD, CONNECTIONS, METER_SERVICE, ADMIN]
+      description: |
+        Matricea rolurilor (4.4). Orice acces în afara matricei: `403` (la documente incrementează
+        `filegrid_doc_access_total{result="denied"}`).
+
+        | Rol | Poate încărca | Poate căuta și descărca | Altele |
+        |---|---|---|---|
+        | METER_SERVICE | METER_READING (`POST /meter-readings`) | – | folosit de simulator |
+        | FIELD | OUTAGE_RECORD, INSPECTION_VIDEO | OUTAGE_RECORD, INSPECTION_VIDEO | – |
+        | DISPATCH | – | OUTAGE_RECORD, METER_READING | `/stats/*` |
+        | CONNECTIONS | CONNECTION_DOC | CONNECTION_DOC | acces auditat |
+        | ADMIN | toate | toate | `/stats/*`, `/admin/*` (benchmark, health) |
+    Health:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [UP, DOWN]
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+          maxLength: 100
+        password:
+          type: string
+          format: password
+          maxLength: 200
+    TokenPair:
+      type: object
+      required: [accessToken, refreshToken, expiresIn]
+      properties:
+        accessToken:
+          type: string
+          description: JWT, valabil 15 minute.
+        refreshToken:
+          type: string
+          description: Token stateless, valabil 8 ore; revocarea nu e suportată.
+        expiresIn:
+          type: integer
+          description: Secunde de valabilitate ale `accessToken`.
+          example: 900
+    RefreshRequest:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken:
+          type: string
+    AccessToken:
+      type: object
+      required: [accessToken, expiresIn]
+      properties:
+        accessToken:
+          type: string
+        expiresIn:
+          type: integer
+          example: 900
+    MeterReadingBatch:
+      type: object
+      required: [meterId, zone, readings]
+      properties:
+        meterId:
+          type: string
+          minLength: 1
+          maxLength: 64
+          example: RO-MUN-0004821
+        zone:
+          $ref: '#/components/schemas/Zone'
+        readings:
+          type: array
+          minItems: 1
+          description: 1–50 KB în total (~70 de octeți per citire; implicit 96 de citiri = o zi la 15 minute).
+          items:
+            type: object
+            required: [ts, kwh]
+            properties:
+              ts:
+                type: string
+                format: date-time
+                description: ISO-8601 UTC; împreună cu `meterId` identifică unic citirea.
+              kwh:
+                type: number
+                minimum: 0
+    MeterReadingResult:
+      type: object
+      required: [fileId, meterId, readingsCount, sha256, duplicate]
+      properties:
+        fileId:
+          type: string
+          format: uuid
+          description: Fișierul METER_READING în care s-a salvat corpul brut al lotului.
+        meterId:
+          type: string
+        readingsCount:
+          type: integer
+        sha256:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+        duplicate:
+          type: boolean
+          description: '`true` la `200` (lot deja confirmat, ignorat).'
+    FileMetadata:
+      type: object
+      required: [id, category, originalName, contentType, size, sha256, storage, status, encrypted, createdAt, createdBy]
+      properties:
+        id:
+          type: string
+          format: uuid
+        category:
+          $ref: '#/components/schemas/Category'
+        originalName:
+          type: string
+          description: Numele original (decriptat pentru rolurile autorizate la CONNECTION_DOC).
+        contentType:
+          type: string
+        size:
+          type: integer
+          format: int64
+          description: Mărimea fișierului original, în octeți.
+        sha256:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+          description: SHA-256 pe bytes-ii stocați (cifrați la CONNECTION_DOC). Îl folosește `/verify`.
+        sha256Plain:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+          nullable: true
+          description: SHA-256 pe fișierul original; doar la documente criptate. Îl arată interfața.
+        storage:
+          $ref: '#/components/schemas/StorageType'
+        status:
+          type: string
+          enum: [PENDING, CONFIRMED, FAILED]
+        encrypted:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        createdBy:
+          type: string
+        outage:
+          $ref: '#/components/schemas/OutageDetails'
+    OutageDetails:
+      type: object
+      description: Doar la OUTAGE_RECORD (rândul din `outage_records`).
+      required: [zone, occurredAt]
+      properties:
+        zone:
+          $ref: '#/components/schemas/Zone'
+        stationId:
+          type: string
+          nullable: true
+        occurredAt:
+          type: string
+          format: date-time
+    FilePage:
+      type: object
+      required: [items, page, size, totalItems, totalPages]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/FileMetadata'
+        page:
+          type: integer
+          minimum: 1
+        size:
+          type: integer
+        totalItems:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
+    VerifyResult:
+      type: object
+      required: [fileId, ok, algorithm, deep, expectedSha256, actualSha256, verifiedAt]
+      properties:
+        fileId:
+          type: string
+          format: uuid
+        ok:
+          type: boolean
+          description: Mereu `true` la `200`; la nepotrivire răspunsul este `409`.
+        algorithm:
+          type: string
+          enum: [SHA-256]
+        deep:
+          type: boolean
+        expectedSha256:
+          type: string
+        actualSha256:
+          type: string
+        expectedSha256Plain:
+          type: string
+          nullable: true
+          description: Doar cu `deep=true` la CONNECTION_DOC.
+        actualSha256Plain:
+          type: string
+          nullable: true
+        verifiedAt:
+          type: string
+          format: date-time
+    DownloadLink:
+      type: object
+      required: [url, expiresAt]
+      properties:
+        url:
+          type: string
+          description: Cale relativă, `/api/v1/downloads/{token}`; fără date personale.
+        expiresAt:
+          type: string
+          format: date-time
+          description: Valabil 15 minute de la creare.
+    UploadInit:
+      type: object
+      required: [category, fileName, totalSize]
+      properties:
+        category:
+          type: string
+          enum: [INSPECTION_VIDEO]
+          description: Singura categorie cu `chunkSize` în politica implicită (4.2).
+        fileName:
+          type: string
+          maxLength: 255
+        totalSize:
+          type: integer
+          format: int64
+          minimum: 1
+    UploadSession:
+      type: object
+      required: [uploadId, category, fileName, storage, totalSize, chunkSize, totalChunks, nextChunk, receivedBytes, status, createdAt, lastActivityAt]
+      properties:
+        uploadId:
+          type: string
+          format: uuid
+        category:
+          $ref: '#/components/schemas/Category'
+        fileName:
+          type: string
+        storage:
+          allOf:
+            - $ref: '#/components/schemas/StorageType'
+          description: Storage-ul ales la `init`; sesiunea rămâne legată de el.
+        totalSize:
+          type: integer
+          format: int64
+        chunkSize:
+          type: integer
+          description: Din politică; minim 5 MiB (5242880), maxim 64 MiB (67108864). Ultima bucată poate fi mai mică.
+        totalChunks:
+          type: integer
+        nextChunk:
+          type: integer
+          minimum: 1
+          description: Următoarea bucată așteptată (de la 1).
+        receivedBytes:
+          type: integer
+          format: int64
+        status:
+          type: string
+          enum: [IN_PROGRESS, COMPLETED, ABORTED, ABANDONED]
+        createdAt:
+          type: string
+          format: date-time
+        lastActivityAt:
+          type: string
+          format: date-time
+          description: Sesiunile inactive peste 24 h se curăță automat.
+    ChunkAck:
+      type: object
+      required: [n, size, sha256, nextChunk, duplicate]
+      properties:
+        n:
+          type: integer
+          minimum: 1
+        size:
+          type: integer
+          format: int64
+        sha256:
+          type: string
+          description: SHA-256 al bucății, calculat la primire (`upload_chunks`).
+        nextChunk:
+          type: integer
+        duplicate:
+          type: boolean
+          description: '`true` dacă bucata fusese deja primită (confirmare idempotentă).'
+    Error:
+      type: object
+      required: [status, code, message, traceId]
+      description: Formatul unic al erorilor.
+      properties:
+        status:
+          type: integer
+          description: Codul HTTP.
+        code:
+          type: string
+          description: |
+            Cod stabil, citibil de mașină. Valori: `VALIDATION_ERROR`, `IDEMPOTENCY_KEY_MISMATCH`, `UNAUTHORIZED`,
+            `FORBIDDEN`, `NOT_FOUND`, `PAYLOAD_TOO_LARGE`, `RANGE_NOT_SATISFIABLE`, `FILE_CORRUPT`, `BATCH_OVERLAP`,
+            `CHUNK_OUT_OF_ORDER`, `UPLOAD_BUSY`, `UPLOAD_INCOMPLETE`, `UPLOAD_NOT_ACTIVE`, `BENCHMARK_RUNNING`,
+            `CATEGORY_SATURATED`, `STORAGE_UNAVAILABLE`, `BATCH_IN_PROGRESS`.
+        message:
+          type: string
+          description: Mesaj în română, fără date personale.
+        traceId:
+          type: string
+          description: Același cu header-ul `X-Trace-Id`.
+        retryAfterSeconds:
+          type: integer
+          description: Doar la 429/503 și `UPLOAD_BUSY`; același cu header-ul `Retry-After`.
+        details:
+          type: object
+          additionalProperties: true
+          description: Informații suplimentare (de exemplu hash-urile la `FILE_CORRUPT`, `expectedChunk` la `CHUNK_OUT_OF_ORDER`).
+    StorageAdvisor:
+      type: object
+      required: [generatedAt, basis, costAssumption, matrix, recommendations, interpretation]
+      properties:
+        generatedAt:
+          type: string
+          format: date-time
+        basis:
+          type: object
+          properties:
+            benchmarkRunAt:
+              type: string
+              format: date-time
+              nullable: true
+            benchmarkSamples:
+              type: integer
+            liveSamples:
+              type: integer
+        costAssumption:
+          type: object
+          description: Presupunerea explicită de cost relativ per GB, din YAML.
+          additionalProperties: true
+        matrix:
+          type: array
+          description: Exact 12 celule (4 categorii × 3 storage-uri).
+          minItems: 12
+          maxItems: 12
+          items:
+            $ref: '#/components/schemas/StorageScore'
+        recommendations:
+          type: array
+          items:
+            type: object
+            required: [category, recommendedStorage, currentPolicyStorage, matchesPolicy, rationale]
+            properties:
+              category:
+                $ref: '#/components/schemas/Category'
+              recommendedStorage:
+                $ref: '#/components/schemas/StorageType'
+              currentPolicyStorage:
+                $ref: '#/components/schemas/StorageType'
+              matchesPolicy:
+                type: boolean
+              rationale:
+                type: string
+        interpretation:
+          $ref: '#/components/schemas/Interpretation'
+    StorageScore:
+      type: object
+      required: [category, storage, score, latencyP50Ms, latencyP95Ms, errorRatePercent, relativeCostPerGb, samples, benchmarked]
+      properties:
+        category:
+          $ref: '#/components/schemas/Category'
+        storage:
+          $ref: '#/components/schemas/StorageType'
+        score:
+          type: number
+          minimum: 0
+          maximum: 100
+        latencyP50Ms:
+          type: number
+        latencyP95Ms:
+          type: number
+        errorRatePercent:
+          type: number
+        relativeCostPerGb:
+          type: number
+        samples:
+          type: integer
+        benchmarked:
+          type: boolean
+          description: '`true` dacă celula are date din benchmark.'
+    PeakVsNormal:
+      type: object
+      required: [generatedAt, normal, peak, categories, interpretation]
+      properties:
+        generatedAt:
+          type: string
+          format: date-time
+        normal:
+          $ref: '#/components/schemas/ScenarioWindow'
+        peak:
+          $ref: '#/components/schemas/ScenarioWindow'
+        categories:
+          type: array
+          items:
+            type: object
+            required: [category, normal, peak, p95ChangePercent]
+            properties:
+              category:
+                $ref: '#/components/schemas/Category'
+              normal:
+                $ref: '#/components/schemas/ScenarioStats'
+              peak:
+                $ref: '#/components/schemas/ScenarioStats'
+              p95ChangePercent:
+                type: number
+        interpretation:
+          $ref: '#/components/schemas/Interpretation'
+    ScenarioWindow:
+      type: object
+      required: [scenario, from, to]
+      properties:
+        scenario:
+          type: string
+        from:
+          type: string
+          format: date-time
+        to:
+          type: string
+          format: date-time
+    ScenarioStats:
+      type: object
+      required: [requests, throughputPerMinute, latencyP50Ms, latencyP95Ms, latencyP99Ms, errorRatePercent, rejected]
+      properties:
+        requests:
+          type: integer
+        throughputPerMinute:
+          type: number
+        latencyP50Ms:
+          type: number
+        latencyP95Ms:
+          type: number
+        latencyP99Ms:
+          type: number
+        errorRatePercent:
+          type: number
+        rejected:
+          type: integer
+          description: Cereri respinse de bulkhead (`filegrid_bulkhead_rejected_total`).
+    Anomalies:
+      type: object
+      required: [generatedAt, from, to, rule, anomalies, silentMeters, readingsByZoneHour, interpretation]
+      properties:
+        generatedAt:
+          type: string
+          format: date-time
+        from:
+          type: string
+          format: date-time
+        to:
+          type: string
+          format: date-time
+        rule:
+          type: string
+        anomalies:
+          type: object
+          required: [items, page, size, totalItems, totalPages]
+          properties:
+            items:
+              type: array
+              items:
+                type: object
+                required: [meterId, zone, readingTs, kwh, median, stddev, threshold, deviations]
+                properties:
+                  meterId:
+                    type: string
+                  zone:
+                    $ref: '#/components/schemas/Zone'
+                  readingTs:
+                    type: string
+                    format: date-time
+                  kwh:
+                    type: number
+                  median:
+                    type: number
+                  stddev:
+                    type: number
+                  threshold:
+                    type: number
+                    description: mediană + 3 × abatere standard.
+                  deviations:
+                    type: number
+                    description: Câte abateri standard peste mediană.
+            page:
+              type: integer
+            size:
+              type: integer
+            totalItems:
+              type: integer
+              format: int64
+            totalPages:
+              type: integer
+        silentMeters:
+          type: array
+          items:
+            type: object
+            required: [meterId, zone, lastReadingTs, silentMinutes]
+            properties:
+              meterId:
+                type: string
+              zone:
+                $ref: '#/components/schemas/Zone'
+              lastReadingTs:
+                type: string
+                format: date-time
+              silentMinutes:
+                type: integer
+        readingsByZoneHour:
+          type: array
+          items:
+            type: object
+            required: [zone, hour, readings, totalKwh]
+            properties:
+              zone:
+                $ref: '#/components/schemas/Zone'
+              hour:
+                type: string
+                format: date-time
+                description: Începutul orei, UTC.
+              readings:
+                type: integer
+              totalKwh:
+                type: number
+        interpretation:
+          $ref: '#/components/schemas/Interpretation'
+    OutageZones:
+      type: object
+      required: [generatedAt, from, to, totalOutages, ranking, byHour, interpretation]
+      properties:
+        generatedAt:
+          type: string
+          format: date-time
+        from:
+          type: string
+          format: date-time
+        to:
+          type: string
+          format: date-time
+        totalOutages:
+          type: integer
+        ranking:
+          type: array
+          items:
+            type: object
+            required: [rank, zone, outages, sharePercent, vsAverageRatio, peakHour]
+            properties:
+              rank:
+                type: integer
+              zone:
+                $ref: '#/components/schemas/Zone'
+              outages:
+                type: integer
+              sharePercent:
+                type: number
+              vsAverageRatio:
+                type: number
+                description: Raport față de media pe zone.
+              peakHour:
+                type: integer
+                minimum: 0
+                maximum: 23
+                description: Ora (UTC) cu cele mai multe avarii.
+        byHour:
+          type: array
+          items:
+            type: object
+            required: [zone, hour, outages]
+            properties:
+              zone:
+                $ref: '#/components/schemas/Zone'
+              hour:
+                type: integer
+                minimum: 0
+                maximum: 23
+              outages:
+                type: integer
+        interpretation:
+          $ref: '#/components/schemas/Interpretation'
+    Requirements:
+      type: object
+      required: [generatedAt, requirements]
+      properties:
+        generatedAt:
+          type: string
+          format: date-time
+        requirements:
+          type: array
+          minItems: 4
+          maxItems: 4
+          items:
+            type: object
+            required: [id, category, title, status, message, thresholds, current]
+            properties:
+              id:
+                type: string
+                enum: [R1, R2, R3, R4]
+              category:
+                $ref: '#/components/schemas/Category'
+              title:
+                type: string
+              status:
+                type: string
+                enum: [OK, AT_RISK]
+                description: '`OK` = plăcuță verde, `AT_RISK` = roșie (cerința e în pericol).'
+              message:
+                type: string
+              thresholds:
+                type: object
+                additionalProperties: true
+              current:
+                type: object
+                additionalProperties: true
+    Interpretation:
+      type: string
+      description: Propoziție de interpretare în limba română, generată pe reguli simple, pentru oameni care iau decizii.
+    BenchmarkResult:
+      type: object
+      required: [startedAt, finishedAt, source, scenario, results]
+      properties:
+        startedAt:
+          type: string
+          format: date-time
+        finishedAt:
+          type: string
+          format: date-time
+        source:
+          type: string
+          enum: [benchmark]
+        scenario:
+          type: string
+          enum: [benchmark]
+        results:
+          type: array
+          description: Câte un rând per combinație categorie × storage (12 în total).
+          items:
+            type: object
+            required: [category, storage, operation, samples, sizeBytes, latencyP50Ms, latencyP95Ms, throughputMBps, errors]
+            properties:
+              category:
+                $ref: '#/components/schemas/Category'
+              storage:
+                $ref: '#/components/schemas/StorageType'
+              operation:
+                type: string
+              samples:
+                type: integer
+              sizeBytes:
+                type: integer
+                format: int64
+              latencyP50Ms:
+                type: number
+              latencyP95Ms:
+                type: number
+              throughputMBps:
+                type: number
+              errors:
+                type: integer
+    AdminHealth:
+      type: object
+      required: [status, instance, checkedAt, metadataDb, storages]
+      properties:
+        status:
+          type: string
+          enum: [UP, DEGRADED, DOWN]
+          description: '`UP` = totul funcționează; `DEGRADED` = un storage e DOWN; `DOWN` = FileGridMeta nu răspunde.'
+        instance:
+          type: string
+          description: Instanța api care a răspuns.
+        checkedAt:
+          type: string
+          format: date-time
+        metadataDb:
+          type: object
+          required: [status]
+          properties:
+            status:
+              type: string
+              enum: [UP, DOWN]
+        storages:
+          type: array
+          items:
+            type: object
+            required: [storage, status, circuitBreaker]
+            properties:
+              storage:
+                $ref: '#/components/schemas/StorageType'
+              status:
+                type: string
+                enum: [UP, DOWN]
+              circuitBreaker:
+                type: string
+                enum: [CLOSED, OPEN, HALF_OPEN]
+              detail:
+                type: string
+  x-role-matrix:
+    description: Matricea rolurilor din 4.4, într-o formă care se poate citi automat (rolul → ce poate).
+    METER_SERVICE:
+      upload: [METER_READING]
+      searchAndDownload: []
+      other: [simulator]
+    FIELD:
+      upload: [OUTAGE_RECORD, INSPECTION_VIDEO]
+      searchAndDownload: [OUTAGE_RECORD, INSPECTION_VIDEO]
+      other: []
+    DISPATCH:
+      upload: []
+      searchAndDownload: [OUTAGE_RECORD, METER_READING]
+      other: ['/stats/*']
+    CONNECTIONS:
+      upload: [CONNECTION_DOC]
+      searchAndDownload: [CONNECTION_DOC]
+      other: [acces auditat]
+    ADMIN:
+      upload: [METER_READING, OUTAGE_RECORD, CONNECTION_DOC, INSPECTION_VIDEO]
+      searchAndDownload: [METER_READING, OUTAGE_RECORD, CONNECTION_DOC, INSPECTION_VIDEO]
+      other: ['/stats/*', '/admin/*']
+  x-metrics:
+    description: |
+      Numele exacte ale metricilor (secțiunea 4.3), fixate la ora 2. Etichetele obligatorii sunt `category`, `storage`
+      și `operation`. Micrometer publică timerul ca serii `_bucket`, `_sum`, `_count` (histogramă, pentru p50/p95/p99).
+      Gauge-urile identice pe toate instanțele (`filegrid_meter_unconfirmed`, `filegrid_storage_up`) se agregă cu
+      `max`, nu cu `sum`. Celelalte se agregă cu `sum by (category, storage)`.
+    labelValues:
+      category: [METER_READING, OUTAGE_RECORD, CONNECTION_DOC, INSPECTION_VIDEO]
+      storage: [FTP, S3, DB]
+      operation: [upload, upload_chunk, upload_complete, download, verify, delete, health]
+      outcome: [ok, error, rejected]
+      error: [storage_unavailable, timeout, circuit_open, integrity, internal]
+      result: [ok, denied, error]
+    api:
+      - name: filegrid_operation_seconds
+        type: timer (histogramă)
+        labels: [category, storage, operation, outcome]
+        usedFor: p50/p95/p99, throughput, alerta 2
+      - name: filegrid_operation_errors_total
+        type: counter
+        labels: [category, storage, operation, error]
+        usedFor: rata de erori
+      - name: filegrid_meter_duplicates_total
+        type: counter
+        labels: [category]
+        usedFor: duplicate respinse (citirile retrimise; category este METER_READING)
+      - name: filegrid_meter_unconfirmed
+        type: gauge
+        labels: []
+        usedFor: alerta 1 (rânduri fără file_id mai vechi de 60 s)
+      - name: filegrid_transfers_failed_total
+        type: counter
+        labels: [category, storage]
+        usedFor: alerta 3 (transferuri video eșuate)
+      - name: filegrid_doc_access_total
+        type: counter
+        labels: [result]
+        usedFor: alerta 4 (acces neașteptat la documente; result = ok, denied, error)
+      - name: filegrid_integrity_failures_total
+        type: counter
+        labels: [category, storage]
+        usedFor: fișiere corupte detectate
+      - name: filegrid_storage_up
+        type: gauge
+        labels: [storage]
+        usedFor: health per storage (1 = UP, 0 = DOWN)
+      - name: filegrid_bulkhead_rejected_total
+        type: counter
+        labels: [category]
+        usedFor: izolare per categorie (cereri respinse cu 429)
+      - name: filegrid_opmetrics_dropped_total
+        type: counter
+        labels: []
+        usedFor: pierderi în recorder (coadă plină la `operation_metrics`)
+    simulator:
+      description: Metricile simulatorului numără citiri individuale, nu loturi. Alerta 1 nu compară direct „trimise” cu „confirmate”.
+      metrics:
+        - name: sim_readings_sent_total
+          type: counter
+          usedFor: citirile din loturile trimise, numărate o singură dată, la prima încercare
+        - name: sim_readings_confirmed_total
+          type: counter
+          usedFor: citirile din loturile confirmate cu 201 sau 200
+        - name: sim_batches_retried_total
+          type: counter
+          usedFor: loturi retrimise
+        - name: sim_readings_pending
+          type: gauge
+          usedFor: citiri în curs, inclusiv în reîncercări
+        - name: sim_readings_abandoned_total
+          type: counter
+          usedFor: citiri din loturi abandonate după 10 minute de reîncercări
