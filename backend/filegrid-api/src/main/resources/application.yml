@@ -51,6 +51,12 @@ filegrid:
       admin:
         role: ADMIN
         password: ${FILEGRID_USER_ADMIN_PASSWORD:}
+  # Descarcare (C8): link semnat HMAC (cheia vine doar din mediu) si pragul sub care fisierul se verifica inainte de
+  # trimitere (peste prag, hash-ul se verifica in timpul trimiterii).
+  download:
+    link-secret: ${DOWNLOAD_LINK_SECRET:}
+    link-ttl: 15m
+    pre-verify-max-size: 16MB
   # S3 / MinIO (C5): utilizatorul aplicatiei creat de minio-init (nu contul root). Fara credentiale, S3Adapter
   # porneste neconfigurat (health down, operatiile -> 503). Fara retry in adaptor (rezilienta vine la C11).
   s3:

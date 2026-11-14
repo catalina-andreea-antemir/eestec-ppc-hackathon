@@ -26,6 +26,7 @@ public class ApiExceptionHandler {
         if (e.retryAfterSeconds() != null) {
             response.header(HttpHeaders.RETRY_AFTER, e.retryAfterSeconds().toString());
         }
+        e.headers().forEach(response::header);
         if (e.status() == HttpStatus.UNAUTHORIZED) {
             response.header(HttpHeaders.WWW_AUTHENTICATE, "Bearer");
         }

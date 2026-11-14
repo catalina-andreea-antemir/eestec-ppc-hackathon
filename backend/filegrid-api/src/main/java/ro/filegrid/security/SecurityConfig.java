@@ -43,6 +43,8 @@ public class SecurityConfig {
             PATHS.matcher(HttpMethod.GET, "/api/v1/health"),
             PATHS.matcher(HttpMethod.POST, "/api/v1/auth/login"),
             PATHS.matcher(HttpMethod.POST, "/api/v1/auth/refresh"),
+            // Link semnat de descărcare (C8): autorizarea e token-ul din cale, nu Authorization.
+            PATHS.matcher(HttpMethod.GET, "/api/v1/downloads/*"),
             PATHS.matcher(HttpMethod.GET, "/actuator/health"),
             PATHS.matcher(HttpMethod.GET, "/actuator/health/**"),
             PATHS.matcher(HttpMethod.GET, "/actuator/prometheus"));
