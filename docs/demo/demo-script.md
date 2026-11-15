@@ -31,7 +31,10 @@ stack la scrierea scriptului (vezi și [tabelul de la final](#ce-s-a-verificat-�
       (`POST /api/v1/admin/benchmark/run`, sincron, 1–3 minute; `409 BENCHMARK_RUNNING` dacă rulează deja unul).
       La final apare tabelul cu recomandările.
 - [ ] Testele de siguranță rulate **cu cel puțin 10 minute înainte** (nu mai târziu, vezi alerta 4 mai jos):
-      `.\tests\load\run.ps1 smoke` (71/71 la F8) și, opțional, `.\tests\chaos\run-all.ps1 -Only a,e`.
+      `.\tests\load\run.ps1 smoke` (ultimul pe stack-ul lui Ovidiu: 72/72, 0 erori neașteptate) și, opțional,
+      `.\tests\chaos\run-all.ps1 -Only a,e`.
+- [ ] Pentru comparația din pasul 6, pregătește date `normal` și `storm` din ultimele 24 h
+      (`.\tests\load\run.ps1 storm` la pregătire, dacă lipsesc). Confirmă `200` și cele patru categorii înainte de demo.
 - [ ] Rețeaua degradată pentru pasul 5, pornită dinainte: `.\docs\demo\demo.ps1 retea-start` (toxiproxy din profilul
       `chaos`, proxy `nginx` pe `https://localhost:8443` → `nginx:443`, limită de upload 20 MB/s).
       **[de verificat la repetiție]**
@@ -219,11 +222,11 @@ REZULTAT f-bulkhead : TRECUT
 👁 G2 → „Cereri respinse de bulkhead per categorie” (doar `METER_READING`) și „Răspunsuri 429 / 503 (HTTP)”;
 G1 → „Throughput per categorie” **[de verificat la repetiție]**.
 
-⚠ **Nu se caută în UI în timpul furtunii**: căutarea dispecerului primește 200, dar cu p95 de ordinul secundelor
-(blocări SQL pe `dbo.files`, vezi [răspunsurile pregătite](#căutarea-e-lentă-în-vârf)).
+⚠ **Căutarea în UI în timpul furtunii rămâne de verificat la repetiție.** Latența poate crește sub ingestie
+intensă. Vezi [răspunsurile pregătite](#căutarea-e-lentă-în-vârf).
 
 Alternative (nu în traseul principal): simulatorul `SIM_PROFILE=peak` (M12) sau `.\tests\load\run.ps1 peak -Short`
-(M6; verdictul lui iese `ESUAT` pe pragul de latență a căutării, deci nu e potrivit live).
+(M6). Verifică rezultatul pe stack-ul de demo la repetiție.
 
 ### Pasul 4 – FTP oprit: video-urile trec pe S3 (0:55)
 
@@ -310,7 +313,7 @@ Note:
 |---|---|
 | Cerințe R1–R4 | R1 OK (nicio citire neconfirmată), **R3 AT_RISK** după pasul 2, R4 OK (0% transferuri video eșuate) |
 | Storage-advisor | matricea 4 × 3 cu scor, recomandarea per categorie, „politica actuală”, „★ recomandat”, ipoteza de cost (FTP 1,0 / S3 1,4 / DB 3,2 per GB) |
-| Zi normală vs. vârf | comparația pe categorii (`/stats/peak-vs-normal` → 200 după `run.sh storm`; fără date → 503 `REQUEST_METRICS_UNAVAILABLE`) |
+| Zi normală vs. vârf | comparația pe categorii când datele `normal` și `storm` sunt suficiente. Cu date insuficiente, `/stats/peak-vs-normal` răspunde 503 `REQUEST_METRICS_UNAVAILABLE`. |
 | Zone cu avarii | clasament: Muntenia 37,9%, Banat 31,8%, Dobrogea 30,3% (2 333 avarii în 30 de zile) |
 | Anomalii | consumuri > mediană + 3σ per contor (cele mai mari abateri primele) și contoare tăcute |
 
@@ -355,16 +358,18 @@ Detaliile măsurătorilor sunt în analiza lui Ovidiu (O9).
 
 ### „Zi normală vs. vârf”
 
-`/stats/peak-vs-normal` răspunde 200 după `tests/load/run.sh storm` (fazele `normal` și `storm`, ultimele 24 h):
-cereri, throughput, p50/p95/p99, rata de erori și respingerile bulkhead per categorie, plus interpretarea. Fără
-măsurători în ambele scenarii pentru fiecare categorie răspunde 503 `REQUEST_METRICS_UNAVAILABLE` (cu
-`details.missing`). Aceeași comparație se vede și în G1, secțiunea „Zi normală vs. vârf”.
+`/stats/peak-vs-normal` răspunde 200 când are date suficiente pentru fiecare categorie în ambele scenarii din
+ultimele 24 h. `tests/load/run.sh storm` generează date pentru `normal` și `storm`. Răspunsul include cereri,
+throughput, p50/p95/p99, rata de erori și respingerile bulkhead per categorie, plus interpretarea. Dacă datele
+sunt insuficiente, răspunde 503 `REQUEST_METRICS_UNAVAILABLE`, cu `details.missing`. În G1, secțiunea
+„Zi normală vs. vârf” afișează metricile din Prometheus.
 
 ### Căutarea e lentă în vârf
 
-> Izolarea pe categorie funcționează: în furtună, căutările nu primesc niciun 429. Dar p95 al căutării crește la
-> câteva secunde, fiindcă ingestia citirilor ține blocări pe tabela de fișiere, iar READ_COMMITTED_SNAPSHOT e oprit pe
-> FileGridMeta. Remedierea identificată e activarea lui sau un index pe `files(category, status, created_at)`.
+> RCSI (`READ_COMMITTED_SNAPSHOT`) e activat la crearea `FileGridMeta`. Pe o bază existentă trebuie verificat
+> separat. RCSI reduce blocarea citirilor de către scrieri. Scrierile concurente pot încă să se blocheze între ele,
+> iar la concurență extremă pot apărea deadlock-uri SQL Server. Vezi [procedura RCSI](../storage/filegridmeta-rcsi.md)
+> și [limitările cunoscute](../LIMITARI-CUNOSCUTE.md).
 
 ### Alte întrebări probabile
 
@@ -434,8 +439,9 @@ Un câmp invalid se loghează și se păstrează politica anterioară. **[de ver
 ### M6 – Bulkhead, varianta k6 cu grafice
 
 ⌨ `.\tests\load\run.ps1 peak -Short -Dashboard` → `http://localhost:5665` (graficele k6 live, ~45 s).
-✅ `429` doar pe citiri; avariile și căutările fără erori. Verdictul final iese `ESUAT` pe pragul de latență a
-căutării (vezi [căutarea e lentă în vârf](#căutarea-e-lentă-în-vârf)): se spune deschis.
+✅ Rezultat urmărit: `429` pe citiri, zero `429` pe avarii și căutări. La validarea finală F8, `peak --short`
+a trecut pragurile absolute după activarea RCSI. Rezumatul poate indica `DEGRADAT` față de baseline chiar
+când pragurile k6 trec. Folosește valorile din rularea de demo.
 
 ### M7 – Latență p50 / p95 / p99 pe categorie × storage
 
