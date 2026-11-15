@@ -81,6 +81,25 @@ Verificare rapidă:
 docker compose ps
 ```
 
+### Pornire pentru demo, cu trei replici API
+
+Windows PowerShell 5.1 sau PowerShell 7
+
+```powershell
+.\scripts\demo-start.ps1
+```
+
+Linux, WSL sau macOS Intel
+
+```bash
+bash scripts/demo-start.sh
+```
+
+Scriptul reutilizează pornirea standard, scalează doar `api` la 3 replici și așteaptă până la 600 s ca toate
+să fie `healthy` și până la 60 s pentru HTTP `200` prin nginx. Afișează cele trei replici și adresele aplicației și Grafana.
+Ieșirea nu include parole sau loguri de servicii. La eșec, verifică etapa indicată într-un terminal privat.
+Poți relua comanda cu aceleași date și volume.
+
 ### Compatibilitate
 
 | Sistem | Script de pornire | Imaginile stack-ului |
