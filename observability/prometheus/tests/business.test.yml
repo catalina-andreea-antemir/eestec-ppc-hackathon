@@ -1,0 +1,142 @@
+rule_files:
+  - ../rules/business.yml
+
+evaluation_interval: 5s
+
+tests:
+  - name: "Metrici de business absente"
+    alert_rule_test:
+      - {alertname: FileGridUnconfirmedMeterReadings, eval_time: 5m}
+      - {alertname: FileGridOutageP95TooHigh, eval_time: 5m}
+      - {alertname: FileGridVideoTransferFailureRate, eval_time: 5m}
+      - {alertname: FileGridUnexpectedDocumentAccess, eval_time: 5m}
+
+  - name: "Citiri neconfirmate pe o replica, cu persistenta de 15s"
+    input_series:
+      - series: 'filegrid_meter_unconfirmed{instance="api-1"}'
+        values: '0+0x30'
+      - series: 'filegrid_meter_unconfirmed{instance="api-2"}'
+        values: '0 0 1+0x30'
+    alert_rule_test:
+      - {alertname: FileGridUnconfirmedMeterReadings, eval_time: 20s}
+      - alertname: FileGridUnconfirmedMeterReadings
+        eval_time: 25s
+        exp_alerts:
+          - exp_labels: {severity: critical, alerta: "1", categorie: METER_READING}
+            exp_annotations: {summary: "Citiri de contor neconfirmate sau abandonate"}
+
+  - name: "Citiri abandonate fara metricile C12"
+    input_series:
+      - series: 'sim_readings_abandoned_total'
+        values: '0 0 1+0x30'
+    alert_rule_test:
+      - {alertname: FileGridUnconfirmedMeterReadings, eval_time: 20s}
+      - alertname: FileGridUnconfirmedMeterReadings
+        eval_time: 25s
+        exp_alerts:
+          - exp_labels: {severity: critical, alerta: "1", categorie: METER_READING}
+            exp_annotations: {summary: "Citiri de contor neconfirmate sau abandonate"}
+
+  - name: "Pending la pornire necesita 2 minute si apoi 15s"
+    input_series:
+      - series: 'sim_readings_pending'
+        values: '_ _ 1+0x45'
+    alert_rule_test:
+      - {alertname: FileGridUnconfirmedMeterReadings, eval_time: 30s}
+      - {alertname: FileGridUnconfirmedMeterReadings, eval_time: 2m20s}
+      - alertname: FileGridUnconfirmedMeterReadings
+        eval_time: 2m25s
+        exp_alerts:
+          - exp_labels: {severity: critical, alerta: "1", categorie: METER_READING}
+            exp_annotations: {summary: "Citiri de contor neconfirmate sau abandonate"}
+
+  - name: "Disparitia metricii pending intrerupe fereastra"
+    input_series:
+      - series: 'sim_readings_pending'
+        values: '1+0x10 stale 1+0x45'
+    alert_rule_test:
+      - {alertname: FileGridUnconfirmedMeterReadings, eval_time: 2m40s}
+      - alertname: FileGridUnconfirmedMeterReadings
+        eval_time: 3m15s
+        exp_alerts:
+          - exp_labels: {severity: critical, alerta: "1", categorie: METER_READING}
+            exp_annotations: {summary: "Citiri de contor neconfirmate sau abandonate"}
+
+  - name: "Avarii lente, health rapid exclus din p95"
+    input_series:
+      - series: 'filegrid_operation_seconds_bucket{category="OUTAGE_RECORD",operation="upload",le="2"}'
+        values: '0+0x70'
+      - series: 'filegrid_operation_seconds_bucket{category="OUTAGE_RECORD",operation="upload",le="5"}'
+        values: '0+10x70'
+      - series: 'filegrid_operation_seconds_bucket{category="OUTAGE_RECORD",operation="upload",le="+Inf"}'
+        values: '0+10x70'
+      - series: 'filegrid_operation_seconds_bucket{category="OUTAGE_RECORD",operation="health",le="2"}'
+        values: '0+1000x70'
+      - series: 'filegrid_operation_seconds_bucket{category="OUTAGE_RECORD",operation="health",le="5"}'
+        values: '0+1000x70'
+      - series: 'filegrid_operation_seconds_bucket{category="OUTAGE_RECORD",operation="health",le="+Inf"}'
+        values: '0+1000x70'
+    alert_rule_test:
+      - alertname: FileGridOutageP95TooHigh
+        eval_time: 5m
+        exp_alerts:
+          - exp_labels: {severity: warning, alerta: "2", categorie: OUTAGE_RECORD}
+            exp_annotations: {summary: "Latenta p95 pe inregistrarile de avarie depaseste 2 s"}
+
+  - name: "Avarii cu p95 sub prag"
+    input_series:
+      - series: 'filegrid_operation_seconds_bucket{category="OUTAGE_RECORD",operation="upload",le="2"}'
+        values: '0+10x70'
+      - series: 'filegrid_operation_seconds_bucket{category="OUTAGE_RECORD",operation="upload",le="+Inf"}'
+        values: '0+10x70'
+    alert_rule_test:
+      - {alertname: FileGridOutageP95TooHigh, eval_time: 5m}
+
+  - name: "Video fara seria C12 de transferuri reusite"
+    input_series:
+      - series: 'filegrid_transfers_failed_total{category="INSPECTION_VIDEO",storage="FTP"}'
+        values: '0+2x70'
+      - series: 'filegrid_operation_seconds_count{category="INSPECTION_VIDEO",operation="upload_chunk",outcome="ok"}'
+        values: '0+10x70'
+      - series: 'filegrid_operation_seconds_count{category="INSPECTION_VIDEO",operation="download",outcome="error"}'
+        values: '0+10x70'
+    alert_rule_test:
+      - {alertname: FileGridVideoTransferFailureRate, eval_time: 5m}
+
+  - name: "Video peste 5%, fara a numara chunkurile reusite"
+    input_series:
+      - series: 'filegrid_transfers_failed_total{category="INSPECTION_VIDEO",storage="FTP"}'
+        values: '0+2x70'
+      - series: 'filegrid_operation_seconds_count{category="INSPECTION_VIDEO",operation="download",outcome="ok"}'
+        values: '0+18x70'
+      - series: 'filegrid_operation_seconds_count{category="INSPECTION_VIDEO",operation="upload_chunk",outcome="ok"}'
+        values: '0+100x70'
+    alert_rule_test:
+      - alertname: FileGridVideoTransferFailureRate
+        eval_time: 5m
+        exp_alerts:
+          - exp_labels: {severity: warning, alerta: "3", categorie: INSPECTION_VIDEO}
+            exp_annotations: {summary: "Peste 5% transferuri video esuate"}
+
+  - name: "Video exact 5% ramane inactiv"
+    input_series:
+      - series: 'filegrid_transfers_failed_total{category="INSPECTION_VIDEO",storage="FTP"}'
+        values: '0+1x70'
+      - series: 'filegrid_operation_seconds_count{category="INSPECTION_VIDEO",operation="upload_complete",outcome="ok"}'
+        values: '0+19x70'
+    alert_rule_test:
+      - {alertname: FileGridVideoTransferFailureRate, eval_time: 5m}
+
+  - name: "Accesele reusite sunt ignorate, refuzul declanseaza alerta fara C12"
+    input_series:
+      - series: 'filegrid_doc_access_total{result="ok"}'
+        values: '0+10x30'
+      - series: 'filegrid_doc_access_total{result="denied"}'
+        values: '0 0 0 0 0 1+0x30'
+    alert_rule_test:
+      - {alertname: FileGridUnexpectedDocumentAccess, eval_time: 35s}
+      - alertname: FileGridUnexpectedDocumentAccess
+        eval_time: 40s
+        exp_alerts:
+          - exp_labels: {severity: critical, alerta: "4", categorie: CONNECTION_DOC}
+            exp_annotations: {summary: "Acces refuzat sau eroare la documentele de racordare"}

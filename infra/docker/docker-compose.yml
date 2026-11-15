@@ -254,6 +254,7 @@ services:
     dns_opt: ["ndots:1"]
     volumes:
       - ../../observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../../observability/prometheus/rules:/etc/prometheus/rules:ro
       - prometheus:/prometheus
     networks:
       - storage-net
@@ -266,10 +267,47 @@ services:
     mem_limit: 512m
 
   # ---------------------------------------------------------------------------------------------------------------
+  # Notificarile O8 raman in reteaua interna.
+  alertmanager:
+    image: prom/alertmanager:v0.35.0
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+      - --cluster.listen-address=
+    volumes:
+      - ../../observability/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager:/alertmanager
+    networks:
+      - storage-net
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:9093/-/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    mem_limit: 128m
+
+  alert-webhook:
+    build:
+      context: ../../observability/alert-webhook
+    image: filegrid/alert-webhook:local
+    restart: unless-stopped
+    init: true
+    read_only: true
+    networks:
+      - storage-net
+    healthcheck:
+      test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://127.0.0.1:8080/healthz', timeout=2).close()"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    mem_limit: 64m
+
+  # ---------------------------------------------------------------------------------------------------------------
   # Locuri rezervate pentru etapele urmatoare (se completeaza in etapele lor; toate pe storage-net, fara porturi):
   #
-  # alertmanager:    # O8 - observability/alertmanager, group_wait 10s; webhook catre alert-webhook
-  # alert-webhook:   # O8 - observability/alert-webhook, receiver local
   # loki:            # O8 - observability/loki; volum loki; mem_limit 512m
   # promtail:        # O8 - observability/promtail, logurile JSON ale api
 
@@ -342,4 +380,5 @@ volumes:
   nginx-certs:
   grafana:
   prometheus:
+  alertmanager:
   # loki:        # O8

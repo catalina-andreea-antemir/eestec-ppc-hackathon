@@ -1,0 +1,51 @@
+groups:
+  - name: filegrid-business
+    interval: 5s
+    rules:
+      - alert: FileGridUnconfirmedMeterReadings
+        # Umple golurile din fereastra cu zero si verifica si marginea de acum 2 minute,
+        # ca simulatorul abia pornit sa nu declanseze alerta pentru citiri in curs.
+        expr: >-
+          (max(filegrid_meter_unconfirmed) > 0)
+          or (sum(increase(sim_readings_abandoned_total[5m])) > 0)
+          or (
+            (min_over_time((sum(sim_readings_pending) or vector(0))[2m:5s]) > 0)
+            and (sum(sim_readings_pending offset 2m) > 0)
+          )
+        for: 15s
+        labels: {severity: critical, alerta: "1", categorie: METER_READING}
+        annotations:
+          summary: "Citiri de contor neconfirmate sau abandonate"
+
+      - alert: FileGridOutageP95TooHigh
+        expr: >-
+          histogram_quantile(0.95, sum by (le)
+            (rate(filegrid_operation_seconds_bucket{category="OUTAGE_RECORD", operation!="health"}[5m])))
+          > 2
+        for: 15s
+        labels: {severity: warning, alerta: "2", categorie: OUTAGE_RECORD}
+        annotations:
+          summary: "Latenta p95 pe inregistrarile de avarie depaseste 2 s"
+
+      - alert: FileGridVideoTransferFailureRate
+        # C11 poate furniza doar numaratorul. Raportul se evalueaza cand exista si
+        # date pentru transferurile reusite, din instrumentarea C12.
+        expr: >-
+          sum(increase(filegrid_transfers_failed_total{category="INSPECTION_VIDEO"}[5m]))
+          / clamp_min(
+            sum(increase(filegrid_transfers_failed_total{category="INSPECTION_VIDEO"}[5m]))
+            + sum(increase(filegrid_operation_seconds_count{category="INSPECTION_VIDEO",
+                operation=~"upload_complete|download", outcome="ok"}[5m])),
+            1
+          ) > 0.05
+        for: 15s
+        labels: {severity: warning, alerta: "3", categorie: INSPECTION_VIDEO}
+        annotations:
+          summary: "Peste 5% transferuri video esuate"
+
+      - alert: FileGridUnexpectedDocumentAccess
+        expr: sum(increase(filegrid_doc_access_total{result!="ok"}[5m])) > 0
+        for: 15s
+        labels: {severity: critical, alerta: "4", categorie: CONNECTION_DOC}
+        annotations:
+          summary: "Acces refuzat sau eroare la documentele de racordare"
