@@ -38,6 +38,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import ro.filegrid.TestSecrets;
 import ro.filegrid.analytics.StatsRepository.Outages;
+import ro.filegrid.analytics.StatsRepository.ScenarioActivity;
 import ro.filegrid.analytics.StatsRepository.StorageMeasurement;
 import ro.filegrid.domain.Category;
 import ro.filegrid.domain.StorageType;
@@ -178,16 +179,61 @@ class StatsApiTest {
     }
 
     @Test
+    void peakVsNormalReturnsMeasuredFiguresPerCategoryInTheRunWindows() throws Exception {
+        Instant normalStart = Instant.parse("2026-11-14T10:00:00Z");
+        Instant stormStart = Instant.parse("2026-11-14T11:00:00Z");
+        var activity = new ArrayList<ScenarioActivity>();
+        var rows = new ArrayList<OperationStats>();
+        for (Category category : Category.values()) {
+            activity.add(new ScenarioActivity("normal", category, normalStart, normalStart.plusSeconds(1800), 0));
+            activity.add(new ScenarioActivity("storm", category, stormStart, stormStart.plusSeconds(1800),
+                    category == Category.OUTAGE_RECORD ? 14 : 0));
+            rows.add(new OperationStats(category, "normal", 36, 1.2, 190.0, 340.0, 410.0, BigDecimal.ZERO, null));
+            rows.add(new OperationStats(category, "storm", category == Category.OUTAGE_RECORD ? 480 : 36,
+                    category == Category.OUTAGE_RECORD ? 16.0 : 1.2, 260.0,
+                    category == Category.OUTAGE_RECORD ? 710.0 : 350.0, 1250.0, new BigDecimal("0.625"),
+                    category == Category.OUTAGE_RECORD ? 108.82352 : 2.94));
+        }
+        when(repository.scenarioActivity(eq("normal"), eq("storm"), any(), any())).thenReturn(activity);
+        when(repository.peakVsNormal(eq("normal"), any(), any(), eq("storm"), any(), any())).thenReturn(rows);
+        mvc.perform(get(STATS + "peak-vs-normal").header("Authorization", bearer(Role.ADMIN)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.normal.scenario").value("normal"))
+                .andExpect(jsonPath("$.normal.from").value("2026-11-14T10:00:00Z"))
+                .andExpect(jsonPath("$.peak.scenario").value("storm"))
+                .andExpect(jsonPath("$.peak.from").value("2026-11-14T11:00:00Z"))
+                .andExpect(jsonPath("$.categories.length()").value(4))
+                .andExpect(jsonPath("$.categories[1].category").value("OUTAGE_RECORD"))
+                .andExpect(jsonPath("$.categories[1].normal.requests").value(36))
+                .andExpect(jsonPath("$.categories[1].peak.requests").value(480))
+                .andExpect(jsonPath("$.categories[1].peak.throughputPerMinute").value(16.0))
+                .andExpect(jsonPath("$.categories[1].peak.latencyP95Ms").value(710.0))
+                .andExpect(jsonPath("$.categories[1].peak.errorRatePercent").value(0.6))
+                .andExpect(jsonPath("$.categories[1].peak.rejected").value(14))
+                .andExpect(jsonPath("$.categories[1].normal.rejected").value(0))
+                .andExpect(jsonPath("$.categories[1].p95ChangePercent").value(108.8))
+                .andExpect(jsonPath("$.interpretation").value(org.hamcrest.Matchers.containsString(
+                        "OUTAGE_RECORD a avut cea mai mare creștere a cererilor (de la 36 la 480")))
+                .andExpect(jsonPath("$.interpretation").value(org.hamcrest.Matchers.containsString(
+                        "Bulkhead-ul a respins 14 cereri în „storm” (OUTAGE_RECORD: 14)")));
+        // Fereastra reală a fiecărui scenariu (primul–ultimul rând, sfârșit exclusiv) ajunge în interogarea 05.
+        verify(repository).peakVsNormal("normal", normalStart, normalStart.plusSeconds(1800).plusNanos(100),
+                "storm", stormStart, stormStart.plusSeconds(1800).plusNanos(100));
+    }
+
+    @Test
     void reportsUnavailablePerformanceFieldsAndIncompleteStorageEvidence() throws Exception {
-        when(repository.peakVsNormal(eq("normal"), eq("peak"), any(), any()))
+        when(repository.peakVsNormal(eq("normal"), any(), any(), eq("peak"), any(), any()))
                 .thenReturn(List.of(new OperationStats(Category.OUTAGE_RECORD, "peak", 0, 0,
                         null, null, null, null, null)));
         mvc.perform(get(STATS + "peak-vs-normal").header("Authorization", bearer(Role.DISPATCH))
                         .param("peakScenario", "peak"))
                 .andExpect(unavailable("REQUEST_METRICS_UNAVAILABLE"))
-                .andExpect(jsonPath("$.details.missingFields", hasItems(
-                        "requests", "rejected", "latencyP95Ms", "p95ChangePercent")));
-        verify(repository).peakVsNormal(eq("normal"), eq("peak"), any(), any());
+                .andExpect(jsonPath("$.details.missing[0].category").value("METER_READING"))
+                .andExpect(jsonPath("$.details.missing[1].scenario").value("peak"))
+                .andExpect(jsonPath("$.details.missing[1].fields", hasItems("latencyP95Ms", "p95ChangePercent")));
+        verify(repository).scenarioActivity(eq("normal"), eq("peak"), any(), any());
+        verify(repository).peakVsNormal(eq("normal"), any(), any(), eq("peak"), any(), any());
         mvc.perform(get(STATS + "storage-advisor").header("Authorization", bearer(Role.ADMIN)))
                 .andExpect(unavailable("STORAGE_MEASUREMENTS_INCOMPLETE"));
     }

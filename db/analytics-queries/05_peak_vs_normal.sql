@@ -40,7 +40,8 @@ measurements AS (
     FROM dbo.operation_metrics AS m
     INNER JOIN scenario_windows AS w ON m.scenario = w.scenario
         AND m.ts >= w.from_utc AND m.ts < w.to_utc
-    WHERE m.source = N'live'
+    -- Bulkhead rejections (operation 'rejected', latency 0) are counted separately by the API.
+    WHERE m.source = N'live' AND m.operation <> N'rejected'
 ),
 scenario_stats AS (
     SELECT

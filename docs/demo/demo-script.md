@@ -310,7 +310,7 @@ Note:
 |---|---|
 | Cerințe R1–R4 | R1 OK (nicio citire neconfirmată), **R3 AT_RISK** după pasul 2, R4 OK (0% transferuri video eșuate) |
 | Storage-advisor | matricea 4 × 3 cu scor, recomandarea per categorie, „politica actuală”, „★ recomandat”, ipoteza de cost (FTP 1,0 / S3 1,4 / DB 3,2 per GB) |
-| Zi normală vs. vârf | mesaj informativ „indisponibil” (`/stats/peak-vs-normal` → 503 `REQUEST_METRICS_UNAVAILABLE`, lucrează Ovidiu) |
+| Zi normală vs. vârf | comparația pe categorii (`/stats/peak-vs-normal` → 200 după `run.sh storm`; fără date → 503 `REQUEST_METRICS_UNAVAILABLE`) |
 | Zone cu avarii | clasament: Muntenia 37,9%, Banat 31,8%, Dobrogea 30,3% (2 333 avarii în 30 de zile) |
 | Anomalii | consumuri > mediană + 3σ per contor (cele mai mari abateri primele) și contoare tăcute |
 
@@ -353,11 +353,12 @@ Pe stack, la scriere: politica și recomandarea coincid doar la `INSPECTION_VIDE
 
 Detaliile măsurătorilor sunt în analiza lui Ovidiu (O9).
 
-### De ce „Zi normală vs. vârf” nu are date
+### „Zi normală vs. vârf”
 
-`/stats/peak-vs-normal` răspunde încă 503 `REQUEST_METRICS_UNAVAILABLE` (comparația are nevoie de numărul de cereri
-și de respingeri per categorie și scenariu). Aceeași comparație se vede în G1, secțiunea „Zi normală vs. vârf”
-(throughput și p95 per categorie acum vs. acum − interval).
+`/stats/peak-vs-normal` răspunde 200 după `tests/load/run.sh storm` (fazele `normal` și `storm`, ultimele 24 h):
+cereri, throughput, p50/p95/p99, rata de erori și respingerile bulkhead per categorie, plus interpretarea. Fără
+măsurători în ambele scenarii pentru fiecare categorie răspunde 503 `REQUEST_METRICS_UNAVAILABLE` (cu
+`details.missing`). Aceeași comparație se vede și în G1, secțiunea „Zi normală vs. vârf”.
 
 ### Căutarea e lentă în vârf
 
@@ -506,7 +507,7 @@ Verificat pe stack-ul pornit (15.11.2026, 3 replici `api`), fără oprirea vreun
 | Pasul 1 (`demo.ps1 duplicat`) | 201 → 200 `duplicate:true`, același `fileId`, 96/96/1 în `meter_readings` |
 | Pasul 2 (`demo.ps1 criptare`, document încărcat prin API ca `racordari`) | storage DB, `encrypted`, primii octeți diferiți de `%PDF`, nume criptat în `dbo.files`, descărcare cu hash = original |
 | Pasul 2, 403 + alerta 4 (`demo.ps1 acces-interzis`) | 403 `FORBIDDEN` pentru `dispecer`; `firing ... business_alerts=4` în `alert-webhook` după 31 s; `resolved` la ~4,5 min după ultimul 403 |
-| `/stats/*` | storage-advisor 200 (1 din 4 potriviri), anomalies 200, outage-zones 200, requirements 200 (R3 `AT_RISK` după 403), peak-vs-normal 503 |
+| `/stats/*` | storage-advisor 200 (1 din 4 potriviri), anomalies 200, outage-zones 200, requirements 200 (R3 `AT_RISK` după 403), peak-vs-normal 200 (după storm) |
 | Roluri | `teren` → 403 la `/stats/requirements` și la benchmark |
 | M2 | 3 adrese `upstream=` distincte în nginx; 3 ținte `job="api"` în Prometheus |
 | M3 | `demo.ps1 trace` găsește login-ul în Loki, cu `replica`; un lot reușit nu are linie |

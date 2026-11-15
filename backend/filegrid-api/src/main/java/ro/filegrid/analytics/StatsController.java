@@ -57,7 +57,7 @@ class StatsController {
     }
 
     @GetMapping("/peak-vs-normal")
-    void peakVsNormal(HttpServletRequest request, @RequestParam(required = false) String normalScenario,
+    PeakVsNormal peakVsNormal(HttpServletRequest request, @RequestParam(required = false) String normalScenario,
                       @RequestParam(required = false) String peakScenario) {
         requireStatsRole(request);
         String normal = scenario("normalScenario", normalScenario, "normal");
@@ -65,7 +65,7 @@ class StatsController {
         if (normal.equals(peak)) {
             throw invalid("peakScenario", "Scenariile normal și de vârf trebuie să aibă etichete diferite.");
         }
-        stats.peakVsNormal(now(), normal, peak);
+        return stats.peakVsNormal(now(), normal, peak);
     }
 
     @GetMapping("/storage-advisor")

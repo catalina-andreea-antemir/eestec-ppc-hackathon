@@ -45,6 +45,20 @@ final class StatsResponses {
                           BigDecimal errorRatePercent, Double p95ChangePercent) {
     }
 
+    record PeakVsNormal(Instant generatedAt, ScenarioWindow normal, ScenarioWindow peak,
+                        List<CategoryComparison> categories, String interpretation) {
+    }
+
+    record ScenarioWindow(String scenario, Instant from, Instant to) {
+    }
+
+    record CategoryComparison(Category category, ScenarioStats normal, ScenarioStats peak, double p95ChangePercent) {
+    }
+
+    record ScenarioStats(long requests, double throughputPerMinute, double latencyP50Ms, double latencyP95Ms,
+                         double latencyP99Ms, double errorRatePercent, long rejected) {
+    }
+
     record StorageAdvisor(Instant generatedAt, SampleBasis basis, CostAssumption costAssumption,
                           List<StorageScore> matrix, List<StorageRecommendation> recommendations,
                           String interpretation) {
