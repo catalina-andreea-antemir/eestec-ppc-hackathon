@@ -1,0 +1,20 @@
+[
+  {
+    "name": "s3",
+    "listen": "0.0.0.0:19000",
+    "upstream": "minio:9000",
+    "enabled": true
+  },
+  {
+    "name": "storage-db",
+    "listen": "0.0.0.0:11433",
+    "upstream": "mssql:1433",
+    "enabled": true
+  },
+  {
+    "name": "nginx",
+    "listen": "0.0.0.0:8443",
+    "upstream": "nginx:443",
+    "enabled": true
+  }
+]

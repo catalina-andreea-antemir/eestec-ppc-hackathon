@@ -449,15 +449,21 @@ services:
         condition: service_healthy
     mem_limit: 256m
   # ---------------------------------------------------------------------------------------------------------------
-  # Toxiproxy (F9, profil chaos): retea degradata intre client si nginx. Porneste doar cu
+  # Toxiproxy (F9, profil chaos): retea degradata. Porneste doar cu
   #   docker compose --profile chaos up -d toxiproxy
-  # Porturi DOAR pe 127.0.0.1: 8474 = API-ul de control, 8443 = proxy-ul (creat la rulare prin API, recomandat
-  # numele "nginx": listen 0.0.0.0:8443 -> upstream nginx:443; browserul/k6 folosesc https://localhost:8443).
+  # Fara profil, stack-ul ramane identic (api vorbeste direct cu storage-urile). Porturi DOAR pe 127.0.0.1:
+  #   8474 = API-ul de control; 8443 = proxy client -> nginx (creat la rulare prin API, numele "nginx":
+  #   listen 0.0.0.0:8443 -> upstream nginx:443; browserul/k6 folosesc https://localhost:8443).
+  # Proxy-urile spre storage (tests/chaos/toxiproxy.json): s3 -> minio:9000 (19000) si storage-db -> mssql:1433
+  # (11433), doar pe storage-net; api trece prin ele numai cu infra/docker/docker-compose.chaos.yml.
   # Fara depends_on: nu porneste si nu modifica restul stack-ului.
   toxiproxy:
     image: ghcr.io/shopify/toxiproxy:2.12.0
     profiles: ["chaos"]
     restart: unless-stopped
+    command: ["-host=0.0.0.0", "-config=/config/toxiproxy.json"]
+    volumes:
+      - ../../tests/chaos/toxiproxy.json:/config/toxiproxy.json:ro
     ports:
       - "127.0.0.1:8474:8474"
       - "127.0.0.1:8443:8443"
@@ -465,11 +471,12 @@ services:
       - public
       - storage-net
     healthcheck:
+      # Imaginea nu are shell; toxiproxy-cli list interogheaza API-ul local (localhost:8474).
       test: ["CMD", "/toxiproxy-cli", "list"]
-      interval: 10s
+      interval: 5s
       timeout: 3s
-      retries: 3
-      start_period: 5s
+      retries: 6
+      start_period: 3s
     mem_limit: 64m
 
 networks:
