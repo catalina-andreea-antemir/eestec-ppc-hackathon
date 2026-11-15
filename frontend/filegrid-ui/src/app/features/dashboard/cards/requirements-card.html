@@ -9,7 +9,7 @@
     @for (r of tiles(); track r.id) {
       <div class="tile" [class]="tone(r)">
         <div class="tile-head">
-          <span class="status">{{ tone(r) === 'green' ? '● Îndeplinită' : '● În pericol' }}</span>
+          <span class="status">● {{ toneLabels[tone(r)] }}</span>
           <span class="id">{{ r.id }} · {{ labels[r.category] }}</span>
         </div>
         <strong>{{ r.title }}</strong>

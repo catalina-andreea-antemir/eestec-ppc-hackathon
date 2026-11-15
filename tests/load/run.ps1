@@ -10,12 +10,13 @@
 .NOTES
   Parolele se citesc din .env (FILEGRID_USER_*_PASSWORD) si se dau containerului ca variabile de mediu
   (doar numele variabilei apare in linia de comanda docker; valoarea nu se afiseaza si nu se scrie in fisiere).
-  Implicit k6 ruleaza in reteaua Docker filegrid_public si loveste nginx-ul: https://nginx/api/v1.
+  Implicit k6 ruleaza in reteaua Docker filegrid_storage-net si loveste nginx-ul: https://nginx/api/v1
+  (la peak, citirile merg direct la http://api:8080/api/v1, ca meter-simulator).
   Cu -Localhost loveste https://host.docker.internal/api/v1 (acelasi nginx, prin portul 443 publicat).
 #>
 param(
   [Parameter(Mandatory = $true, Position = 0)]
-  [ValidateSet('smoke', 'meter-readings', 'mixed', 'peak', 'security')]
+  [ValidateSet('smoke', 'meter-readings', 'mixed', 'peak', 'security', 'storm', 'big-upload')]
   [string]$Scenario,
   [switch]$Short,
   [switch]$Localhost,
@@ -65,7 +66,7 @@ if ($Dashboard) {
   $dockerArgs += @('-p', '127.0.0.1:5665:5665', '-e', 'K6_WEB_DASHBOARD=true', '-e', 'K6_WEB_DASHBOARD_HOST=0.0.0.0',
                    '-e', 'K6_WEB_DASHBOARD_PERIOD=2s', '-e', "K6_WEB_DASHBOARD_EXPORT=results/$Scenario-$stamp-dashboard.html")
 }
-foreach ($n in @('K6_DEBUG_ERRORS', 'RUN_ID', 'PEAK_RATE', 'MIXED_RATE', 'METER_RATE', 'DURATION')) {
+foreach ($n in @('K6_DEBUG_ERRORS', 'RUN_ID', 'PEAK_RATE', 'MIXED_RATE', 'METER_RATE', 'DURATION', 'DUP_PCT', 'STORM_FACTOR', 'BIG_SIZE_MB')) {
   if (Get-Item -Path "Env:$n" -ErrorAction SilentlyContinue) { $dockerArgs += @('-e', $n) }
 }
 $dockerArgs += @($K6Image, 'run')

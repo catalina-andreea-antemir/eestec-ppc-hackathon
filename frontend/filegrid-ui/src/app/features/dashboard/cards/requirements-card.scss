@@ -36,8 +36,18 @@
   text-transform: uppercase;
 }
 
+.tile.neutral {
+  background: var(--bg);
+  border-color: var(--border);
+  border-style: dashed;
+}
+
 .green .status {
   color: var(--ok);
+}
+
+.neutral .status {
+  color: var(--muted);
 }
 
 .red .status {

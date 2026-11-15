@@ -3,10 +3,13 @@ import { Component, computed, DestroyRef, effect, inject, input, untracked } fro
 import { CATEGORY_LABELS } from '../../../core/files/files.models';
 import { StatsApi } from '../../../core/stats/stats-api';
 import { Requirements } from '../../../core/stats/stats.models';
-import { requirementsInterpretation, requirementTone, sortRequirements } from '../../../core/stats/stats-view';
+import { requirementsInterpretation, requirementTone, sortRequirements, TONE_LABELS } from '../../../core/stats/stats-view';
 import { loadable, loadInto, StatCard } from '../stat-card';
 
-/** Cartea 5: cele 4 cerințe de business ca plăcuțe verzi (îndeplinită) sau roșii (în pericol). */
+/**
+ * Cartea 5: cele 4 cerințe de business ca plăcuțe verzi (îndeplinită), roșii (în pericol) sau gri
+ * (date insuficiente: `current.sufficientData === false`).
+ */
 @Component({
   selector: 'app-requirements-card',
   imports: [StatCard],
@@ -21,6 +24,7 @@ export class RequirementsCard {
   protected readonly result = loadable<Requirements>();
   protected readonly labels = CATEGORY_LABELS;
   protected readonly tone = requirementTone;
+  protected readonly toneLabels = TONE_LABELS;
 
   protected readonly data = computed(() => {
     const r = this.result();

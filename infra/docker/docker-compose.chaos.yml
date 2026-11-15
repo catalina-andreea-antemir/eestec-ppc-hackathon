@@ -1,0 +1,21 @@
+# Suprascriere pentru testele de haos (F9), activata explicit, din radacina repo-ului, impreuna cu profilul chaos:
+#   docker compose --profile chaos up -d toxiproxy
+#   docker compose -f docker-compose.yml -f infra/docker/docker-compose.chaos.yml up -d --no-deps api
+# Revenirea la normal (api din nou direct pe storage-uri, toxiproxy oprit):
+#   docker compose up -d --no-deps api
+#   docker compose --profile chaos rm -sf toxiproxy
+# Scripturile din tests/chaos fac asta singure (scenariul d).
+#
+# Doar S3 si FileGridStorage trec prin toxiproxy; FileGridMeta ramane direct pe mssql (metadatele nu sunt tinta),
+# iar FTP ramane direct (modul pasiv ar cere cate un proxy pentru fiecare port de date 21000-21049).
+# Cu profilul split (STORAGE_DB_HOST=mssql-storage), upstream-ul storage-db din tests/chaos/toxiproxy.json devine
+# mssql-storage:1433.
+
+services:
+  api:
+    environment:
+      S3_ENDPOINT: http://toxiproxy:19000
+      STORAGE_DB_URL: "jdbc:sqlserver://toxiproxy:11433;databaseName=FileGridStorage;encrypt=true;trustServerCertificate=true;responseBuffering=adaptive"
+    depends_on:
+      toxiproxy:
+        condition: service_healthy
