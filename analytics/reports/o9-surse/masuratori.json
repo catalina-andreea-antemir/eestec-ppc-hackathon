@@ -1,0 +1,3750 @@
+{
+  "environment": {
+    "gitCommit": "cbde362f6e89af10cc367ba7467e7256211b1673",
+    "dockerProject": "filegrid-o9-20261115",
+    "dockerServer": "29.6.2",
+    "dockerCpu": 12,
+    "dockerMemoryBytes": 8190046208,
+    "composeOverride": "services:\n  nginx:\n    ports: !reset []\n    image: filegrid-o9/nginx:cbde362\n  api:\n    image: filegrid-o9/api:cbde362\n  ftp:\n    image: filegrid-o9/ftp:cbde362\n  meter-simulator:\n    image: filegrid-o9/meter-simulator:cbde362",
+    "servicesBeforeBenchmark": [
+      {
+        "Name": "filegrid-o9-20261115-api-1",
+        "Service": "api",
+        "Image": "filegrid-o9/api:cbde362",
+        "State": "running",
+        "Health": "healthy",
+        "Ports": "8080/tcp"
+      },
+      {
+        "Name": "filegrid-o9-20261115-api-2",
+        "Service": "api",
+        "Image": "filegrid-o9/api:cbde362",
+        "State": "running",
+        "Health": "healthy",
+        "Ports": "8080/tcp"
+      },
+      {
+        "Name": "filegrid-o9-20261115-api-3",
+        "Service": "api",
+        "Image": "filegrid-o9/api:cbde362",
+        "State": "running",
+        "Health": "healthy",
+        "Ports": "8080/tcp"
+      },
+      {
+        "Name": "filegrid-o9-20261115-ftp-1",
+        "Service": "ftp",
+        "Image": "filegrid-o9/ftp:cbde362",
+        "State": "running",
+        "Health": "healthy",
+        "Ports": "21/tcp, 21000-21049/tcp"
+      },
+      {
+        "Name": "filegrid-o9-20261115-minio-1",
+        "Service": "minio",
+        "Image": "chainguard/minio:latest@sha256:0f9fda72fbc6bd3560ea903aec2ceefa20f6ba82628d67656f37fb370c39ae9c",
+        "State": "running",
+        "Health": "healthy",
+        "Ports": ""
+      },
+      {
+        "Name": "filegrid-o9-20261115-mssql-1",
+        "Service": "mssql",
+        "Image": "mcr.microsoft.com/mssql/server:2022-latest",
+        "State": "running",
+        "Health": "healthy",
+        "Ports": "1433/tcp"
+      },
+      {
+        "Name": "filegrid-o9-20261115-nginx-1",
+        "Service": "nginx",
+        "Image": "filegrid-o9/nginx:cbde362",
+        "State": "running",
+        "Health": "healthy",
+        "Ports": "80/tcp, 443/tcp"
+      },
+      {
+        "Name": "filegrid-o9-20261115-prometheus-1",
+        "Service": "prometheus",
+        "Image": "prom/prometheus:v3.13.5",
+        "State": "running",
+        "Health": "healthy",
+        "Ports": "9090/tcp"
+      }
+    ]
+  },
+  "benchmark": {
+    "response": {
+      "request": "POST /api/v1/admin/benchmark/run",
+      "startedAt": "2026-11-15T05:07:43.841325Z",
+      "finishedAt": "2026-11-15T05:08:25.234492Z",
+      "status": 200,
+      "body": {
+        "startedAt": "2026-11-15T05:07:44Z",
+        "finishedAt": "2026-11-15T05:08:25Z",
+        "source": "benchmark",
+        "scenario": "benchmark",
+        "results": [
+          {
+            "category": "METER_READING",
+            "storage": "FTP",
+            "operation": "upload",
+            "samples": 200,
+            "sizeBytes": 10240,
+            "latencyP50Ms": 39.11,
+            "latencyP95Ms": 45.22,
+            "throughputMBps": 0.24,
+            "errors": 0
+          },
+          {
+            "category": "METER_READING",
+            "storage": "S3",
+            "operation": "upload",
+            "samples": 200,
+            "sizeBytes": 10240,
+            "latencyP50Ms": 5.49,
+            "latencyP95Ms": 7.26,
+            "throughputMBps": 1.61,
+            "errors": 0
+          },
+          {
+            "category": "METER_READING",
+            "storage": "DB",
+            "operation": "upload",
+            "samples": 200,
+            "sizeBytes": 10240,
+            "latencyP50Ms": 5.76,
+            "latencyP95Ms": 9.35,
+            "throughputMBps": 1.56,
+            "errors": 0
+          },
+          {
+            "category": "OUTAGE_RECORD",
+            "storage": "FTP",
+            "operation": "upload",
+            "samples": 10,
+            "sizeBytes": 5242880,
+            "latencyP50Ms": 44.7,
+            "latencyP95Ms": 54.6,
+            "throughputMBps": 107.53,
+            "errors": 0
+          },
+          {
+            "category": "OUTAGE_RECORD",
+            "storage": "S3",
+            "operation": "upload",
+            "samples": 10,
+            "sizeBytes": 5242880,
+            "latencyP50Ms": 28.62,
+            "latencyP95Ms": 42.07,
+            "throughputMBps": 155.84,
+            "errors": 0
+          },
+          {
+            "category": "OUTAGE_RECORD",
+            "storage": "DB",
+            "operation": "upload",
+            "samples": 10,
+            "sizeBytes": 5242880,
+            "latencyP50Ms": 115.7,
+            "latencyP95Ms": 181.1,
+            "throughputMBps": 39.84,
+            "errors": 0
+          },
+          {
+            "category": "CONNECTION_DOC",
+            "storage": "FTP",
+            "operation": "upload",
+            "samples": 20,
+            "sizeBytes": 1048576,
+            "latencyP50Ms": 39.86,
+            "latencyP95Ms": 46.33,
+            "throughputMBps": 24.05,
+            "errors": 0
+          },
+          {
+            "category": "CONNECTION_DOC",
+            "storage": "S3",
+            "operation": "upload",
+            "samples": 20,
+            "sizeBytes": 1048576,
+            "latencyP50Ms": 11.19,
+            "latencyP95Ms": 14.96,
+            "throughputMBps": 84.91,
+            "errors": 0
+          },
+          {
+            "category": "CONNECTION_DOC",
+            "storage": "DB",
+            "operation": "upload",
+            "samples": 20,
+            "sizeBytes": 1048576,
+            "latencyP50Ms": 16.91,
+            "latencyP95Ms": 45.89,
+            "throughputMBps": 41.57,
+            "errors": 0
+          },
+          {
+            "category": "INSPECTION_VIDEO",
+            "storage": "FTP",
+            "operation": "upload",
+            "samples": 1,
+            "sizeBytes": 104857600,
+            "latencyP50Ms": 455.53,
+            "latencyP95Ms": 455.53,
+            "throughputMBps": 219.52,
+            "errors": 0
+          },
+          {
+            "category": "INSPECTION_VIDEO",
+            "storage": "S3",
+            "operation": "upload",
+            "samples": 1,
+            "sizeBytes": 104857600,
+            "latencyP50Ms": 511.31,
+            "latencyP95Ms": 511.31,
+            "throughputMBps": 195.57,
+            "errors": 0
+          },
+          {
+            "category": "INSPECTION_VIDEO",
+            "storage": "DB",
+            "operation": "upload",
+            "samples": 1,
+            "sizeBytes": 104857600,
+            "latencyP50Ms": 893.93,
+            "latencyP95Ms": 893.93,
+            "throughputMBps": 111.87,
+            "errors": 0
+          }
+        ]
+      }
+    },
+    "advisorBeforeLoad": {
+      "request": "GET /api/v1/stats/storage-advisor",
+      "startedAt": "2026-11-15T05:08:25.267857Z",
+      "finishedAt": "2026-11-15T05:08:26.078948Z",
+      "status": 200,
+      "body": {
+        "generatedAt": "2026-11-15T05:08:25.968942100Z",
+        "basis": {
+          "benchmarkSamples": 693,
+          "liveSamples": 0
+        },
+        "costAssumption": {
+          "unit": "cost relativ per GB (FTP = 1,0)",
+          "FTP": 1.0,
+          "S3": 1.4,
+          "DB": 3.2
+        },
+        "matrix": [
+          {
+            "category": "CONNECTION_DOC",
+            "storage": "S3",
+            "score": 95.714,
+            "latencyP50Ms": 11.286,
+            "latencyP95Ms": 14.9986,
+            "errorRatePercent": 0.0,
+            "relativeCostPerGb": 1.4,
+            "samples": 20,
+            "benchmarked": true
+          },
+          {
+            "category": "CONNECTION_DOC",
+            "storage": "FTP",
+            "score": 66.778,
+            "latencyP50Ms": 40.033500000000004,
+            "latencyP95Ms": 46.6777,
+            "errorRatePercent": 0.0,
+            "relativeCostPerGb": 1.0,
+            "samples": 20,
+            "benchmarked": true
+          },
+          {
+            "category": "CONNECTION_DOC",
+            "storage": "DB",
+            "score": 55.441,
+            "latencyP50Ms": 16.915,
+            "latencyP95Ms": 49.776450000000054,
+            "errorRatePercent": 0.0,
+            "relativeCostPerGb": 3.2,
+            "samples": 20,
+            "benchmarked": true
+          },
+          {
+            "category": "INSPECTION_VIDEO",
+            "storage": "FTP",
+            "score": 100.0,
+            "latencyP50Ms": 455.531,
+            "latencyP95Ms": 455.531,
+            "errorRatePercent": 0.0,
+            "relativeCostPerGb": 1.0,
+            "samples": 1,
+            "benchmarked": true
+          },
+          {
+            "category": "INSPECTION_VIDEO",
+            "storage": "S3",
+            "score": 90.27,
+            "latencyP50Ms": 511.314,
+            "latencyP95Ms": 511.314,
+            "errorRatePercent": 0.0,
+            "relativeCostPerGb": 1.4,
+            "samples": 1,
+            "benchmarked": true
+          },
+          {
+            "category": "INSPECTION_VIDEO",
+            "storage": "DB",
+            "score": 65.194,
+            "latencyP50Ms": 893.931,
+            "latencyP95Ms": 893.931,
+            "errorRatePercent": 0.0,
+            "relativeCostPerGb": 3.2,
+            "samples": 1,
+            "benchmarked": true
+          },
+          {
+            "category": "METER_READING",
+            "storage": "S3",
+            "score": 95.714,
+            "latencyP50Ms": 5.4905,
+            "latencyP95Ms": 7.269899999999998,
+            "errorRatePercent": 0.0,
+            "relativeCostPerGb": 1.4,
+            "samples": 200,
+            "benchmarked": true
+          },
+          {
+            "category": "METER_READING",
+            "storage": "DB",
+            "score": 79.629,
+            "latencyP50Ms": 5.769,
+            "latencyP95Ms": 9.352599999999999,
+            "errorRatePercent": 0.0,
+            "relativeCostPerGb": 3.2,
+            "samples": 200,
+            "benchmarked": true
+          },
+          {
+            "category": "METER_READING",
+            "storage": "FTP",
+            "score": 58.943,
+            "latencyP50Ms": 39.111000000000004,
+            "latencyP95Ms": 45.2363,
+            "errorRatePercent": 0.0,
+            "relativeCostPerGb": 1.0,
+            "samples": 200,
+            "benchmarked": true
+          },
+          {
+            "category": "OUTAGE_RECORD",
+            "storage": "S3",
+            "score": 95.714,
+            "latencyP50Ms": 28.7635,
+            "latencyP95Ms": 41.5286,
+            "errorRatePercent": 0.0,
+            "relativeCostPerGb": 1.4,
+            "samples": 10,
+            "benchmarked": true
+          },
+          {
+            "category": "OUTAGE_RECORD",
+            "storage": "FTP",
+            "score": 88.34,
+            "latencyP50Ms": 44.9045,
+            "latencyP95Ms": 54.4619,
+            "errorRatePercent": 0.0,
+            "relativeCostPerGb": 1.0,
+            "samples": 10,
+            "benchmarked": true
+          },
+          {
+            "category": "OUTAGE_RECORD",
+            "storage": "DB",
+            "score": 52.465,
+            "latencyP50Ms": 121.375,
+            "latencyP95Ms": 165.41375,
+            "errorRatePercent": 0.0,
+            "relativeCostPerGb": 3.2,
+            "samples": 10,
+            "benchmarked": true
+          }
+        ],
+        "recommendations": [
+          {
+            "category": "METER_READING",
+            "recommendedStorage": "S3",
+            "currentPolicyStorage": "DB",
+            "matchesPolicy": false,
+            "rationale": "S3 are cel mai bun scor (95.714) pentru METER_READING pe baza măsurătorilor de încărcare."
+          },
+          {
+            "category": "OUTAGE_RECORD",
+            "recommendedStorage": "S3",
+            "currentPolicyStorage": "S3",
+            "matchesPolicy": true,
+            "rationale": "S3 are cel mai bun scor (95.714) pentru OUTAGE_RECORD pe baza măsurătorilor de încărcare."
+          },
+          {
+            "category": "CONNECTION_DOC",
+            "recommendedStorage": "S3",
+            "currentPolicyStorage": "DB",
+            "matchesPolicy": false,
+            "rationale": "S3 are cel mai bun scor (95.714) pentru CONNECTION_DOC pe baza măsurătorilor de încărcare."
+          },
+          {
+            "category": "INSPECTION_VIDEO",
+            "recommendedStorage": "FTP",
+            "currentPolicyStorage": "FTP",
+            "matchesPolicy": true,
+            "rationale": "FTP are cel mai bun scor (100) pentru INSPECTION_VIDEO pe baza măsurătorilor de încărcare."
+          }
+        ],
+        "interpretation": "Pe baza măsurătorilor din ultimele 30 de zile, stocarea principală din politică coincide cu recomandarea în 2 din 4 categorii."
+      }
+    }
+  },
+  "storm": {
+    "runId": "o9-20261115",
+    "phaseSeconds": 120,
+    "stormFactor": 10,
+    "startedAt": "2026-11-15T05:09:27.877370Z",
+    "finishedAt": "2026-11-15T05:13:29.730184Z",
+    "k6ExitCode": 0,
+    "k6": {
+      "summary": {
+        "options": {
+          "summaryTrendStats": [
+            "avg",
+            "min",
+            "med",
+            "max",
+            "p(90)",
+            "p(95)",
+            "p(99)"
+          ],
+          "summaryTimeUnit": "",
+          "noColor": false
+        },
+        "state": {
+          "isStdOutTTY": false,
+          "isStdErrTTY": false,
+          "testRunDurationMs": 241201.85495
+        },
+        "metrics": {
+          "http_req_duration{op:meter_ingest,phase:normal}": {
+            "type": "trend",
+            "contains": "time",
+            "values": {
+              "avg": 36.313293537437595,
+              "min": 21.328619,
+              "med": 30.334444,
+              "max": 229.749409,
+              "p(90)": 52.42319,
+              "p(95)": 68.591064,
+              "p(99)": 104.556107
+            },
+            "thresholds": {
+              "p(95)<500": {
+                "ok": true
+              }
+            }
+          },
+          "http_req_duration{op:outage_upload,phase:storm}": {
+            "thresholds": {
+              "p(95)<3000": {
+                "ok": true
+              }
+            },
+            "type": "trend",
+            "contains": "time",
+            "values": {
+              "min": 11.698141,
+              "med": 15.1107225,
+              "max": 452.498529,
+              "p(90)": 22.2265398,
+              "p(95)": 27.41352324999998,
+              "p(99)": 60.51828476999963,
+              "avg": 17.900268818750025
+            }
+          },
+          "filegrid_unexpected{op:meter_ingest}": {
+            "type": "rate",
+            "contains": "default",
+            "values": {
+              "rate": 0,
+              "passes": 0,
+              "fails": 1202
+            },
+            "thresholds": {
+              "rate<0.01": {
+                "ok": true
+              }
+            }
+          },
+          "http_reqs": {
+            "values": {
+              "count": 5354,
+              "rate": 22.19717589282163
+            },
+            "type": "counter",
+            "contains": "default"
+          },
+          "http_req_failed": {
+            "type": "rate",
+            "contains": "default",
+            "values": {
+              "rate": 0,
+              "passes": 0,
+              "fails": 5354
+            }
+          },
+          "checks": {
+            "type": "rate",
+            "contains": "default",
+            "values": {
+              "rate": 1,
+              "passes": 11884,
+              "fails": 0
+            }
+          },
+          "iterations": {
+            "contains": "default",
+            "values": {
+              "count": 4855,
+              "rate": 20.12836924909395
+            },
+            "type": "counter"
+          },
+          "http_req_duration{op:meter_ingest,phase:storm}": {
+            "type": "trend",
+            "contains": "time",
+            "values": {
+              "avg": 37.323290454242944,
+              "min": 20.959397,
+              "med": 28.366564,
+              "max": 471.555398,
+              "p(90)": 50.68636,
+              "p(95)": 86.372712,
+              "p(99)": 209.928374
+            },
+            "thresholds": {
+              "p(95)<500": {
+                "ok": true
+              }
+            }
+          },
+          "filegrid_unexpected{op:video_chunk}": {
+            "type": "rate",
+            "contains": "default",
+            "values": {
+              "passes": 0,
+              "fails": 98,
+              "rate": 0
+            },
+            "thresholds": {
+              "rate<0.01": {
+                "ok": true
+              }
+            }
+          },
+          "http_req_waiting": {
+            "values": {
+              "max": 471.003021,
+              "p(90)": 36.820985399999984,
+              "p(95)": 53.37800429999997,
+              "p(99)": 104.00044193000001,
+              "avg": 23.18999093145314,
+              "min": 3.618398,
+              "med": 16.589486
+            },
+            "type": "trend",
+            "contains": "time"
+          },
+          "http_req_connecting": {
+            "values": {
+              "avg": 0.011988762794172582,
+              "min": 0,
+              "med": 0,
+              "max": 31.593155,
+              "p(90)": 0,
+              "p(95)": 0,
+              "p(99)": 0.20465948000000206
+            },
+            "type": "trend",
+            "contains": "time"
+          },
+          "filegrid_bulkhead_429{op:outage_upload}": {
+            "type": "counter",
+            "contains": "default",
+            "values": {
+              "count": 0,
+              "rate": 0
+            },
+            "thresholds": {
+              "count>=0": {
+                "ok": true
+              }
+            }
+          },
+          "filegrid_unexpected{op:search}": {
+            "contains": "default",
+            "values": {
+              "fails": 722,
+              "rate": 0,
+              "passes": 0
+            },
+            "thresholds": {
+              "rate<0.01": {
+                "ok": true
+              }
+            },
+            "type": "rate"
+          },
+          "http_req_duration{op:search,phase:normal}": {
+            "values": {
+              "p(99)": 35.83052719999999,
+              "avg": 11.15146257894737,
+              "min": 6.385149,
+              "med": 9.568395,
+              "max": 84.448288,
+              "p(90)": 14.984305,
+              "p(95)": 20.540151
+            },
+            "thresholds": {
+              "p(95)<800": {
+                "ok": true
+              }
+            },
+            "type": "trend",
+            "contains": "time"
+          },
+          "data_sent": {
+            "type": "counter",
+            "contains": "data",
+            "values": {
+              "count": 84791446,
+              "rate": 351537.2882085706
+            }
+          },
+          "filegrid_unexpected{op:doc_upload}": {
+            "type": "rate",
+            "contains": "default",
+            "values": {
+              "fails": 241,
+              "rate": 0,
+              "passes": 0
+            },
+            "thresholds": {
+              "rate<0.01": {
+                "ok": true
+              }
+            }
+          },
+          "http_req_blocked": {
+            "type": "trend",
+            "contains": "time",
+            "values": {
+              "avg": 0.038833303324617166,
+              "min": 0.000182,
+              "med": 0.00043,
+              "max": 34.881403,
+              "p(90)": 0.00092,
+              "p(95)": 0.0010770499999999982,
+              "p(99)": 1.5483981900000008
+            }
+          },
+          "http_req_duration": {
+            "type": "trend",
+            "contains": "time",
+            "values": {
+              "p(99)": 104.87057821,
+              "avg": 23.90715173608514,
+              "min": 4.028388,
+              "med": 17.259873499999998,
+              "max": 471.555398,
+              "p(90)": 37.6153792,
+              "p(95)": 54.82034704999994
+            }
+          },
+          "http_req_duration{op:video_chunk,phase:normal}": {
+            "type": "trend",
+            "contains": "time",
+            "values": {
+              "p(99)": 104.38040144999998,
+              "avg": 40.44717684,
+              "min": 9.770621,
+              "med": 44.6814535,
+              "max": 110.418277,
+              "p(90)": 69.8764985,
+              "p(95)": 75.98236269999998
+            },
+            "thresholds": {
+              "p(95)<3000": {
+                "ok": true
+              }
+            }
+          },
+          "http_req_duration{op:search,phase:storm}": {
+            "type": "trend",
+            "contains": "time",
+            "values": {
+              "max": 112.390054,
+              "p(90)": 29.36495,
+              "p(95)": 34.357461,
+              "p(99)": 50.02208379999999,
+              "avg": 16.753896085872565,
+              "min": 6.806107,
+              "med": 13.27052
+            },
+            "thresholds": {
+              "p(95)<800": {
+                "ok": true
+              }
+            }
+          },
+          "http_req_duration{op:doc_upload,phase:normal}": {
+            "type": "trend",
+            "contains": "time",
+            "values": {
+              "p(90)": 46.818809,
+              "p(95)": 56.021743,
+              "p(99)": 88.52133919999996,
+              "avg": 32.800768066115694,
+              "min": 19.270274,
+              "med": 28.778652,
+              "max": 144.711743
+            },
+            "thresholds": {
+              "p(95)<1500": {
+                "ok": true
+              }
+            }
+          },
+          "http_req_sending": {
+            "type": "trend",
+            "contains": "time",
+            "values": {
+              "med": 0.194305,
+              "max": 175.087403,
+              "p(90)": 0.3108432,
+              "p(95)": 0.4522913999999999,
+              "p(99)": 1.0114761000000128,
+              "avg": 0.2708252000373551,
+              "min": 0.057614
+            }
+          },
+          "vus_max": {
+            "type": "gauge",
+            "contains": "default",
+            "values": {
+              "min": 61,
+              "max": 61,
+              "value": 61
+            }
+          },
+          "http_req_duration{op:doc_upload,phase:storm}": {
+            "thresholds": {
+              "p(95)<1500": {
+                "ok": true
+              }
+            },
+            "type": "trend",
+            "contains": "time",
+            "values": {
+              "avg": 29.610207325,
+              "min": 17.241056,
+              "med": 23.062721000000003,
+              "max": 446.348939,
+              "p(90)": 34.2498884,
+              "p(95)": 42.245975099999995,
+              "p(99)": 104.40613562000007
+            }
+          },
+          "http_req_tls_handshaking": {
+            "type": "trend",
+            "contains": "time",
+            "values": {
+              "avg": 0.02252732330967501,
+              "min": 0,
+              "med": 0,
+              "max": 5.000953,
+              "p(90)": 0,
+              "p(95)": 0,
+              "p(99)": 1.1672061700000018
+            }
+          },
+          "http_req_duration{op:video_chunk,phase:storm}": {
+            "type": "trend",
+            "contains": "time",
+            "values": {
+              "avg": 45.6535495,
+              "min": 9.207096,
+              "med": 39.177951,
+              "max": 265.187061,
+              "p(90)": 71.06135680000001,
+              "p(95)": 80.5740259,
+              "p(99)": 264.50127225
+            },
+            "thresholds": {
+              "p(95)<3000": {
+                "ok": true
+              }
+            }
+          },
+          "http_req_duration{expected_response:true}": {
+            "type": "trend",
+            "contains": "time",
+            "values": {
+              "min": 4.028388,
+              "med": 17.259873499999998,
+              "max": 471.555398,
+              "p(90)": 37.6153792,
+              "p(95)": 54.82034704999994,
+              "p(99)": 104.87057821,
+              "avg": 23.90715173608514
+            }
+          },
+          "data_received": {
+            "type": "counter",
+            "contains": "data",
+            "values": {
+              "count": 13021759,
+              "rate": 53986.977018478356
+            }
+          },
+          "filegrid_bulkhead_429": {
+            "contains": "default",
+            "values": {
+              "count": 0,
+              "rate": 0
+            },
+            "type": "counter"
+          },
+          "filegrid_integrity_mismatch": {
+            "values": {
+              "count": 0,
+              "rate": 0
+            },
+            "thresholds": {
+              "count==0": {
+                "ok": true
+              }
+            },
+            "type": "counter",
+            "contains": "default"
+          },
+          "vus": {
+            "type": "gauge",
+            "contains": "default",
+            "values": {
+              "value": 0,
+              "min": 0,
+              "max": 4
+            }
+          },
+          "filegrid_unexpected": {
+            "values": {
+              "rate": 0,
+              "passes": 0,
+              "fails": 5354
+            },
+            "type": "rate",
+            "contains": "default"
+          },
+          "http_req_receiving": {
+            "type": "trend",
+            "contains": "time",
+            "values": {
+              "p(90)": 0.6986861999999999,
+              "p(95)": 0.8771859999999997,
+              "p(99)": 1.4869630400000022,
+              "avg": 0.44633560459469845,
+              "min": 0.050659,
+              "med": 0.371584,
+              "max": 11.12385
+            }
+          },
+          "filegrid_unexpected{op:outage_upload}": {
+            "type": "rate",
+            "contains": "default",
+            "values": {
+              "fails": 2641,
+              "rate": 0,
+              "passes": 0
+            },
+            "thresholds": {
+              "rate<0.05": {
+                "ok": true
+              }
+            }
+          },
+          "filegrid_op_ms": {
+            "type": "trend",
+            "contains": "time",
+            "values": {
+              "p(95)": 54.82034704999994,
+              "p(99)": 104.87057821,
+              "avg": 23.90715173608514,
+              "min": 4.028388,
+              "med": 17.259873499999998,
+              "max": 471.555398,
+              "p(90)": 37.6153792
+            }
+          },
+          "iteration_duration": {
+            "type": "trend",
+            "contains": "time",
+            "values": {
+              "p(90)": 43.843450000000004,
+              "p(95)": 59.6431496,
+              "p(99)": 620.5297690600107,
+              "avg": 35.50720245252325,
+              "min": 6.899365,
+              "med": 21.612961,
+              "max": 1358.774328
+            }
+          },
+          "http_req_duration{op:outage_upload,phase:normal}": {
+            "type": "trend",
+            "contains": "time",
+            "values": {
+              "p(95)": 39.16824,
+              "p(99)": 109.4040163999999,
+              "avg": 25.30074317842328,
+              "min": 14.790839,
+              "med": 22.038073,
+              "max": 153.781625,
+              "p(90)": 32.60972
+            },
+            "thresholds": {
+              "p(95)<1500": {
+                "ok": true
+              }
+            }
+          }
+        },
+        "root_group": {
+          "name": "",
+          "path": "",
+          "id": "d41d8cd98f00b204e9800998ecf8427e",
+          "groups": [],
+          "checks": [
+            {
+              "name": "login contor 200",
+              "path": "::login contor 200",
+              "id": "4022ecc6e7a13db736ff7f23da142d4a",
+              "passes": 12,
+              "fails": 0
+            },
+            {
+              "name": "login dispecer 200",
+              "path": "::login dispecer 200",
+              "id": "dc64bc186688532058056c1a7c9b8b5d",
+              "passes": 12,
+              "fails": 0
+            },
+            {
+              "path": "::login teren 200",
+              "id": "6ab05e9687ae6e4833cdfe76b6e9a42c",
+              "passes": 29,
+              "fails": 0,
+              "name": "login teren 200"
+            },
+            {
+              "id": "6f0f5ddf39e95d57dbdf9d21c32f1375",
+              "passes": 8,
+              "fails": 0,
+              "name": "login racordari 200",
+              "path": "::login racordari 200"
+            },
+            {
+              "name": "document: criptat",
+              "path": "::document: criptat",
+              "id": "f782a833c19a3b84933ee710729edfc6",
+              "passes": 241,
+              "fails": 0
+            },
+            {
+              "id": "365a38192183c9d980eb1f328f31e280",
+              "passes": 2641,
+              "fails": 0,
+              "name": "avarie: sha256 corect",
+              "path": "::avarie: sha256 corect"
+            },
+            {
+              "name": "document: sha256Plain = original",
+              "path": "::document: sha256Plain = original",
+              "id": "c28848249aec92043918694b5a2b81b2",
+              "passes": 241,
+              "fails": 0
+            },
+            {
+              "passes": 241,
+              "fails": 0,
+              "name": "document: storage DB (4.2)",
+              "path": "::document: storage DB (4.2)",
+              "id": "14aaedb0a6cdfa801ed36d1b1ba24d0a"
+            },
+            {
+              "fails": 0,
+              "name": "avarie: storage S3 (4.2)",
+              "path": "::avarie: storage S3 (4.2)",
+              "id": "e92cd9646493ef95b2202a11acb120fc",
+              "passes": 2641
+            },
+            {
+              "name": "avarie: CONFIRMED",
+              "path": "::avarie: CONFIRMED",
+              "id": "93bbb14d57677d7a462a90c364a97035",
+              "passes": 2641,
+              "fails": 0
+            },
+            {
+              "fails": 0,
+              "name": "avarie -> 201 (sau 429)",
+              "path": "::avarie -> 201 (sau 429)",
+              "id": "c9747071229439099a37ed902f16ecc0",
+              "passes": 2641
+            },
+            {
+              "passes": 126,
+              "fails": 0,
+              "name": "verify: ok=true",
+              "path": "::verify: ok=true",
+              "id": "d85462df95f66ad9b4f07c90fc4b8e95"
+            },
+            {
+              "id": "15efb5b36e7482e215f36ac511add7f1",
+              "passes": 165,
+              "fails": 0,
+              "name": "download: X-Content-SHA256 = hash corp",
+              "path": "::download: X-Content-SHA256 = hash corp"
+            },
+            {
+              "name": "video: sha bucata corect",
+              "path": "::video: sha bucata corect",
+              "id": "9ed5fa0aba41639d223020b1721d0811",
+              "passes": 49,
+              "fails": 0
+            },
+            {
+              "name": "video: bucata retrimisa e duplicat",
+              "path": "::video: bucata retrimisa e duplicat",
+              "id": "02d5cd266da46480e4e5c97274378d70",
+              "passes": 49,
+              "fails": 0
+            },
+            {
+              "name": "video: sha256 final corect",
+              "path": "::video: sha256 final corect",
+              "id": "5bac42c91b778eaae7642d0f3078239f",
+              "passes": 49,
+              "fails": 0
+            },
+            {
+              "name": "video: storage FTP (4.2)",
+              "path": "::video: storage FTP (4.2)",
+              "id": "150c1e2e33b002cfecc2b7d4545b47e3",
+              "passes": 49,
+              "fails": 0
+            },
+            {
+              "name": "video confirmat (sau 429)",
+              "path": "::video confirmat (sau 429)",
+              "id": "26b74bbb91e5e9194bbb295d777d5420",
+              "passes": 49,
+              "fails": 0
+            }
+          ]
+        }
+      },
+      "httpByPhase": {
+        "normal": {
+          "counters": {
+            "iterations": 1349
+          },
+          "operations": {
+            "doc_upload": {
+              "statusCounts": {
+                "201": 121
+              },
+              "total": 121,
+              "unexpected": 0,
+              "p50Ms": 28.778652,
+              "p95Ms": 56.021743,
+              "p99Ms": 88.521339
+            },
+            "download": {
+              "statusCounts": {
+                "200": 83
+              },
+              "total": 83,
+              "unexpected": 0,
+              "p50Ms": 12.075936,
+              "p95Ms": 31.469227,
+              "p99Ms": 66.017233
+            },
+            "login": {
+              "statusCounts": {
+                "200": 23
+              },
+              "total": 23,
+              "unexpected": 0,
+              "p50Ms": 9.715925,
+              "p95Ms": 14.558359,
+              "p99Ms": 21.384066
+            },
+            "meter_ingest": {
+              "statusCounts": {
+                "201": 601
+              },
+              "total": 601,
+              "unexpected": 0,
+              "p50Ms": 30.334444,
+              "p95Ms": 68.591064,
+              "p99Ms": 104.556107
+            },
+            "outage_upload": {
+              "statusCounts": {
+                "201": 241
+              },
+              "total": 241,
+              "unexpected": 0,
+              "p50Ms": 22.038073,
+              "p95Ms": 39.16824,
+              "p99Ms": 109.404016
+            },
+            "search": {
+              "statusCounts": {
+                "200": 361
+              },
+              "total": 361,
+              "unexpected": 0,
+              "p50Ms": 9.568395,
+              "p95Ms": 20.540151,
+              "p99Ms": 35.830527
+            },
+            "verify": {
+              "statusCounts": {
+                "200": 58
+              },
+              "total": 58,
+              "unexpected": 0,
+              "p50Ms": 16.894329,
+              "p95Ms": 38.745692,
+              "p99Ms": 80.227867
+            },
+            "video_chunk": {
+              "statusCounts": {
+                "200": 50
+              },
+              "total": 50,
+              "unexpected": 0,
+              "p50Ms": 44.681454,
+              "p95Ms": 75.982363,
+              "p99Ms": 104.380401
+            },
+            "video_complete": {
+              "statusCounts": {
+                "201": 25
+              },
+              "total": 25,
+              "unexpected": 0,
+              "p50Ms": 99.259191,
+              "p95Ms": 146.548082,
+              "p99Ms": 159.416528
+            },
+            "video_init": {
+              "statusCounts": {
+                "201": 25
+              },
+              "total": 25,
+              "unexpected": 0,
+              "p50Ms": 49.918351,
+              "p95Ms": 77.071507,
+              "p99Ms": 85.737359
+            }
+          }
+        },
+        "storm": {
+          "counters": {
+            "iterations": 3506
+          },
+          "operations": {
+            "doc_upload": {
+              "statusCounts": {
+                "201": 120
+              },
+              "total": 120,
+              "unexpected": 0,
+              "p50Ms": 23.062721,
+              "p95Ms": 42.245975,
+              "p99Ms": 104.406136
+            },
+            "download": {
+              "statusCounts": {
+                "200": 82
+              },
+              "total": 82,
+              "unexpected": 0,
+              "p50Ms": 9.547635,
+              "p95Ms": 14.885459,
+              "p99Ms": 17.293896
+            },
+            "login": {
+              "statusCounts": {
+                "200": 38
+              },
+              "total": 38,
+              "unexpected": 0,
+              "p50Ms": 5.219615,
+              "p95Ms": 10.984736,
+              "p99Ms": 28.90411
+            },
+            "meter_ingest": {
+              "statusCounts": {
+                "201": 601
+              },
+              "total": 601,
+              "unexpected": 0,
+              "p50Ms": 28.366564,
+              "p95Ms": 86.372712,
+              "p99Ms": 209.928374
+            },
+            "outage_upload": {
+              "statusCounts": {
+                "201": 2400
+              },
+              "total": 2400,
+              "unexpected": 0,
+              "p50Ms": 15.110722,
+              "p95Ms": 27.413523,
+              "p99Ms": 60.518285
+            },
+            "search": {
+              "statusCounts": {
+                "200": 361
+              },
+              "total": 361,
+              "unexpected": 0,
+              "p50Ms": 13.27052,
+              "p95Ms": 34.357461,
+              "p99Ms": 50.022084
+            },
+            "verify": {
+              "statusCounts": {
+                "200": 68
+              },
+              "total": 68,
+              "unexpected": 0,
+              "p50Ms": 15.078966,
+              "p95Ms": 22.473138,
+              "p99Ms": 37.756485
+            },
+            "video_chunk": {
+              "statusCounts": {
+                "200": 48
+              },
+              "total": 48,
+              "unexpected": 0,
+              "p50Ms": 39.177951,
+              "p95Ms": 80.574026,
+              "p99Ms": 264.501272
+            },
+            "video_complete": {
+              "statusCounts": {
+                "201": 24
+              },
+              "total": 24,
+              "unexpected": 0,
+              "p50Ms": 95.640434,
+              "p95Ms": 131.168361,
+              "p99Ms": 138.155286
+            },
+            "video_init": {
+              "statusCounts": {
+                "201": 24
+              },
+              "total": 24,
+              "unexpected": 0,
+              "p50Ms": 47.337352,
+              "p95Ms": 80.281693,
+              "p99Ms": 325.200368
+            }
+          }
+        }
+      },
+      "rawPointsSha256": "1c2110dc43d736a784faa149e71617259495e445a9af006e20f3f4225ae4f212"
+    },
+    "api": {
+      "peak-vs-normal-storm": {
+        "request": "GET /api/v1/stats/peak-vs-normal",
+        "startedAt": "2026-11-15T05:13:32.772564Z",
+        "finishedAt": "2026-11-15T05:13:33.339565Z",
+        "status": 200,
+        "body": {
+          "generatedAt": "2026-11-15T05:13:33.172162500Z",
+          "normal": {
+            "scenario": "normal",
+            "from": "2026-11-15T05:09:28.981756400Z",
+            "to": "2026-11-15T05:11:29.473341100Z"
+          },
+          "peak": {
+            "scenario": "storm",
+            "from": "2026-11-15T05:11:29.069277700Z",
+            "to": "2026-11-15T05:13:29.855577500Z"
+          },
+          "categories": [
+            {
+              "category": "METER_READING",
+              "normal": {
+                "requests": 601,
+                "throughputPerMinute": 299.3,
+                "latencyP50Ms": 6.0,
+                "latencyP95Ms": 12.0,
+                "latencyP99Ms": 20.9,
+                "errorRatePercent": 0.0,
+                "rejected": 0
+              },
+              "peak": {
+                "requests": 601,
+                "throughputPerMinute": 298.5,
+                "latencyP50Ms": 6.2,
+                "latencyP95Ms": 12.3,
+                "latencyP99Ms": 33.2,
+                "errorRatePercent": 0.0,
+                "rejected": 0
+              },
+              "p95ChangePercent": 2.8
+            },
+            {
+              "category": "OUTAGE_RECORD",
+              "normal": {
+                "requests": 324,
+                "throughputPerMinute": 161.3,
+                "latencyP50Ms": 8.3,
+                "latencyP95Ms": 16.4,
+                "latencyP99Ms": 54.4,
+                "errorRatePercent": 0.0,
+                "rejected": 0
+              },
+              "peak": {
+                "requests": 2482,
+                "throughputPerMinute": 1232.9,
+                "latencyP50Ms": 5.9,
+                "latencyP95Ms": 11.3,
+                "latencyP99Ms": 21.3,
+                "errorRatePercent": 0.0,
+                "rejected": 0
+              },
+              "p95ChangePercent": -31.4
+            },
+            {
+              "category": "CONNECTION_DOC",
+              "normal": {
+                "requests": 179,
+                "throughputPerMinute": 89.1,
+                "latencyP50Ms": 8.5,
+                "latencyP95Ms": 20.1,
+                "latencyP99Ms": 30.4,
+                "errorRatePercent": 0.0,
+                "rejected": 0
+              },
+              "peak": {
+                "requests": 188,
+                "throughputPerMinute": 93.4,
+                "latencyP50Ms": 6.9,
+                "latencyP95Ms": 14.5,
+                "latencyP99Ms": 32.6,
+                "errorRatePercent": 0.0,
+                "rejected": 0
+              },
+              "p95ChangePercent": -28.0
+            },
+            {
+              "category": "INSPECTION_VIDEO",
+              "normal": {
+                "requests": 25,
+                "throughputPerMinute": 12.4,
+                "latencyP50Ms": 42.4,
+                "latencyP95Ms": 49.0,
+                "latencyP99Ms": 52.9,
+                "errorRatePercent": 0.0,
+                "rejected": 0
+              },
+              "peak": {
+                "requests": 24,
+                "throughputPerMinute": 11.9,
+                "latencyP50Ms": 42.7,
+                "latencyP95Ms": 219.9,
+                "latencyP99Ms": 250.4,
+                "errorRatePercent": 0.0,
+                "rejected": 0
+              },
+              "p95ChangePercent": 349.0
+            }
+          ],
+          "interpretation": "În scenariul „storm” față de „normal”, OUTAGE_RECORD a avut cea mai mare creștere a cererilor (de la 324 la 2482, de 7,7 ori), iar latența p95 a trecut de la 16,4 ms la 11,3 ms (-31,4%). La celelalte categorii p95 a variat cu cel mult 349,0%. Bulkhead-ul nu a respins nicio cerere."
+        }
+      },
+      "outage-zones": {
+        "request": "GET /api/v1/stats/outage-zones",
+        "startedAt": "2026-11-15T05:13:33.369617Z",
+        "finishedAt": "2026-11-15T05:13:33.725746Z",
+        "status": 200,
+        "body": {
+          "generatedAt": "2026-11-15T05:13:33.685008300Z",
+          "from": "2026-10-16T05:13:33.685008300Z",
+          "to": "2026-11-15T05:13:33.685008300Z",
+          "totalOutages": 2641,
+          "ranking": [
+            {
+              "rank": 1,
+              "zone": "Dobrogea",
+              "outages": 892,
+              "sharePercent": 33.77508519500189,
+              "vsAverageRatio": 1.013252,
+              "peakHour": 5
+            },
+            {
+              "rank": 2,
+              "zone": "Banat",
+              "outages": 875,
+              "sharePercent": 33.13138962514199,
+              "vsAverageRatio": 0.993941,
+              "peakHour": 5
+            },
+            {
+              "rank": 3,
+              "zone": "Muntenia",
+              "outages": 874,
+              "sharePercent": 33.093525179856115,
+              "vsAverageRatio": 0.992805,
+              "peakHour": 5
+            }
+          ],
+          "byHour": [
+            {
+              "zone": "Banat",
+              "hour": 5,
+              "outages": 875
+            },
+            {
+              "zone": "Dobrogea",
+              "hour": 5,
+              "outages": 892
+            },
+            {
+              "zone": "Muntenia",
+              "hour": 5,
+              "outages": 874
+            }
+          ],
+          "interpretation": "Cele mai multe avarii s-au înregistrat în Dobrogea (892 pe zonă, din 2641 în total)."
+        }
+      },
+      "advisor-after-storm": {
+        "request": "GET /api/v1/stats/storage-advisor",
+        "startedAt": "2026-11-15T05:13:33.755216Z",
+        "finishedAt": "2026-11-15T05:13:34.149206Z",
+        "status": 200,
+        "body": {
+          "generatedAt": "2026-11-15T05:13:34.072103200Z",
+          "basis": {
+            "benchmarkSamples": 693,
+            "liveSamples": 4084
+          },
+          "costAssumption": {
+            "unit": "cost relativ per GB (FTP = 1,0)",
+            "FTP": 1.0,
+            "S3": 1.4,
+            "DB": 3.2
+          },
+          "matrix": [
+            {
+              "category": "CONNECTION_DOC",
+              "storage": "S3",
+              "score": 95.714,
+              "latencyP50Ms": 11.286,
+              "latencyP95Ms": 14.9986,
+              "errorRatePercent": 0.0,
+              "relativeCostPerGb": 1.4,
+              "samples": 20,
+              "benchmarked": true
+            },
+            {
+              "category": "CONNECTION_DOC",
+              "storage": "DB",
+              "score": 76.221,
+              "latencyP50Ms": 8.992,
+              "latencyP95Ms": 20.896,
+              "errorRatePercent": 0.0,
+              "relativeCostPerGb": 3.2,
+              "samples": 261,
+              "benchmarked": true
+            },
+            {
+              "category": "CONNECTION_DOC",
+              "storage": "FTP",
+              "score": 66.778,
+              "latencyP50Ms": 40.033500000000004,
+              "latencyP95Ms": 46.6777,
+              "errorRatePercent": 0.0,
+              "relativeCostPerGb": 1.0,
+              "samples": 20,
+              "benchmarked": true
+            },
+            {
+              "category": "INSPECTION_VIDEO",
+              "storage": "FTP",
+              "score": 100.0,
+              "latencyP50Ms": 455.531,
+              "latencyP95Ms": 455.531,
+              "errorRatePercent": 0.0,
+              "relativeCostPerGb": 1.0,
+              "samples": 1,
+              "benchmarked": true
+            },
+            {
+              "category": "INSPECTION_VIDEO",
+              "storage": "S3",
+              "score": 90.27,
+              "latencyP50Ms": 511.314,
+              "latencyP95Ms": 511.314,
+              "errorRatePercent": 0.0,
+              "relativeCostPerGb": 1.4,
+              "samples": 1,
+              "benchmarked": true
+            },
+            {
+              "category": "INSPECTION_VIDEO",
+              "storage": "DB",
+              "score": 65.194,
+              "latencyP50Ms": 893.931,
+              "latencyP95Ms": 893.931,
+              "errorRatePercent": 0.0,
+              "relativeCostPerGb": 3.2,
+              "samples": 1,
+              "benchmarked": true
+            },
+            {
+              "category": "METER_READING",
+              "storage": "S3",
+              "score": 95.714,
+              "latencyP50Ms": 5.4905,
+              "latencyP95Ms": 7.269899999999998,
+              "errorRatePercent": 0.0,
+              "relativeCostPerGb": 1.4,
+              "samples": 200,
+              "benchmarked": true
+            },
+            {
+              "category": "METER_READING",
+              "storage": "DB",
+              "score": 71.947,
+              "latencyP50Ms": 6.042999999999999,
+              "latencyP95Ms": 11.817950000000002,
+              "errorRatePercent": 0.0,
+              "relativeCostPerGb": 3.2,
+              "samples": 1402,
+              "benchmarked": true
+            },
+            {
+              "category": "METER_READING",
+              "storage": "FTP",
+              "score": 58.943,
+              "latencyP50Ms": 39.111000000000004,
+              "latencyP95Ms": 45.2363,
+              "errorRatePercent": 0.0,
+              "relativeCostPerGb": 1.0,
+              "samples": 200,
+              "benchmarked": true
+            },
+            {
+              "category": "OUTAGE_RECORD",
+              "storage": "S3",
+              "score": 95.714,
+              "latencyP50Ms": 6.042,
+              "latencyP95Ms": 12.2425,
+              "errorRatePercent": 0.0,
+              "relativeCostPerGb": 1.4,
+              "samples": 2651,
+              "benchmarked": true
+            },
+            {
+              "category": "OUTAGE_RECORD",
+              "storage": "FTP",
+              "score": 61.938,
+              "latencyP50Ms": 44.9045,
+              "latencyP95Ms": 54.4619,
+              "errorRatePercent": 0.0,
+              "relativeCostPerGb": 1.0,
+              "samples": 10,
+              "benchmarked": true
+            },
+            {
+              "category": "OUTAGE_RECORD",
+              "storage": "DB",
+              "score": 43.666,
+              "latencyP50Ms": 121.375,
+              "latencyP95Ms": 165.41375,
+              "errorRatePercent": 0.0,
+              "relativeCostPerGb": 3.2,
+              "samples": 10,
+              "benchmarked": true
+            }
+          ],
+          "recommendations": [
+            {
+              "category": "METER_READING",
+              "recommendedStorage": "S3",
+              "currentPolicyStorage": "DB",
+              "matchesPolicy": false,
+              "rationale": "S3 are cel mai bun scor (95.714) pentru METER_READING pe baza măsurătorilor de încărcare."
+            },
+            {
+              "category": "OUTAGE_RECORD",
+              "recommendedStorage": "S3",
+              "currentPolicyStorage": "S3",
+              "matchesPolicy": true,
+              "rationale": "S3 are cel mai bun scor (95.714) pentru OUTAGE_RECORD pe baza măsurătorilor de încărcare."
+            },
+            {
+              "category": "CONNECTION_DOC",
+              "recommendedStorage": "S3",
+              "currentPolicyStorage": "DB",
+              "matchesPolicy": false,
+              "rationale": "S3 are cel mai bun scor (95.714) pentru CONNECTION_DOC pe baza măsurătorilor de încărcare."
+            },
+            {
+              "category": "INSPECTION_VIDEO",
+              "recommendedStorage": "FTP",
+              "currentPolicyStorage": "FTP",
+              "matchesPolicy": true,
+              "rationale": "FTP are cel mai bun scor (100) pentru INSPECTION_VIDEO pe baza măsurătorilor de încărcare."
+            }
+          ],
+          "interpretation": "Pe baza măsurătorilor din ultimele 30 de zile, stocarea principală din politică coincide cu recomandarea în 2 din 4 categorii."
+        }
+      }
+    }
+  },
+  "simulator": {
+    "profileOverride": "duration: PT90S",
+    "runs": {
+      "normal": {
+        "startedAt": "2026-11-15T05:13:37.417970Z",
+        "finishedAt": "2026-11-15T05:15:09.500793Z",
+        "exitCode": 0,
+        "finalMetrics": {
+          "sim_readings_sent_total": 20736,
+          "sim_readings_confirmed_total": 20736,
+          "sim_batches_retried_total": 0,
+          "sim_readings_pending": 0,
+          "sim_readings_abandoned_total": 0
+        },
+        "console": "Container filegrid-o9-20261115-sim-normal Creating \n Container filegrid-o9-20261115-sim-normal Created \nNov 15, 2026 5:13:38 AM ro.filegrid.simulator.MeterSimulator run\nINFO: Profile normal, scenario normal, 12 meters, metrics on port 9,400\n# TYPE sim_readings_sent_total counter\nsim_readings_sent_total 20736\n# TYPE sim_readings_confirmed_total counter\nsim_readings_confirmed_total 20736\n# TYPE sim_batches_retried_total counter\nsim_batches_retried_total 0\n# TYPE sim_readings_pending gauge\nsim_readings_pending 0\n# TYPE sim_readings_abandoned_total counter\nsim_readings_abandoned_total 0"
+      },
+      "peak": {
+        "startedAt": "2026-11-15T05:15:12.503466Z",
+        "finishedAt": "2026-11-15T05:16:45.345049Z",
+        "exitCode": 0,
+        "finalMetrics": {
+          "sim_readings_sent_total": 322560,
+          "sim_readings_confirmed_total": 322560,
+          "sim_batches_retried_total": 756,
+          "sim_readings_pending": 0,
+          "sim_readings_abandoned_total": 0
+        },
+        "console": " Container filegrid-o9-20261115-sim-peak Creating \n Container filegrid-o9-20261115-sim-peak Created \nNov 15, 2026 5:15:13 AM ro.filegrid.simulator.MeterSimulator run\nINFO: Profile peak, scenario peak, 120 meters, metrics on port 9,400\n# TYPE sim_readings_sent_total counter\nsim_readings_sent_total 322560\n# TYPE sim_readings_confirmed_total counter\nsim_readings_confirmed_total 322560\n# TYPE sim_batches_retried_total counter\nsim_batches_retried_total 756\n# TYPE sim_readings_pending gauge\nsim_readings_pending 0\n# TYPE sim_readings_abandoned_total counter\nsim_readings_abandoned_total 0"
+      }
+    },
+    "api": {
+      "peak-vs-normal-simulator": {
+        "request": "GET /api/v1/stats/peak-vs-normal?peakScenario=peak",
+        "startedAt": "2026-11-15T05:16:48.369885Z",
+        "finishedAt": "2026-11-15T05:16:48.863513Z",
+        "status": 503,
+        "body": {
+          "status": 503,
+          "code": "STORAGE_UNAVAILABLE",
+          "message": "Comparația are nevoie de cereri măsurate în ambele scenarii (normal și peak) pentru fiecare categorie, în ultimele 24 de ore; rulează tests/load/run.sh storm.",
+          "traceId": "4276828edba0548c1c3cb36894be58ff",
+          "retryAfterSeconds": 10,
+          "details": {
+            "missing": [
+              {
+                "fields": [
+                  "latencyP50Ms",
+                  "latencyP95Ms",
+                  "latencyP99Ms",
+                  "errorRatePercent",
+                  "p95ChangePercent"
+                ],
+                "scenario": "peak",
+                "category": "OUTAGE_RECORD"
+              },
+              {
+                "fields": [
+                  "latencyP50Ms",
+                  "latencyP95Ms",
+                  "latencyP99Ms",
+                  "errorRatePercent",
+                  "p95ChangePercent"
+                ],
+                "scenario": "peak",
+                "category": "CONNECTION_DOC"
+              },
+              {
+                "fields": [
+                  "latencyP50Ms",
+                  "latencyP95Ms",
+                  "latencyP99Ms",
+                  "errorRatePercent",
+                  "p95ChangePercent"
+                ],
+                "scenario": "peak",
+                "category": "INSPECTION_VIDEO"
+              }
+            ],
+            "reason": "REQUEST_METRICS_UNAVAILABLE"
+          }
+        }
+      },
+      "anomalies-peak": {
+        "request": "GET /api/v1/stats/anomalies?from=2026-01-18T00:00:00Z&to=2026-01-19T00:00:00Z&size=100",
+        "startedAt": "2026-11-15T05:16:48.892901Z",
+        "finishedAt": "2026-11-15T05:16:49.436774Z",
+        "status": 200,
+        "body": {
+          "generatedAt": "2026-11-15T05:16:49.203944500Z",
+          "from": "2026-01-18T00:00:00Z",
+          "to": "2026-01-19T00:00:00Z",
+          "rule": "kWh > mediană + 3 × abatere standard eșantională, per contor",
+          "anomalies": {
+            "items": [
+              {
+                "meterId": "RO-DOB-9100114",
+                "zone": "Dobrogea",
+                "readingTs": "2026-01-18T22:15:00Z",
+                "kwh": 6.279,
+                "median": 0.33,
+                "stddev": 0.6134371294942175,
+                "threshold": 2.1703113884826526,
+                "deviations": 9.697815332607899
+              },
+              {
+                "meterId": "RO-BAN-9100014",
+                "zone": "Banat",
+                "readingTs": "2026-01-18T20:30:00Z",
+                "kwh": 4.831,
+                "median": 0.224,
+                "stddev": 0.4741887605079915,
+                "threshold": 1.6465662815239746,
+                "deviations": 9.715540273591866
+              },
+              {
+                "meterId": "RO-DOB-9100006",
+                "zone": "Dobrogea",
+                "readingTs": "2026-01-18T16:15:00Z",
+                "kwh": 6.123,
+                "median": 0.186,
+                "stddev": 0.6082621318581584,
+                "threshold": 2.010786395574475,
+                "deviations": 9.760594469136636
+              },
+              {
+                "meterId": "RO-DOB-9100033",
+                "zone": "Dobrogea",
+                "readingTs": "2026-01-18T10:15:00Z",
+                "kwh": 5.215,
+                "median": 0.371,
+                "stddev": 0.5038698923542194,
+                "threshold": 1.8826096770626584,
+                "deviations": 9.613592860981418
+              },
+              {
+                "meterId": "RO-MUN-9100106",
+                "zone": "Muntenia",
+                "readingTs": "2026-01-18T08:15:00Z",
+                "kwh": 7.209,
+                "median": 0.298,
+                "stddev": 0.7101864071458541,
+                "threshold": 2.4285592214375624,
+                "deviations": 9.731247923730898
+              },
+              {
+                "meterId": "RO-DOB-9100087",
+                "zone": "Dobrogea",
+                "readingTs": "2026-01-18T07:00:00Z",
+                "kwh": 7.212,
+                "median": 0.228,
+                "stddev": 0.7163773483738566,
+                "threshold": 2.37713204512157,
+                "deviations": 9.749051970799128
+              },
+              {
+                "meterId": "RO-DOB-9100060",
+                "zone": "Dobrogea",
+                "readingTs": "2026-01-18T00:15:00Z",
+                "kwh": 6.59,
+                "median": 0.345,
+                "stddev": 0.6446244104842024,
+                "threshold": 2.2788732314526072,
+                "deviations": 9.687811845829945
+              }
+            ],
+            "page": 1,
+            "size": 100,
+            "totalItems": 7,
+            "totalPages": 1
+          },
+          "silentMeters": [],
+          "readingsByZoneHour": [
+            {
+              "zone": "Banat",
+              "hour": "2026-01-18T00:00:00Z",
+              "readings": 160,
+              "totalKwh": 26.507
+            },
+            {
+              "zone": "Dobrogea",
+              "hour": "2026-01-18T00:00:00Z",
+              "readings": 160,
+              "totalKwh": 32.622
+            },
+            {
+              "zone": "Muntenia",
+              "hour": "2026-01-18T00:00:00Z",
+              "readings": 160,
+              "totalKwh": 25.236
+            },
+            {
+              "zone": "Banat",
+              "hour": "2026-01-18T01:00:00Z",
+              "readings": 160,
+              "totalKwh": 26.289
+            },
+            {
+              "zone": "Dobrogea",
+              "hour": "2026-01-18T01:00:00Z",
+              "readings": 160,
+              "totalKwh": 26.004
+            },
+            {
+              "zone": "Muntenia",
+              "hour": "2026-01-18T01:00:00Z",
+              "readings": 160,
+              "totalKwh": 25.36
+            },
+            {
+              "zone": "Banat",
+              "hour": "2026-01-18T02:00:00Z",
+              "readings": 160,
+              "totalKwh": 26.455
+            },
+            {
+              "zone": "Dobrogea",
+              "hour": "2026-01-18T02:00:00Z",
+              "readings": 160,
+              "totalKwh": 26.102
+            },
+            {
+              "zone": "Muntenia",
+              "hour": "2026-01-18T02:00:00Z",
+              "readings": 160,
+              "totalKwh": 25.41
+            },
+            {
+              "zone": "Banat",
+              "hour": "2026-01-18T03:00:00Z",
+              "readings": 160,
+              "totalKwh": 26.503
+            },
+            {
+              "zone": "Dobrogea",
+              "hour": "2026-01-18T03:00:00Z",
+              "readings": 160,
+              "totalKwh": 25.934
+            },
+            {
+              "zone": "Muntenia",
+              "hour": "2026-01-18T03:00:00Z",
+              "readings": 160,
+              "totalKwh": 25.168
+            },
+            {
+              "zone": "Banat",
+              "hour": "2026-01-18T04:00:00Z",
+              "readings": 160,
+              "totalKwh": 26.56
+            },
+            {
+              "zone": "Dobrogea",
+              "hour": "2026-01-18T04:00:00Z",
+              "readings": 160,
+              "totalKwh": 25.823
+            },
+            {
+              "zone": "Muntenia",
+              "hour": "2026-01-18T04:00:00Z",
+              "readings": 160,
+              "totalKwh": 25.33
+            },
+            {
+              "zone": "Banat",
+              "hour": "2026-01-18T05:00:00Z",
+              "readings": 160,
+              "totalKwh": 26.346
+            },
+            {
+              "zone": "Dobrogea",
+              "hour": "2026-01-18T05:00:00Z",
+              "readings": 160,
+              "totalKwh": 25.876
+            },
+            {
+              "zone": "Muntenia",
+              "hour": "2026-01-18T05:00:00Z",
+              "readings": 160,
+              "totalKwh": 25.426
+            },
+            {
+              "zone": "Banat",
+              "hour": "2026-01-18T06:00:00Z",
+              "readings": 160,
+              "totalKwh": 35.237
+            },
+            {
+              "zone": "Dobrogea",
+              "hour": "2026-01-18T06:00:00Z",
+              "readings": 160,
+              "totalKwh": 34.616
+            },
+            {
+              "zone": "Muntenia",
+              "hour": "2026-01-18T06:00:00Z",
+              "readings": 160,
+              "totalKwh": 33.833
+            },
+            {
+              "zone": "Banat",
+              "hour": "2026-01-18T07:00:00Z",
+              "readings": 160,
+              "totalKwh": 49.827
+            },
+            {
+              "zone": "Dobrogea",
+              "hour": "2026-01-18T07:00:00Z",
+              "readings": 160,
+              "totalKwh": 57.063
+            },
+            {
+              "zone": "Muntenia",
+              "hour": "2026-01-18T07:00:00Z",
+              "readings": 160,
+              "totalKwh": 48.73
+            },
+            {
+              "zone": "Banat",
+              "hour": "2026-01-18T08:00:00Z",
+              "readings": 160,
+              "totalKwh": 50.847
+            },
+            {
+              "zone": "Dobrogea",
+              "hour": "2026-01-18T08:00:00Z",
+              "readings": 160,
+              "totalKwh": 49.761
+            },
+            {
+              "zone": "Muntenia",
+              "hour": "2026-01-18T08:00:00Z",
+              "readings": 160,
+              "totalKwh": 55.645
+            },
+            {
+              "zone": "Banat",
+              "hour": "2026-01-18T09:00:00Z",
+              "readings": 160,
+              "totalKwh": 44.1
+            },
+            {
+              "zone": "Dobrogea",
+              "hour": "2026-01-18T09:00:00Z",
+              "readings": 160,
+              "totalKwh": 43.091
+            },
+            {
+              "zone": "Muntenia",
+              "hour": "2026-01-18T09:00:00Z",
+              "readings": 160,
+              "totalKwh": 42.281
+            },
+            {
+              "zone": "Banat",
+              "hour": "2026-01-18T10:00:00Z",
+              "readings": 160,
+              "totalKwh": 43.853
+            },
+            {
+              "zone": "Dobrogea",
+              "hour": "2026-01-18T10:00:00Z",
+              "readings": 160,
+              "totalKwh": 47.94
+            },
+            {
+              "zone": "Muntenia",
+              "hour": "2026-01-18T10:00:00Z",
+              "readings": 160,
+              "totalKwh": 42.15
+            },
+            {
+              "zone": "Banat",
+              "hour": "2026-01-18T11:00:00Z",
+              "readings": 160,
+              "totalKwh": 44.287
+            },
+            {
+              "zone": "Dobrogea",
+              "hour": "2026-01-18T11:00:00Z",
+              "readings": 160,
+              "totalKwh": 43.371
+            },
+            {
+              "zone": "Muntenia",
+              "hour": "2026-01-18T11:00:00Z",
+              "readings": 160,
+              "totalKwh": 42.645
+            },
+            {
+              "zone": "Banat",
+              "hour": "2026-01-18T12:00:00Z",
+              "readings": 160,
+              "totalKwh": 43.65
+            },
+            {
+              "zone": "Dobrogea",
+              "hour": "2026-01-18T12:00:00Z",
+              "readings": 160,
+              "totalKwh": 43.171
+            },
+            {
+              "zone": "Muntenia",
+              "hour": "2026-01-18T12:00:00Z",
+              "readings": 160,
+              "totalKwh": 42.395
+            },
+            {
+              "zone": "Banat",
+              "hour": "2026-01-18T13:00:00Z",
+              "readings": 160,
+              "totalKwh": 44.359
+            },
+            {
+              "zone": "Dobrogea",
+              "hour": "2026-01-18T13:00:00Z",
+              "readings": 160,
+              "totalKwh": 43.142
+            },
+            {
+              "zone": "Muntenia",
+              "hour": "2026-01-18T13:00:00Z",
+              "readings": 160,
+              "totalKwh": 41.943
+            },
+            {
+              "zone": "Banat",
+              "hour": "2026-01-18T14:00:00Z",
+              "readings": 160,
+              "totalKwh": 43.736
+            },
+            {
+              "zone": "Dobrogea",
+              "hour": "2026-01-18T14:00:00Z",
+              "readings": 160,
+              "totalKwh": 43.427
+            },
+            {
+              "zone": "Muntenia",
+              "hour": "2026-01-18T14:00:00Z",
+              "readings": 160,
+              "totalKwh": 42.178
+            },
+            {
+              "zone": "Banat",
+              "hour": "2026-01-18T15:00:00Z",
+              "readings": 160,
+              "totalKwh": 44.024
+            },
+            {
+              "zone": "Dobrogea",
+              "hour": "2026-01-18T15:00:00Z",
+              "readings": 160,
+              "totalKwh": 43.329
+            },
+            {
+              "zone": "Muntenia",
+              "hour": "2026-01-18T15:00:00Z",
+              "readings": 160,
+              "totalKwh": 42.178
+            },
+            {
+              "zone": "Banat",
+              "hour": "2026-01-18T16:00:00Z",
+              "readings": 160,
+              "totalKwh": 43.898
+            },
+            {
+              "zone": "Dobrogea",
+              "hour": "2026-01-18T16:00:00Z",
+              "readings": 160,
+              "totalKwh": 49.186
+            },
+            {
+              "zone": "Muntenia",
+              "hour": "2026-01-18T16:00:00Z",
+              "readings": 160,
+              "totalKwh": 42.319
+            },
+            {
+              "zone": "Banat",
+              "hour": "2026-01-18T17:00:00Z",
+              "readings": 160,
+              "totalKwh": 48.481
+            },
+            {
+              "zone": "Dobrogea",
+              "hour": "2026-01-18T17:00:00Z",
+              "readings": 160,
+              "totalKwh": 47.517
+            },
+            {
+              "zone": "Muntenia",
+              "hour": "2026-01-18T17:00:00Z",
+              "readings": 160,
+              "totalKwh": 46.64
+            },
+            {
+              "zone": "Banat",
+              "hour": "2026-01-18T18:00:00Z",
+              "readings": 160,
+              "totalKwh": 54.854
+            },
+            {
+              "zone": "Dobrogea",
+              "hour": "2026-01-18T18:00:00Z",
+              "readings": 160,
+              "totalKwh": 54.135
+            },
+            {
+              "zone": "Muntenia",
+              "hour": "2026-01-18T18:00:00Z",
+              "readings": 160,
+              "totalKwh": 52.813
+            },
+            {
+              "zone": "Banat",
+              "hour": "2026-01-18T19:00:00Z",
+              "readings": 160,
+              "totalKwh": 54.791
+            },
+            {
+              "zone": "Dobrogea",
+              "hour": "2026-01-18T19:00:00Z",
+              "readings": 160,
+              "totalKwh": 53.739
+            },
+            {
+              "zone": "Muntenia",
+              "hour": "2026-01-18T19:00:00Z",
+              "readings": 160,
+              "totalKwh": 53.222
+            },
+            {
+              "zone": "Banat",
+              "hour": "2026-01-18T20:00:00Z",
+              "readings": 160,
+              "totalKwh": 59.42
+            },
+            {
+              "zone": "Dobrogea",
+              "hour": "2026-01-18T20:00:00Z",
+              "readings": 160,
+              "totalKwh": 54.072
+            },
+            {
+              "zone": "Muntenia",
+              "hour": "2026-01-18T20:00:00Z",
+              "readings": 160,
+              "totalKwh": 53.193
+            },
+            {
+              "zone": "Banat",
+              "hour": "2026-01-18T21:00:00Z",
+              "readings": 160,
+              "totalKwh": 54.664
+            },
+            {
+              "zone": "Dobrogea",
+              "hour": "2026-01-18T21:00:00Z",
+              "readings": 160,
+              "totalKwh": 54.03
+            },
+            {
+              "zone": "Muntenia",
+              "hour": "2026-01-18T21:00:00Z",
+              "readings": 160,
+              "totalKwh": 53.388
+            },
+            {
+              "zone": "Banat",
+              "hour": "2026-01-18T22:00:00Z",
+              "readings": 160,
+              "totalKwh": 39.915
+            },
+            {
+              "zone": "Dobrogea",
+              "hour": "2026-01-18T22:00:00Z",
+              "readings": 160,
+              "totalKwh": 44.755
+            },
+            {
+              "zone": "Muntenia",
+              "hour": "2026-01-18T22:00:00Z",
+              "readings": 160,
+              "totalKwh": 37.709
+            },
+            {
+              "zone": "Banat",
+              "hour": "2026-01-18T23:00:00Z",
+              "readings": 160,
+              "totalKwh": 39.261
+            },
+            {
+              "zone": "Dobrogea",
+              "hour": "2026-01-18T23:00:00Z",
+              "readings": 160,
+              "totalKwh": 39.141
+            },
+            {
+              "zone": "Muntenia",
+              "hour": "2026-01-18T23:00:00Z",
+              "readings": 160,
+              "totalKwh": 38.277
+            }
+          ],
+          "interpretation": "În interval au fost detectate 7 anomalii de consum, iar la sfârșitul intervalului 0 contoare depășeau pragul de inactivitate de 60 minute."
+        }
+      },
+      "anomalies-normal": {
+        "request": "GET /api/v1/stats/anomalies?from=2026-09-15T00:00:00Z&to=2026-09-16T00:00:00Z&size=100",
+        "startedAt": "2026-11-15T05:16:49.465581Z",
+        "finishedAt": "2026-11-15T05:16:49.974375Z",
+        "status": 200,
+        "body": {
+          "generatedAt": "2026-11-15T05:16:49.814110400Z",
+          "from": "2026-09-15T00:00:00Z",
+          "to": "2026-09-16T00:00:00Z",
+          "rule": "kWh > mediană + 3 × abatere standard eșantională, per contor",
+          "anomalies": {
+            "items": [],
+            "page": 1,
+            "size": 100,
+            "totalItems": 0,
+            "totalPages": 0
+          },
+          "silentMeters": [],
+          "readingsByZoneHour": [
+            {
+              "zone": "Banat",
+              "hour": "2026-09-15T00:00:00Z",
+              "readings": 16,
+              "totalKwh": 2.309
+            },
+            {
+              "zone": "Dobrogea",
+              "hour": "2026-09-15T00:00:00Z",
+              "readings": 16,
+              "totalKwh": 2.27
+            },
+            {
+              "zone": "Muntenia",
+              "hour": "2026-09-15T00:00:00Z",
+              "readings": 16,
+              "totalKwh": 2.837
+            },
+            {
+              "zone": "Banat",
+              "hour": "2026-09-15T01:00:00Z",
+              "readings": 16,
+              "totalKwh": 2.347
+            },
+            {
+              "zone": "Dobrogea",
+              "hour": "2026-09-15T01:00:00Z",
+              "readings": 16,
+              "totalKwh": 2.33
+            },
+            {
+              "zone": "Muntenia",
+              "hour": "2026-09-15T01:00:00Z",
+              "readings": 16,
+              "totalKwh": 2.749
+            },
+            {
+              "zone": "Banat",
+              "hour": "2026-09-15T02:00:00Z",
+              "readings": 16,
+              "totalKwh": 2.322
+            },
+            {
+              "zone": "Dobrogea",
+              "hour": "2026-09-15T02:00:00Z",
+              "readings": 16,
+              "totalKwh": 2.244
+            },
+            {
+              "zone": "Muntenia",
+              "hour": "2026-09-15T02:00:00Z",
+              "readings": 16,
+              "totalKwh": 2.834
+            },
+            {
+              "zone": "Banat",
+              "hour": "2026-09-15T03:00:00Z",
+              "readings": 16,
+              "totalKwh": 2.302
+            },
+            {
+              "zone": "Dobrogea",
+              "hour": "2026-09-15T03:00:00Z",
+              "readings": 16,
+              "totalKwh": 2.324
+            },
+            {
+              "zone": "Muntenia",
+              "hour": "2026-09-15T03:00:00Z",
+              "readings": 16,
+              "totalKwh": 2.831
+            },
+            {
+              "zone": "Banat",
+              "hour": "2026-09-15T04:00:00Z",
+              "readings": 16,
+              "totalKwh": 2.246
+            },
+            {
+              "zone": "Dobrogea",
+              "hour": "2026-09-15T04:00:00Z",
+              "readings": 16,
+              "totalKwh": 2.254
+            },
+            {
+              "zone": "Muntenia",
+              "hour": "2026-09-15T04:00:00Z",
+              "readings": 16,
+              "totalKwh": 2.813
+            },
+            {
+              "zone": "Banat",
+              "hour": "2026-09-15T05:00:00Z",
+              "readings": 16,
+              "totalKwh": 2.32
+            },
+            {
+              "zone": "Dobrogea",
+              "hour": "2026-09-15T05:00:00Z",
+              "readings": 16,
+              "totalKwh": 2.334
+            },
+            {
+              "zone": "Muntenia",
+              "hour": "2026-09-15T05:00:00Z",
+              "readings": 16,
+              "totalKwh": 2.869
+            },
+            {
+              "zone": "Banat",
+              "hour": "2026-09-15T06:00:00Z",
+              "readings": 16,
+              "totalKwh": 3.065
+            },
+            {
+              "zone": "Dobrogea",
+              "hour": "2026-09-15T06:00:00Z",
+              "readings": 16,
+              "totalKwh": 3.03
+            },
+            {
+              "zone": "Muntenia",
+              "hour": "2026-09-15T06:00:00Z",
+              "readings": 16,
+              "totalKwh": 3.604
+            },
+            {
+              "zone": "Banat",
+              "hour": "2026-09-15T07:00:00Z",
+              "readings": 16,
+              "totalKwh": 4.372
+            },
+            {
+              "zone": "Dobrogea",
+              "hour": "2026-09-15T07:00:00Z",
+              "readings": 16,
+              "totalKwh": 4.341
+            },
+            {
+              "zone": "Muntenia",
+              "hour": "2026-09-15T07:00:00Z",
+              "readings": 16,
+              "totalKwh": 5.458
+            },
+            {
+              "zone": "Banat",
+              "hour": "2026-09-15T08:00:00Z",
+              "readings": 16,
+              "totalKwh": 4.381
+            },
+            {
+              "zone": "Dobrogea",
+              "hour": "2026-09-15T08:00:00Z",
+              "readings": 16,
+              "totalKwh": 4.418
+            },
+            {
+              "zone": "Muntenia",
+              "hour": "2026-09-15T08:00:00Z",
+              "readings": 16,
+              "totalKwh": 5.403
+            },
+            {
+              "zone": "Banat",
+              "hour": "2026-09-15T09:00:00Z",
+              "readings": 16,
+              "totalKwh": 3.742
+            },
+            {
+              "zone": "Dobrogea",
+              "hour": "2026-09-15T09:00:00Z",
+              "readings": 16,
+              "totalKwh": 3.852
+            },
+            {
+              "zone": "Muntenia",
+              "hour": "2026-09-15T09:00:00Z",
+              "readings": 16,
+              "totalKwh": 4.66
+            },
+            {
+              "zone": "Banat",
+              "hour": "2026-09-15T10:00:00Z",
+              "readings": 16,
+              "totalKwh": 3.93
+            },
+            {
+              "zone": "Dobrogea",
+              "hour": "2026-09-15T10:00:00Z",
+              "readings": 16,
+              "totalKwh": 3.861
+            },
+            {
+              "zone": "Muntenia",
+              "hour": "2026-09-15T10:00:00Z",
+              "readings": 16,
+              "totalKwh": 4.793
+            },
+            {
+              "zone": "Banat",
+              "hour": "2026-09-15T11:00:00Z",
+              "readings": 16,
+              "totalKwh": 3.807
+            },
+            {
+              "zone": "Dobrogea",
+              "hour": "2026-09-15T11:00:00Z",
+              "readings": 16,
+              "totalKwh": 3.948
+            },
+            {
+              "zone": "Muntenia",
+              "hour": "2026-09-15T11:00:00Z",
+              "readings": 16,
+              "totalKwh": 4.729
+            },
+            {
+              "zone": "Banat",
+              "hour": "2026-09-15T12:00:00Z",
+              "readings": 16,
+              "totalKwh": 3.834
+            },
+            {
+              "zone": "Dobrogea",
+              "hour": "2026-09-15T12:00:00Z",
+              "readings": 16,
+              "totalKwh": 3.862
+            },
+            {
+              "zone": "Muntenia",
+              "hour": "2026-09-15T12:00:00Z",
+              "readings": 16,
+              "totalKwh": 4.584
+            },
+            {
+              "zone": "Banat",
+              "hour": "2026-09-15T13:00:00Z",
+              "readings": 16,
+              "totalKwh": 3.854
+            },
+            {
+              "zone": "Dobrogea",
+              "hour": "2026-09-15T13:00:00Z",
+              "readings": 16,
+              "totalKwh": 3.871
+            },
+            {
+              "zone": "Muntenia",
+              "hour": "2026-09-15T13:00:00Z",
+              "readings": 16,
+              "totalKwh": 4.672
+            },
+            {
+              "zone": "Banat",
+              "hour": "2026-09-15T14:00:00Z",
+              "readings": 16,
+              "totalKwh": 3.849
+            },
+            {
+              "zone": "Dobrogea",
+              "hour": "2026-09-15T14:00:00Z",
+              "readings": 16,
+              "totalKwh": 3.848
+            },
+            {
+              "zone": "Muntenia",
+              "hour": "2026-09-15T14:00:00Z",
+              "readings": 16,
+              "totalKwh": 4.605
+            },
+            {
+              "zone": "Banat",
+              "hour": "2026-09-15T15:00:00Z",
+              "readings": 16,
+              "totalKwh": 3.816
+            },
+            {
+              "zone": "Dobrogea",
+              "hour": "2026-09-15T15:00:00Z",
+              "readings": 16,
+              "totalKwh": 3.907
+            },
+            {
+              "zone": "Muntenia",
+              "hour": "2026-09-15T15:00:00Z",
+              "readings": 16,
+              "totalKwh": 4.683
+            },
+            {
+              "zone": "Banat",
+              "hour": "2026-09-15T16:00:00Z",
+              "readings": 16,
+              "totalKwh": 3.825
+            },
+            {
+              "zone": "Dobrogea",
+              "hour": "2026-09-15T16:00:00Z",
+              "readings": 16,
+              "totalKwh": 3.838
+            },
+            {
+              "zone": "Muntenia",
+              "hour": "2026-09-15T16:00:00Z",
+              "readings": 16,
+              "totalKwh": 4.725
+            },
+            {
+              "zone": "Banat",
+              "hour": "2026-09-15T17:00:00Z",
+              "readings": 16,
+              "totalKwh": 4.235
+            },
+            {
+              "zone": "Dobrogea",
+              "hour": "2026-09-15T17:00:00Z",
+              "readings": 16,
+              "totalKwh": 4.389
+            },
+            {
+              "zone": "Muntenia",
+              "hour": "2026-09-15T17:00:00Z",
+              "readings": 16,
+              "totalKwh": 4.995
+            },
+            {
+              "zone": "Banat",
+              "hour": "2026-09-15T18:00:00Z",
+              "readings": 16,
+              "totalKwh": 4.885
+            },
+            {
+              "zone": "Dobrogea",
+              "hour": "2026-09-15T18:00:00Z",
+              "readings": 16,
+              "totalKwh": 4.807
+            },
+            {
+              "zone": "Muntenia",
+              "hour": "2026-09-15T18:00:00Z",
+              "readings": 16,
+              "totalKwh": 5.885
+            },
+            {
+              "zone": "Banat",
+              "hour": "2026-09-15T19:00:00Z",
+              "readings": 16,
+              "totalKwh": 4.686
+            },
+            {
+              "zone": "Dobrogea",
+              "hour": "2026-09-15T19:00:00Z",
+              "readings": 16,
+              "totalKwh": 4.861
+            },
+            {
+              "zone": "Muntenia",
+              "hour": "2026-09-15T19:00:00Z",
+              "readings": 16,
+              "totalKwh": 5.805
+            },
+            {
+              "zone": "Banat",
+              "hour": "2026-09-15T20:00:00Z",
+              "readings": 16,
+              "totalKwh": 4.735
+            },
+            {
+              "zone": "Dobrogea",
+              "hour": "2026-09-15T20:00:00Z",
+              "readings": 16,
+              "totalKwh": 4.871
+            },
+            {
+              "zone": "Muntenia",
+              "hour": "2026-09-15T20:00:00Z",
+              "readings": 16,
+              "totalKwh": 5.812
+            },
+            {
+              "zone": "Banat",
+              "hour": "2026-09-15T21:00:00Z",
+              "readings": 16,
+              "totalKwh": 4.875
+            },
+            {
+              "zone": "Dobrogea",
+              "hour": "2026-09-15T21:00:00Z",
+              "readings": 16,
+              "totalKwh": 4.814
+            },
+            {
+              "zone": "Muntenia",
+              "hour": "2026-09-15T21:00:00Z",
+              "readings": 16,
+              "totalKwh": 5.804
+            },
+            {
+              "zone": "Banat",
+              "hour": "2026-09-15T22:00:00Z",
+              "readings": 16,
+              "totalKwh": 3.458
+            },
+            {
+              "zone": "Dobrogea",
+              "hour": "2026-09-15T22:00:00Z",
+              "readings": 16,
+              "totalKwh": 3.568
+            },
+            {
+              "zone": "Muntenia",
+              "hour": "2026-09-15T22:00:00Z",
+              "readings": 16,
+              "totalKwh": 4.039
+            },
+            {
+              "zone": "Banat",
+              "hour": "2026-09-15T23:00:00Z",
+              "readings": 16,
+              "totalKwh": 3.431
+            },
+            {
+              "zone": "Dobrogea",
+              "hour": "2026-09-15T23:00:00Z",
+              "readings": 16,
+              "totalKwh": 3.536
+            },
+            {
+              "zone": "Muntenia",
+              "hour": "2026-09-15T23:00:00Z",
+              "readings": 16,
+              "totalKwh": 4.163
+            }
+          ],
+          "interpretation": "În interval au fost detectate 0 anomalii de consum, iar la sfârșitul intervalului 0 contoare depășeau pragul de inactivitate de 60 minute."
+        }
+      },
+      "advisor-final": {
+        "request": "GET /api/v1/stats/storage-advisor",
+        "startedAt": "2026-11-15T05:16:50.003960Z",
+        "finishedAt": "2026-11-15T05:16:50.742205Z",
+        "status": 200,
+        "body": {
+          "generatedAt": "2026-11-15T05:16:50.328209300Z",
+          "basis": {
+            "benchmarkSamples": 693,
+            "liveSamples": 7358
+          },
+          "costAssumption": {
+            "unit": "cost relativ per GB (FTP = 1,0)",
+            "FTP": 1.0,
+            "S3": 1.4,
+            "DB": 3.2
+          },
+          "matrix": [
+            {
+              "category": "CONNECTION_DOC",
+              "storage": "S3",
+              "score": 95.714,
+              "latencyP50Ms": 11.286,
+              "latencyP95Ms": 14.9986,
+              "errorRatePercent": 0.0,
+              "relativeCostPerGb": 1.4,
+              "samples": 20,
+              "benchmarked": true
+            },
+            {
+              "category": "CONNECTION_DOC",
+              "storage": "DB",
+              "score": 76.221,
+              "latencyP50Ms": 8.992,
+              "latencyP95Ms": 20.896,
+              "errorRatePercent": 0.0,
+              "relativeCostPerGb": 3.2,
+              "samples": 261,
+              "benchmarked": true
+            },
+            {
+              "category": "CONNECTION_DOC",
+              "storage": "FTP",
+              "score": 66.778,
+              "latencyP50Ms": 40.033500000000004,
+              "latencyP95Ms": 46.6777,
+              "errorRatePercent": 0.0,
+              "relativeCostPerGb": 1.0,
+              "samples": 20,
+              "benchmarked": true
+            },
+            {
+              "category": "INSPECTION_VIDEO",
+              "storage": "FTP",
+              "score": 100.0,
+              "latencyP50Ms": 455.531,
+              "latencyP95Ms": 455.531,
+              "errorRatePercent": 0.0,
+              "relativeCostPerGb": 1.0,
+              "samples": 1,
+              "benchmarked": true
+            },
+            {
+              "category": "INSPECTION_VIDEO",
+              "storage": "S3",
+              "score": 90.27,
+              "latencyP50Ms": 511.314,
+              "latencyP95Ms": 511.314,
+              "errorRatePercent": 0.0,
+              "relativeCostPerGb": 1.4,
+              "samples": 1,
+              "benchmarked": true
+            },
+            {
+              "category": "INSPECTION_VIDEO",
+              "storage": "DB",
+              "score": 65.194,
+              "latencyP50Ms": 893.931,
+              "latencyP95Ms": 893.931,
+              "errorRatePercent": 0.0,
+              "relativeCostPerGb": 3.2,
+              "samples": 1,
+              "benchmarked": true
+            },
+            {
+              "category": "METER_READING",
+              "storage": "S3",
+              "score": 95.714,
+              "latencyP50Ms": 5.4905,
+              "latencyP95Ms": 7.269899999999998,
+              "errorRatePercent": 0.0,
+              "relativeCostPerGb": 1.4,
+              "samples": 200,
+              "benchmarked": true
+            },
+            {
+              "category": "METER_READING",
+              "storage": "FTP",
+              "score": 58.943,
+              "latencyP50Ms": 39.111000000000004,
+              "latencyP95Ms": 45.2363,
+              "errorRatePercent": 0.0,
+              "relativeCostPerGb": 1.0,
+              "samples": 200,
+              "benchmarked": true
+            },
+            {
+              "category": "METER_READING",
+              "storage": "DB",
+              "score": 51.492,
+              "latencyP50Ms": 7.5825,
+              "latencyP95Ms": 34.028999999999996,
+              "errorRatePercent": 0.0,
+              "relativeCostPerGb": 3.2,
+              "samples": 4676,
+              "benchmarked": true
+            },
+            {
+              "category": "OUTAGE_RECORD",
+              "storage": "S3",
+              "score": 95.714,
+              "latencyP50Ms": 6.042,
+              "latencyP95Ms": 12.2425,
+              "errorRatePercent": 0.0,
+              "relativeCostPerGb": 1.4,
+              "samples": 2651,
+              "benchmarked": true
+            },
+            {
+              "category": "OUTAGE_RECORD",
+              "storage": "FTP",
+              "score": 61.938,
+              "latencyP50Ms": 44.9045,
+              "latencyP95Ms": 54.4619,
+              "errorRatePercent": 0.0,
+              "relativeCostPerGb": 1.0,
+              "samples": 10,
+              "benchmarked": true
+            },
+            {
+              "category": "OUTAGE_RECORD",
+              "storage": "DB",
+              "score": 43.666,
+              "latencyP50Ms": 121.375,
+              "latencyP95Ms": 165.41375,
+              "errorRatePercent": 0.0,
+              "relativeCostPerGb": 3.2,
+              "samples": 10,
+              "benchmarked": true
+            }
+          ],
+          "recommendations": [
+            {
+              "category": "METER_READING",
+              "recommendedStorage": "S3",
+              "currentPolicyStorage": "DB",
+              "matchesPolicy": false,
+              "rationale": "S3 are cel mai bun scor (95.714) pentru METER_READING pe baza măsurătorilor de încărcare."
+            },
+            {
+              "category": "OUTAGE_RECORD",
+              "recommendedStorage": "S3",
+              "currentPolicyStorage": "S3",
+              "matchesPolicy": true,
+              "rationale": "S3 are cel mai bun scor (95.714) pentru OUTAGE_RECORD pe baza măsurătorilor de încărcare."
+            },
+            {
+              "category": "CONNECTION_DOC",
+              "recommendedStorage": "S3",
+              "currentPolicyStorage": "DB",
+              "matchesPolicy": false,
+              "rationale": "S3 are cel mai bun scor (95.714) pentru CONNECTION_DOC pe baza măsurătorilor de încărcare."
+            },
+            {
+              "category": "INSPECTION_VIDEO",
+              "recommendedStorage": "FTP",
+              "currentPolicyStorage": "FTP",
+              "matchesPolicy": true,
+              "rationale": "FTP are cel mai bun scor (100) pentru INSPECTION_VIDEO pe baza măsurătorilor de încărcare."
+            }
+          ],
+          "interpretation": "Pe baza măsurătorilor din ultimele 30 de zile, stocarea principală din politică coincide cu recomandarea în 2 din 4 categorii."
+        }
+      },
+      "requirements-final": {
+        "request": "GET /api/v1/stats/requirements",
+        "startedAt": "2026-11-15T05:16:50.788169Z",
+        "finishedAt": "2026-11-15T05:16:51.297761Z",
+        "status": 200,
+        "body": {
+          "generatedAt": "2026-11-15T05:16:51Z",
+          "requirements": [
+            {
+              "id": "R1",
+              "category": "METER_READING",
+              "title": "Citiri de contor confirmate",
+              "status": "OK",
+              "message": "Nicio citire neconfirmată peste 60 s.",
+              "thresholds": {
+                "unconfirmedMax": 0
+              },
+              "current": {
+                "unconfirmed": 0
+              }
+            },
+            {
+              "id": "R2",
+              "category": "OUTAGE_RECORD",
+              "title": "Avarii sub 2 secunde (p95)",
+              "status": "OK",
+              "message": "p95 = 0.01 s în ultimele 5 minute (prag 2.0 s).",
+              "thresholds": {
+                "p95MaxSeconds": 2.0,
+                "windowMinutes": 5,
+                "minSamples": 5
+              },
+              "current": {
+                "p95Seconds": 0.01,
+                "samples": 2025,
+                "sufficientData": true
+              }
+            },
+            {
+              "id": "R3",
+              "category": "CONNECTION_DOC",
+              "title": "Documente protejate",
+              "status": "OK",
+              "message": "Criptare activă, niciun acces refuzat în ultimele 5 minute.",
+              "thresholds": {
+                "encryptionRequired": true,
+                "deniedMax": 0,
+                "windowMinutes": 5
+              },
+              "current": {
+                "encryptionActive": true,
+                "denied": 0
+              }
+            },
+            {
+              "id": "R4",
+              "category": "INSPECTION_VIDEO",
+              "title": "Transferuri video reușite",
+              "status": "OK",
+              "message": "0 transferuri eșuate din 38 (0.0%), prag 5.0%.",
+              "thresholds": {
+                "failedMaxPercent": 5.0,
+                "windowMinutes": 5,
+                "minSamples": 5
+              },
+              "current": {
+                "failedPercent": 0.0,
+                "transfers": 38,
+                "failed": 0,
+                "samples": 38,
+                "sufficientData": true
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  "sql": {
+    "benchmark-download": [
+      "category|storage|successes|p50_ms|p95_ms|mib_per_sec",
+      "--------|-------|---------|------|------|-----------",
+      "CONNECTION_DOC|DB|20|7.97|10.69|119.90",
+      "CONNECTION_DOC|FTP|20|40.02|45.02|24.66",
+      "CONNECTION_DOC|S3|20|4.56|9.95|180.04",
+      "INSPECTION_VIDEO|DB|1|501.24|501.24|199.51",
+      "INSPECTION_VIDEO|FTP|1|306.82|306.82|325.92",
+      "INSPECTION_VIDEO|S3|1|343.84|343.84|290.83",
+      "METER_READING|DB|200|2.90|4.68|3.12",
+      "METER_READING|FTP|200|38.69|44.05|.25",
+      "METER_READING|S3|200|2.73|3.72|3.16",
+      "OUTAGE_RECORD|DB|10|51.24|67.95|100.35",
+      "OUTAGE_RECORD|FTP|10|41.38|42.57|121.62",
+      "OUTAGE_RECORD|S3|10|7.71|17.17|500.85"
+    ],
+    "cohort-day-check": [
+      "profile|zone|cohort|readings|meters|kwh",
+      "-------|----|------|--------|------|---",
+      "normal|Banat|sim-normal|384|4|86.626000",
+      "normal|Dobrogea|sim-normal|384|4|87.378000",
+      "normal|Muntenia|sim-normal|384|4|105.352000",
+      "peak|Banat|sim-peak|3840|40|997.864000",
+      "peak|Dobrogea|sim-peak|3840|40|1007.847000",
+      "peak|Muntenia|sim-peak|3840|40|963.469000"
+    ],
+    "dataset-counts": [
+      "category|storage_type|status|files|bytes",
+      "--------|------------|------|-----|-----",
+      "CONNECTION_DOC|DB|CONFIRMED|241|4326588",
+      "INSPECTION_VIDEO|FTP|CONFIRMED|49|13103217",
+      "METER_READING|DB|CONFIRMED|4476|27172655",
+      "OUTAGE_RECORD|S3|CONFIRMED|2641|46323862",
+      "cohort|zone|readings|meters|files|first_reading_utc|last_reading_utc",
+      "------|----|--------|------|-----|-----------------|----------------",
+      "k6-storm|Banat|28896|3|301|2026-04-01 00:00:00.0000000|2026-07-10 23:45:00.0000000",
+      "k6-storm|Dobrogea|38496|4|401|2026-04-01 00:00:00.0000000|2026-07-10 23:45:00.0000000",
+      "k6-storm|Muntenia|48000|5|500|2026-04-01 00:00:00.0000000|2026-07-09 23:45:00.0000000",
+      "sim-normal|Banat|6912|4|72|2026-09-15 00:00:00.0000000|2026-10-02 23:45:00.0000000",
+      "sim-normal|Dobrogea|6912|4|72|2026-09-15 00:00:00.0000000|2026-10-02 23:45:00.0000000",
+      "sim-normal|Muntenia|6912|4|72|2026-09-15 00:00:00.0000000|2026-10-02 23:45:00.0000000",
+      "sim-peak|Banat|93696|40|976|2026-01-18 00:00:00.0000000|2026-02-13 23:45:00.0000000",
+      "sim-peak|Dobrogea|98688|40|1028|2026-01-18 00:00:00.0000000|2026-02-13 23:45:00.0000000",
+      "sim-peak|Muntenia|101184|40|1054|2026-01-18 00:00:00.0000000|2026-02-13 23:45:00.0000000"
+    ],
+    "environment": [
+      "measured_utc|sql_version",
+      "------------|-----------",
+      "2026-11-15T05:07:43.7979556|16.0.4265.3",
+      "name|is_read_committed_snapshot_on|is_accelerated_database_recovery_on",
+      "----|-----------------------------|-----------------------------------",
+      "FileGridMeta|1|0",
+      "FileGridStorage|0|0",
+      "files_before",
+      "------------",
+      "0",
+      "operation_metrics_before",
+      "------------------------",
+      "0"
+    ],
+    "metric-counts": [
+      "source|scenario|category|storage|operation|samples|errors|bytes|first_utc|last_utc",
+      "------|--------|--------|-------|---------|-------|------|-----|---------|--------",
+      "benchmark|benchmark|CONNECTION_DOC|DB|download|20|0|20971520|2026-11-15 05:08:21.3887456|2026-11-15 05:08:22.4039302",
+      "benchmark|benchmark|CONNECTION_DOC|DB|upload|20|0|20971520|2026-11-15 05:08:21.3887456|2026-11-15 05:08:22.4039302",
+      "benchmark|benchmark|CONNECTION_DOC|FTP|download|20|0|20971520|2026-11-15 05:08:18.8258667|2026-11-15 05:08:20.3824231",
+      "benchmark|benchmark|CONNECTION_DOC|FTP|upload|20|0|20971520|2026-11-15 05:08:18.8258667|2026-11-15 05:08:20.3824231",
+      "benchmark|benchmark|CONNECTION_DOC|S3|download|20|0|20971520|2026-11-15 05:08:21.3846659|2026-11-15 05:08:21.3887456",
+      "benchmark|benchmark|CONNECTION_DOC|S3|upload|20|0|20971520|2026-11-15 05:08:21.3846659|2026-11-15 05:08:21.3887456",
+      "benchmark|benchmark|INSPECTION_VIDEO|DB|download|1|0|104857600|2026-11-15 05:08:25.8360457|2026-11-15 05:08:25.8360457",
+      "benchmark|benchmark|INSPECTION_VIDEO|DB|upload|1|0|104857600|2026-11-15 05:08:25.1724705|2026-11-15 05:08:25.1724705",
+      "benchmark|benchmark|INSPECTION_VIDEO|FTP|download|1|0|104857600|2026-11-15 05:08:23.0629124|2026-11-15 05:08:23.0629124",
+      "benchmark|benchmark|INSPECTION_VIDEO|FTP|upload|1|0|104857600|2026-11-15 05:08:23.0629124|2026-11-15 05:08:23.0629124",
+      "benchmark|benchmark|INSPECTION_VIDEO|S3|download|1|0|104857600|2026-11-15 05:08:23.9406020|2026-11-15 05:08:23.9406020",
+      "benchmark|benchmark|INSPECTION_VIDEO|S3|upload|1|0|104857600|2026-11-15 05:08:23.9364827|2026-11-15 05:08:23.9364827",
+      "benchmark|benchmark|METER_READING|DB|download|200|0|2048000|2026-11-15 05:08:12.3796876|2026-11-15 05:08:13.9154438",
+      "benchmark|benchmark|METER_READING|DB|upload|200|0|2048000|2026-11-15 05:08:12.3796876|2026-11-15 05:08:13.9154438",
+      "benchmark|benchmark|METER_READING|FTP|download|200|0|2048000|2026-11-15 05:07:44.8822634|2026-11-15 05:08:00.6333163",
+      "benchmark|benchmark|METER_READING|FTP|upload|200|0|2048000|2026-11-15 05:07:44.8782036|2026-11-15 05:08:00.6333163",
+      "benchmark|benchmark|METER_READING|S3|download|200|0|2048000|2026-11-15 05:08:08.7982115|2026-11-15 05:08:10.3624729",
+      "benchmark|benchmark|METER_READING|S3|upload|200|0|2048000|2026-11-15 05:08:08.7982115|2026-11-15 05:08:10.3624729",
+      "benchmark|benchmark|OUTAGE_RECORD|DB|download|10|0|52428800|2026-11-15 05:08:17.1280609|2026-11-15 05:08:18.2449542",
+      "benchmark|benchmark|OUTAGE_RECORD|DB|upload|10|0|52428800|2026-11-15 05:08:17.1280609|2026-11-15 05:08:18.2449542",
+      "benchmark|benchmark|OUTAGE_RECORD|FTP|download|10|0|52428800|2026-11-15 05:08:15.1799980|2026-11-15 05:08:15.6923819",
+      "benchmark|benchmark|OUTAGE_RECORD|FTP|upload|10|0|52428800|2026-11-15 05:08:15.1759079|2026-11-15 05:08:15.6923819",
+      "benchmark|benchmark|OUTAGE_RECORD|S3|download|10|0|52428800|2026-11-15 05:08:16.4602615|2026-11-15 05:08:16.4602615",
+      "benchmark|benchmark|OUTAGE_RECORD|S3|upload|10|0|52428800|2026-11-15 05:08:16.4602615|2026-11-15 05:08:16.4602615",
+      "live|NULL|INSPECTION_VIDEO|FTP|upload_complete|49|0|13103217|2026-11-15 05:09:28.9817564|2026-11-15 05:13:25.1744470",
+      "live|normal|CONNECTION_DOC|DB|upload|121|0|2019863|2026-11-15 05:09:28.9900706|2026-11-15 05:11:29.4733410",
+      "live|normal|CONNECTION_DOC|DB|verify|58|0|965560|2026-11-15 05:09:29.1308357|2026-11-15 05:11:27.4776467",
+      "live|normal|INSPECTION_VIDEO|FTP|upload_chunk|25|0|6709249|2026-11-15 05:09:28.9817564|2026-11-15 05:11:29.4733410",
+      "live|normal|METER_READING|DB|upload|817|0|3928205|2026-11-15 05:09:28.9817564|2026-11-15 05:15:04.9771468",
+      "live|normal|OUTAGE_RECORD|S3|download|83|0|1361107|2026-11-15 05:09:28.9817564|2026-11-15 05:11:29.1423178",
+      "live|normal|OUTAGE_RECORD|S3|upload|241|0|3995085|2026-11-15 05:09:28.9817564|2026-11-15 05:11:29.4733410",
+      "live|peak|METER_READING|DB|rejected|756|756|NULL|2026-11-15 05:15:14.6041370|2026-11-15 05:16:43.0604567",
+      "live|peak|METER_READING|DB|upload|3058|0|20785356|2026-11-15 05:15:14.6000843|2026-11-15 05:16:45.4811699",
+      "live|storm|CONNECTION_DOC|DB|upload|120|0|2315642|2026-11-15 05:11:29.0692777|2026-11-15 05:13:29.0633817",
+      "live|storm|CONNECTION_DOC|DB|verify|68|0|1262289|2026-11-15 05:11:29.1423178|2026-11-15 05:13:29.0925739",
+      "live|storm|INSPECTION_VIDEO|FTP|upload_chunk|24|0|6393968|2026-11-15 05:11:29.4733410|2026-11-15 05:13:25.1744470",
+      "live|storm|METER_READING|DB|upload|601|0|2459094|2026-11-15 05:11:29.4733410|2026-11-15 05:13:29.6596136",
+      "live|storm|OUTAGE_RECORD|S3|download|82|0|1347820|2026-11-15 05:11:29.6257837|2026-11-15 05:13:29.6060209",
+      "live|storm|OUTAGE_RECORD|S3|upload|2400|0|42328777|2026-11-15 05:11:29.1423178|2026-11-15 05:13:29.8555774"
+    ],
+    "o6-01-normal": [
+      "meter_id|zone|reading_ts|kwh|median_kwh|stddev_kwh|threshold_kwh|deviations|total_items",
+      "--------|----|----------|---|----------|----------|-------------|----------|-----------",
+      "total_items",
+      "-----------",
+      "0"
+    ],
+    "o6-01-peak": [
+      "meter_id|zone|reading_ts|kwh|median_kwh|stddev_kwh|threshold_kwh|deviations|total_items",
+      "--------|----|----------|---|----------|----------|-------------|----------|-----------",
+      "RO-DOB-9100114|Dobrogea|2026-01-18 22:15:00.0000000|6.279000|0.33000000000000002|0.61343712949421747|2.1703113884826526|9.6978153326078989|7",
+      "RO-BAN-9100014|Banat|2026-01-18 20:30:00.0000000|4.831000|0.224|0.47418876050799152|1.6465662815239746|9.7155402735918663|7",
+      "RO-DOB-9100006|Dobrogea|2026-01-18 16:15:00.0000000|6.123000|0.186|0.60826213185815836|2.0107863955744749|9.7605944691366364|7",
+      "RO-DOB-9100033|Dobrogea|2026-01-18 10:15:00.0000000|5.215000|0.371|0.50386989235421942|1.8826096770626584|9.6135928609814183|7",
+      "RO-MUN-9100106|Muntenia|2026-01-18 08:15:00.0000000|7.209000|0.29799999999999999|0.71018640714585413|2.4285592214375624|9.7312479237308978|7",
+      "RO-DOB-9100087|Dobrogea|2026-01-18 07:00:00.0000000|7.212000|0.22800000000000001|0.71637734837385658|2.3771320451215701|9.7490519707991279|7",
+      "RO-DOB-9100060|Dobrogea|2026-01-18 00:15:00.0000000|6.590000|0.34499999999999997|0.64462441048420238|2.2788732314526072|9.6878118458299447|7",
+      "total_items",
+      "-----------",
+      "7"
+    ],
+    "o6-02-silent-1m": [
+      "meter_id|zone|last_reading_ts|silent_minutes|last_received_at",
+      "--------|----|---------------|--------------|----------------",
+      "k6-o9-20261115w-MUN-0000015|Muntenia|2026-07-09 23:45:00.0000000|5|2026-11-15 05:11:27.9676268",
+      "k6-o9-20261115w-MUN-0000006|Muntenia|2026-07-09 23:45:00.0000000|5|2026-11-15 05:11:28.1644768",
+      "k6-o9-20261115w-MUN-0000018|Muntenia|2026-07-09 23:45:00.0000000|5|2026-11-15 05:11:28.3638224",
+      "k6-o9-20261115w-MUN-0000027|Muntenia|2026-07-09 23:45:00.0000000|5|2026-11-15 05:11:28.5623198",
+      "k6-o9-20261115w-DOB-0000023|Dobrogea|2026-07-09 23:45:00.0000000|5|2026-11-15 05:11:28.7611850",
+      "k6-o9-20261115w-DOB-0000005|Dobrogea|2026-07-10 23:45:00.0000000|5|2026-11-15 05:11:28.9691518",
+      "k6-o9-20261115w-DOB-0000050|Dobrogea|2026-07-09 23:45:00.0000000|3|2026-11-15 05:13:28.5662664",
+      "k6-o9-20261115w-BAN-0000046|Banat|2026-07-09 23:45:00.0000000|3|2026-11-15 05:13:28.7521227",
+      "k6-o9-20261115w-MUN-0000060|Muntenia|2026-07-09 23:45:00.0000000|3|2026-11-15 05:13:28.9511328",
+      "k6-o9-20261115w-DOB-0000053|Dobrogea|2026-07-09 23:45:00.0000000|3|2026-11-15 05:13:29.1547246",
+      "k6-o9-20261115w-BAN-0000061|Banat|2026-07-09 23:45:00.0000000|3|2026-11-15 05:13:29.3534538",
+      "k6-o9-20261115w-BAN-0000049|Banat|2026-07-10 23:45:00.0000000|3|2026-11-15 05:13:29.5521453",
+      "RO-BAN-9000002|Banat|2026-10-02 23:45:00.0000000|1|2026-11-15 05:15:04.4555197",
+      "RO-BAN-9000005|Banat|2026-10-02 23:45:00.0000000|1|2026-11-15 05:15:04.4596108",
+      "RO-BAN-9000011|Banat|2026-10-02 23:45:00.0000000|1|2026-11-15 05:15:04.4596108",
+      "RO-DOB-9000003|Dobrogea|2026-10-02 23:45:00.0000000|1|2026-11-15 05:15:04.4596108",
+      "RO-DOB-9000012|Dobrogea|2026-10-02 23:45:00.0000000|1|2026-11-15 05:15:04.4596108",
+      "RO-BAN-9000008|Banat|2026-10-02 23:45:00.0000000|1|2026-11-15 05:15:04.4636839",
+      "RO-DOB-9000006|Dobrogea|2026-10-02 23:45:00.0000000|1|2026-11-15 05:15:04.4636839",
+      "RO-DOB-9000009|Dobrogea|2026-10-02 23:45:00.0000000|1|2026-11-15 05:15:04.4636839",
+      "RO-MUN-9000001|Muntenia|2026-10-02 23:45:00.0000000|1|2026-11-15 05:15:04.4636839",
+      "RO-MUN-9000004|Muntenia|2026-10-02 23:45:00.0000000|1|2026-11-15 05:15:04.4636839",
+      "RO-MUN-9000007|Muntenia|2026-10-02 23:45:00.0000000|1|2026-11-15 05:15:04.4636839",
+      "RO-MUN-9000010|Muntenia|2026-10-02 23:45:00.0000000|1|2026-11-15 05:15:04.4636839",
+      "RO-MUN-9100001|Muntenia|2026-01-18 23:45:00.0000000|1|2026-11-15 05:15:13.8602313",
+      "RO-BAN-9100020|Banat|2026-01-18 23:45:00.0000000|1|2026-11-15 05:15:13.8855167",
+      "RO-BAN-9100074|Banat|2026-01-18 23:45:00.0000000|1|2026-11-15 05:15:14.6286840",
+      "RO-DOB-9100093|Dobrogea|2026-01-18 23:45:00.0000000|1|2026-11-15 05:15:14.9565344",
+      "RO-DOB-9100120|Dobrogea|2026-01-18 23:45:00.0000000|1|2026-11-15 05:15:15.5116417",
+      "RO-BAN-9100101|Banat|2026-01-18 23:45:00.0000000|1|2026-11-15 05:15:15.9323139",
+      "RO-BAN-9100047|Banat|2026-01-18 23:45:00.0000000|1|2026-11-15 05:15:17.0057186"
+    ],
+    "o6-02-silent-60m": [
+      "meter_id|zone|last_reading_ts|silent_minutes|last_received_at",
+      "--------|----|---------------|--------------|----------------"
+    ],
+    "o6-03-normal": [
+      "zone|hour_utc|readings|total_kwh",
+      "----|--------|--------|---------",
+      "Banat|2026-09-15 00:00:00.0000000|16|2.309000",
+      "Dobrogea|2026-09-15 00:00:00.0000000|16|2.270000",
+      "Muntenia|2026-09-15 00:00:00.0000000|16|2.837000",
+      "Banat|2026-09-15 01:00:00.0000000|16|2.347000",
+      "Dobrogea|2026-09-15 01:00:00.0000000|16|2.330000",
+      "Muntenia|2026-09-15 01:00:00.0000000|16|2.749000",
+      "Banat|2026-09-15 02:00:00.0000000|16|2.322000",
+      "Dobrogea|2026-09-15 02:00:00.0000000|16|2.244000",
+      "Muntenia|2026-09-15 02:00:00.0000000|16|2.834000",
+      "Banat|2026-09-15 03:00:00.0000000|16|2.302000",
+      "Dobrogea|2026-09-15 03:00:00.0000000|16|2.324000",
+      "Muntenia|2026-09-15 03:00:00.0000000|16|2.831000",
+      "Banat|2026-09-15 04:00:00.0000000|16|2.246000",
+      "Dobrogea|2026-09-15 04:00:00.0000000|16|2.254000",
+      "Muntenia|2026-09-15 04:00:00.0000000|16|2.813000",
+      "Banat|2026-09-15 05:00:00.0000000|16|2.320000",
+      "Dobrogea|2026-09-15 05:00:00.0000000|16|2.334000",
+      "Muntenia|2026-09-15 05:00:00.0000000|16|2.869000",
+      "Banat|2026-09-15 06:00:00.0000000|16|3.065000",
+      "Dobrogea|2026-09-15 06:00:00.0000000|16|3.030000",
+      "Muntenia|2026-09-15 06:00:00.0000000|16|3.604000",
+      "Banat|2026-09-15 07:00:00.0000000|16|4.372000",
+      "Dobrogea|2026-09-15 07:00:00.0000000|16|4.341000",
+      "Muntenia|2026-09-15 07:00:00.0000000|16|5.458000",
+      "Banat|2026-09-15 08:00:00.0000000|16|4.381000",
+      "Dobrogea|2026-09-15 08:00:00.0000000|16|4.418000",
+      "Muntenia|2026-09-15 08:00:00.0000000|16|5.403000",
+      "Banat|2026-09-15 09:00:00.0000000|16|3.742000",
+      "Dobrogea|2026-09-15 09:00:00.0000000|16|3.852000",
+      "Muntenia|2026-09-15 09:00:00.0000000|16|4.660000",
+      "Banat|2026-09-15 10:00:00.0000000|16|3.930000",
+      "Dobrogea|2026-09-15 10:00:00.0000000|16|3.861000",
+      "Muntenia|2026-09-15 10:00:00.0000000|16|4.793000",
+      "Banat|2026-09-15 11:00:00.0000000|16|3.807000",
+      "Dobrogea|2026-09-15 11:00:00.0000000|16|3.948000",
+      "Muntenia|2026-09-15 11:00:00.0000000|16|4.729000",
+      "Banat|2026-09-15 12:00:00.0000000|16|3.834000",
+      "Dobrogea|2026-09-15 12:00:00.0000000|16|3.862000",
+      "Muntenia|2026-09-15 12:00:00.0000000|16|4.584000",
+      "Banat|2026-09-15 13:00:00.0000000|16|3.854000",
+      "Dobrogea|2026-09-15 13:00:00.0000000|16|3.871000",
+      "Muntenia|2026-09-15 13:00:00.0000000|16|4.672000",
+      "Banat|2026-09-15 14:00:00.0000000|16|3.849000",
+      "Dobrogea|2026-09-15 14:00:00.0000000|16|3.848000",
+      "Muntenia|2026-09-15 14:00:00.0000000|16|4.605000",
+      "Banat|2026-09-15 15:00:00.0000000|16|3.816000",
+      "Dobrogea|2026-09-15 15:00:00.0000000|16|3.907000",
+      "Muntenia|2026-09-15 15:00:00.0000000|16|4.683000",
+      "Banat|2026-09-15 16:00:00.0000000|16|3.825000",
+      "Dobrogea|2026-09-15 16:00:00.0000000|16|3.838000",
+      "Muntenia|2026-09-15 16:00:00.0000000|16|4.725000",
+      "Banat|2026-09-15 17:00:00.0000000|16|4.235000",
+      "Dobrogea|2026-09-15 17:00:00.0000000|16|4.389000",
+      "Muntenia|2026-09-15 17:00:00.0000000|16|4.995000",
+      "Banat|2026-09-15 18:00:00.0000000|16|4.885000",
+      "Dobrogea|2026-09-15 18:00:00.0000000|16|4.807000",
+      "Muntenia|2026-09-15 18:00:00.0000000|16|5.885000",
+      "Banat|2026-09-15 19:00:00.0000000|16|4.686000",
+      "Dobrogea|2026-09-15 19:00:00.0000000|16|4.861000",
+      "Muntenia|2026-09-15 19:00:00.0000000|16|5.805000",
+      "Banat|2026-09-15 20:00:00.0000000|16|4.735000",
+      "Dobrogea|2026-09-15 20:00:00.0000000|16|4.871000",
+      "Muntenia|2026-09-15 20:00:00.0000000|16|5.812000",
+      "Banat|2026-09-15 21:00:00.0000000|16|4.875000",
+      "Dobrogea|2026-09-15 21:00:00.0000000|16|4.814000",
+      "Muntenia|2026-09-15 21:00:00.0000000|16|5.804000",
+      "Banat|2026-09-15 22:00:00.0000000|16|3.458000",
+      "Dobrogea|2026-09-15 22:00:00.0000000|16|3.568000",
+      "Muntenia|2026-09-15 22:00:00.0000000|16|4.039000",
+      "Banat|2026-09-15 23:00:00.0000000|16|3.431000",
+      "Dobrogea|2026-09-15 23:00:00.0000000|16|3.536000",
+      "Muntenia|2026-09-15 23:00:00.0000000|16|4.163000"
+    ],
+    "o6-03-peak": [
+      "zone|hour_utc|readings|total_kwh",
+      "----|--------|--------|---------",
+      "Banat|2026-01-18 00:00:00.0000000|160|26.507000",
+      "Dobrogea|2026-01-18 00:00:00.0000000|160|32.622000",
+      "Muntenia|2026-01-18 00:00:00.0000000|160|25.236000",
+      "Banat|2026-01-18 01:00:00.0000000|160|26.289000",
+      "Dobrogea|2026-01-18 01:00:00.0000000|160|26.004000",
+      "Muntenia|2026-01-18 01:00:00.0000000|160|25.360000",
+      "Banat|2026-01-18 02:00:00.0000000|160|26.455000",
+      "Dobrogea|2026-01-18 02:00:00.0000000|160|26.102000",
+      "Muntenia|2026-01-18 02:00:00.0000000|160|25.410000",
+      "Banat|2026-01-18 03:00:00.0000000|160|26.503000",
+      "Dobrogea|2026-01-18 03:00:00.0000000|160|25.934000",
+      "Muntenia|2026-01-18 03:00:00.0000000|160|25.168000",
+      "Banat|2026-01-18 04:00:00.0000000|160|26.560000",
+      "Dobrogea|2026-01-18 04:00:00.0000000|160|25.823000",
+      "Muntenia|2026-01-18 04:00:00.0000000|160|25.330000",
+      "Banat|2026-01-18 05:00:00.0000000|160|26.346000",
+      "Dobrogea|2026-01-18 05:00:00.0000000|160|25.876000",
+      "Muntenia|2026-01-18 05:00:00.0000000|160|25.426000",
+      "Banat|2026-01-18 06:00:00.0000000|160|35.237000",
+      "Dobrogea|2026-01-18 06:00:00.0000000|160|34.616000",
+      "Muntenia|2026-01-18 06:00:00.0000000|160|33.833000",
+      "Banat|2026-01-18 07:00:00.0000000|160|49.827000",
+      "Dobrogea|2026-01-18 07:00:00.0000000|160|57.063000",
+      "Muntenia|2026-01-18 07:00:00.0000000|160|48.730000",
+      "Banat|2026-01-18 08:00:00.0000000|160|50.847000",
+      "Dobrogea|2026-01-18 08:00:00.0000000|160|49.761000",
+      "Muntenia|2026-01-18 08:00:00.0000000|160|55.645000",
+      "Banat|2026-01-18 09:00:00.0000000|160|44.100000",
+      "Dobrogea|2026-01-18 09:00:00.0000000|160|43.091000",
+      "Muntenia|2026-01-18 09:00:00.0000000|160|42.281000",
+      "Banat|2026-01-18 10:00:00.0000000|160|43.853000",
+      "Dobrogea|2026-01-18 10:00:00.0000000|160|47.940000",
+      "Muntenia|2026-01-18 10:00:00.0000000|160|42.150000",
+      "Banat|2026-01-18 11:00:00.0000000|160|44.287000",
+      "Dobrogea|2026-01-18 11:00:00.0000000|160|43.371000",
+      "Muntenia|2026-01-18 11:00:00.0000000|160|42.645000",
+      "Banat|2026-01-18 12:00:00.0000000|160|43.650000",
+      "Dobrogea|2026-01-18 12:00:00.0000000|160|43.171000",
+      "Muntenia|2026-01-18 12:00:00.0000000|160|42.395000",
+      "Banat|2026-01-18 13:00:00.0000000|160|44.359000",
+      "Dobrogea|2026-01-18 13:00:00.0000000|160|43.142000",
+      "Muntenia|2026-01-18 13:00:00.0000000|160|41.943000",
+      "Banat|2026-01-18 14:00:00.0000000|160|43.736000",
+      "Dobrogea|2026-01-18 14:00:00.0000000|160|43.427000",
+      "Muntenia|2026-01-18 14:00:00.0000000|160|42.178000",
+      "Banat|2026-01-18 15:00:00.0000000|160|44.024000",
+      "Dobrogea|2026-01-18 15:00:00.0000000|160|43.329000",
+      "Muntenia|2026-01-18 15:00:00.0000000|160|42.178000",
+      "Banat|2026-01-18 16:00:00.0000000|160|43.898000",
+      "Dobrogea|2026-01-18 16:00:00.0000000|160|49.186000",
+      "Muntenia|2026-01-18 16:00:00.0000000|160|42.319000",
+      "Banat|2026-01-18 17:00:00.0000000|160|48.481000",
+      "Dobrogea|2026-01-18 17:00:00.0000000|160|47.517000",
+      "Muntenia|2026-01-18 17:00:00.0000000|160|46.640000",
+      "Banat|2026-01-18 18:00:00.0000000|160|54.854000",
+      "Dobrogea|2026-01-18 18:00:00.0000000|160|54.135000",
+      "Muntenia|2026-01-18 18:00:00.0000000|160|52.813000",
+      "Banat|2026-01-18 19:00:00.0000000|160|54.791000",
+      "Dobrogea|2026-01-18 19:00:00.0000000|160|53.739000",
+      "Muntenia|2026-01-18 19:00:00.0000000|160|53.222000",
+      "Banat|2026-01-18 20:00:00.0000000|160|59.420000",
+      "Dobrogea|2026-01-18 20:00:00.0000000|160|54.072000",
+      "Muntenia|2026-01-18 20:00:00.0000000|160|53.193000",
+      "Banat|2026-01-18 21:00:00.0000000|160|54.664000",
+      "Dobrogea|2026-01-18 21:00:00.0000000|160|54.030000",
+      "Muntenia|2026-01-18 21:00:00.0000000|160|53.388000",
+      "Banat|2026-01-18 22:00:00.0000000|160|39.915000",
+      "Dobrogea|2026-01-18 22:00:00.0000000|160|44.755000",
+      "Muntenia|2026-01-18 22:00:00.0000000|160|37.709000",
+      "Banat|2026-01-18 23:00:00.0000000|160|39.261000",
+      "Dobrogea|2026-01-18 23:00:00.0000000|160|39.141000",
+      "Muntenia|2026-01-18 23:00:00.0000000|160|38.277000"
+    ],
+    "o6-04-outage": [
+      "rank|zone|outages|total_outages|share_percent|vs_average_ratio|peak_hour_utc",
+      "----|----|-------|-------------|-------------|----------------|-------------",
+      "1|Dobrogea|892|2641|33.775085195001893|1.013252|5",
+      "2|Banat|875|2641|33.131389625141991|.993941|5",
+      "3|Muntenia|874|2641|33.093525179856115|.992805|5",
+      "zone|hour_utc|outages",
+      "----|--------|-------",
+      "Banat|5|875",
+      "Dobrogea|5|892",
+      "Muntenia|5|874"
+    ],
+    "o6-05-simulator": [
+      "category|run_type|scenario|from_utc|to_utc|operations|operations_per_minute|latency_p50_ms|latency_p95_ms|latency_p99_ms|error_rate_percent|p95_change_percent",
+      "--------|--------|--------|--------|------|----------|---------------------|--------------|--------------|--------------|------------------|------------------",
+      "CONNECTION_DOC|normal|normal|2026-11-15 05:13:37.4179700|2026-11-15 05:15:11.5007930|0|0.0|NULL|NULL|NULL|NULL|NULL",
+      "CONNECTION_DOC|peak|peak|2026-11-15 05:15:12.5034660|2026-11-15 05:16:47.3450490|0|0.0|NULL|NULL|NULL|NULL|NULL",
+      "INSPECTION_VIDEO|normal|normal|2026-11-15 05:13:37.4179700|2026-11-15 05:15:11.5007930|0|0.0|NULL|NULL|NULL|NULL|NULL",
+      "INSPECTION_VIDEO|peak|peak|2026-11-15 05:15:12.5034660|2026-11-15 05:16:47.3450490|0|0.0|NULL|NULL|NULL|NULL|NULL",
+      "METER_READING|normal|normal|2026-11-15 05:13:37.4179700|2026-11-15 05:15:11.5007930|216|137.7509686332435|8.5745000000000005|24.782250000000001|39.970549999999974|.000000000000000|NULL",
+      "METER_READING|peak|peak|2026-11-15 05:15:12.5034660|2026-11-15 05:16:47.3450490|3058|1934.5944489349149|9.8999999999999986|37.173349999999999|53.833619999999911|.000000000000000|49.999899121346928",
+      "OUTAGE_RECORD|normal|normal|2026-11-15 05:13:37.4179700|2026-11-15 05:15:11.5007930|0|0.0|NULL|NULL|NULL|NULL|NULL",
+      "OUTAGE_RECORD|peak|peak|2026-11-15 05:15:12.5034660|2026-11-15 05:16:47.3450490|0|0.0|NULL|NULL|NULL|NULL|NULL"
+    ],
+    "o6-05-storm": [
+      "category|run_type|scenario|from_utc|to_utc|operations|operations_per_minute|latency_p50_ms|latency_p95_ms|latency_p99_ms|error_rate_percent|p95_change_percent",
+      "--------|--------|--------|--------|------|----------|---------------------|--------------|--------------|--------------|------------------|------------------",
+      "CONNECTION_DOC|normal|normal|2026-11-15 05:09:28.9817564|2026-11-15 05:11:29.4733411|179|89.134855573029895|8.4589999999999996|20.136800000000001|30.354460000000003|.000000000000000|NULL",
+      "CONNECTION_DOC|peak|storm|2026-11-15 05:11:29.0692777|2026-11-15 05:13:29.8555775|188|93.38807479554896|6.883|14.501200000000001|32.57037999999995|.000000000000000|-27.986571848555879",
+      "INSPECTION_VIDEO|normal|normal|2026-11-15 05:09:28.9817564|2026-11-15 05:11:29.4733411|25|12.449002175004177|42.375|48.965199999999989|52.880559999999988|.000000000000000|NULL",
+      "INSPECTION_VIDEO|peak|storm|2026-11-15 05:11:29.0692777|2026-11-15 05:13:29.8555775|24|11.921881888793484|42.683999999999997|219.86589999999958|250.39403000000001|.000000000000000|349.02481762557824",
+      "METER_READING|normal|normal|2026-11-15 05:09:28.9817564|2026-11-15 05:11:29.4733411|601|299.27401228710039|6.0369999999999999|11.952999999999999|20.873999999999999|.000000000000000|NULL",
+      "METER_READING|peak|storm|2026-11-15 05:11:29.0692777|2026-11-15 05:13:29.8555775|601|298.5437922985368|6.2050000000000001|12.287000000000001|33.156999999999996|.000000000000000|2.7942775872166101",
+      "OUTAGE_RECORD|normal|normal|2026-11-15 05:09:28.9817564|2026-11-15 05:11:29.4733411|324|161.33906818805411|8.2714999999999996|16.447299999999984|54.353029999999997|.000000000000000|NULL",
+      "OUTAGE_RECORD|peak|storm|2026-11-15 05:11:29.0692777|2026-11-15 05:13:29.8555775|2482|1232.921285332726|5.9350000000000005|11.289049999999996|21.283070000000002|.000000000000000|-31.3622904671283"
+    ],
+    "o6-06-after-storm": [
+      "category|storage|operation|score|rank|latency_p50_ms|latency_p95_ms|error_rate_percent|relative_cost_per_gb|samples|benchmark_samples|live_samples|benchmarked",
+      "--------|-------|---------|-----|----|--------------|--------------|------------------|--------------------|-------|-----------------|------------|-----------",
+      "CONNECTION_DOC|S3|upload|95.714|1|11.286|14.9986|0.0|1.4000|20|20|0|1",
+      "CONNECTION_DOC|DB|upload|76.221|2|8.9920000000000009|20.896000000000001|0.0|3.2000|261|20|241|1",
+      "CONNECTION_DOC|FTP|upload|66.778|3|40.033500000000004|46.677700000000002|0.0|1.0000|20|20|0|1",
+      "INSPECTION_VIDEO|FTP|upload|100.000|1|455.53100000000001|455.53100000000001|0.0|1.0000|1|1|0|1",
+      "INSPECTION_VIDEO|S3|upload|90.270|2|511.31400000000002|511.31400000000002|0.0|1.4000|1|1|0|1",
+      "INSPECTION_VIDEO|DB|upload|65.194|3|893.93100000000004|893.93100000000004|0.0|3.2000|1|1|0|1",
+      "METER_READING|S3|upload|95.714|1|5.4904999999999999|7.269899999999998|0.0|1.4000|200|200|0|1",
+      "METER_READING|DB|upload|71.947|2|6.0429999999999993|11.817950000000002|0.0|3.2000|1402|200|1202|1",
+      "METER_READING|FTP|upload|58.943|3|39.111000000000004|45.2363|0.0|1.0000|200|200|0|1",
+      "OUTAGE_RECORD|S3|upload|95.714|1|6.0419999999999998|12.2425|0.0|1.4000|2651|10|2641|1",
+      "OUTAGE_RECORD|FTP|upload|61.938|2|44.904499999999999|54.4619|0.0|1.0000|10|10|0|1",
+      "OUTAGE_RECORD|DB|upload|43.666|3|121.375|165.41374999999999|0.0|3.2000|10|10|0|1"
+    ],
+    "o6-06-final": [
+      "category|storage|operation|score|rank|latency_p50_ms|latency_p95_ms|error_rate_percent|relative_cost_per_gb|samples|benchmark_samples|live_samples|benchmarked",
+      "--------|-------|---------|-----|----|--------------|--------------|------------------|--------------------|-------|-----------------|------------|-----------",
+      "CONNECTION_DOC|S3|upload|95.714|1|11.286|14.9986|0.0|1.4000|20|20|0|1",
+      "CONNECTION_DOC|DB|upload|76.221|2|8.9920000000000009|20.896000000000001|0.0|3.2000|261|20|241|1",
+      "CONNECTION_DOC|FTP|upload|66.778|3|40.033500000000004|46.677700000000002|0.0|1.0000|20|20|0|1",
+      "INSPECTION_VIDEO|FTP|upload|100.000|1|455.53100000000001|455.53100000000001|0.0|1.0000|1|1|0|1",
+      "INSPECTION_VIDEO|S3|upload|90.270|2|511.31400000000002|511.31400000000002|0.0|1.4000|1|1|0|1",
+      "INSPECTION_VIDEO|DB|upload|65.194|3|893.93100000000004|893.93100000000004|0.0|3.2000|1|1|0|1",
+      "METER_READING|S3|upload|95.714|1|5.4904999999999999|7.269899999999998|0.0|1.4000|200|200|0|1",
+      "METER_READING|FTP|upload|58.943|2|39.111000000000004|45.2363|0.0|1.0000|200|200|0|1",
+      "METER_READING|DB|upload|51.492|3|7.5824999999999996|34.028999999999996|0.0|3.2000|4676|200|4476|1",
+      "OUTAGE_RECORD|S3|upload|95.714|1|6.0419999999999998|12.2425|0.0|1.4000|2651|10|2641|1",
+      "OUTAGE_RECORD|FTP|upload|61.938|2|44.904499999999999|54.4619|0.0|1.0000|10|10|0|1",
+      "OUTAGE_RECORD|DB|upload|43.666|3|121.375|165.41374999999999|0.0|3.2000|10|10|0|1"
+    ],
+    "simulator-rejections": [
+      "scenario|category|rejected",
+      "--------|--------|--------",
+      "peak|METER_READING|756"
+    ]
+  },
+  "sqlParameters": {
+    "o6-01-normal": {
+      "to_utc": "CONVERT(datetime2(7), '2026-09-16T00:00:00', 126)",
+      "from_utc": "CONVERT(datetime2(7), '2026-09-15T00:00:00', 126)",
+      "page": "1",
+      "page_size": "100"
+    },
+    "o6-01-peak": {
+      "to_utc": "CONVERT(datetime2(7), '2026-01-19T00:00:00', 126)",
+      "from_utc": "CONVERT(datetime2(7), '2026-01-18T00:00:00', 126)",
+      "page": "1",
+      "page_size": "100"
+    },
+    "o6-02-silent-1m": {
+      "as_of_utc": "CONVERT(datetime2(7), '2026-11-15T05:16:47.345049', 126)",
+      "silent_minutes": "1"
+    },
+    "o6-02-silent-60m": {
+      "as_of_utc": "CONVERT(datetime2(7), '2026-11-15T05:16:47.345049', 126)",
+      "silent_minutes": "60"
+    },
+    "o6-03-normal": {
+      "to_utc": "CONVERT(datetime2(7), '2026-09-16T00:00:00', 126)",
+      "from_utc": "CONVERT(datetime2(7), '2026-09-15T00:00:00', 126)"
+    },
+    "o6-03-peak": {
+      "to_utc": "CONVERT(datetime2(7), '2026-01-19T00:00:00', 126)",
+      "from_utc": "CONVERT(datetime2(7), '2026-01-18T00:00:00', 126)"
+    },
+    "o6-04-outage": {
+      "to_utc": "CONVERT(datetime2(7), '2026-11-15T05:13:33.6850083', 126)",
+      "from_utc": "CONVERT(datetime2(7), '2026-10-16T05:13:33.6850083', 126)"
+    },
+    "o6-05-simulator": {
+      "normal_scenario": "N'normal'",
+      "peak_scenario": "N'peak'",
+      "normal_to_utc": "CONVERT(datetime2(7), '2026-11-15T05:15:11.500793', 126)",
+      "normal_from_utc": "CONVERT(datetime2(7), '2026-11-15T05:13:37.417970', 126)",
+      "peak_to_utc": "CONVERT(datetime2(7), '2026-11-15T05:16:47.345049', 126)",
+      "peak_from_utc": "CONVERT(datetime2(7), '2026-11-15T05:15:12.503466', 126)"
+    },
+    "o6-05-storm": {
+      "normal_scenario": "N'normal'",
+      "peak_scenario": "N'storm'",
+      "normal_to_utc": "CONVERT(datetime2(7), '2026-11-15T05:11:29.4733411', 126)",
+      "normal_from_utc": "CONVERT(datetime2(7), '2026-11-15T05:09:28.9817564', 126)",
+      "peak_to_utc": "CONVERT(datetime2(7), '2026-11-15T05:13:29.8555775', 126)",
+      "peak_from_utc": "CONVERT(datetime2(7), '2026-11-15T05:11:29.0692777', 126)"
+    },
+    "o6-06-after-storm": {
+      "to_utc": "CONVERT(datetime2(7), '2026-11-15T05:13:34.0721032', 126)",
+      "from_utc": "DATEADD(day, -30, @to_utc)",
+      "operation": "N'upload'"
+    },
+    "o6-06-final": {
+      "to_utc": "CONVERT(datetime2(7), '2026-11-15T05:16:50.3282093', 126)",
+      "from_utc": "DATEADD(day, -30, @to_utc)",
+      "operation": "N'upload'"
+    }
+  },
+  "additionalSql": {
+    "benchmark-download": "WITH samples AS (\n    SELECT category, storage, size_bytes, latency_ms,\n           PERCENTILE_CONT(.50) WITHIN GROUP (ORDER BY latency_ms)\n             OVER (PARTITION BY category, storage) AS p50_ms,\n           PERCENTILE_CONT(.95) WITHIN GROUP (ORDER BY latency_ms)\n             OVER (PARTITION BY category, storage) AS p95_ms\n    FROM dbo.operation_metrics\n    WHERE source=N'benchmark' AND operation=N'download' AND ok=1\n)\nSELECT category, storage, COUNT_BIG(*) AS successes,\n       CAST(MAX(p50_ms) AS decimal(12,2)) AS p50_ms,\n       CAST(MAX(p95_ms) AS decimal(12,2)) AS p95_ms,\n       CAST(SUM(size_bytes)/1048576.0 / NULLIF(SUM(latency_ms)/1000.0,0) AS decimal(14,2)) AS mib_per_sec\nFROM samples\nGROUP BY category, storage\nORDER BY category, storage;",
+    "cohort-day-check": "WITH days AS (\n  SELECT * FROM (VALUES\n    ('normal', CONVERT(datetime2(7),'2026-09-15T00:00:00',126)),\n    ('peak', CONVERT(datetime2(7),'2026-01-18T00:00:00',126))\n  ) d(profile, from_utc)\n)\nSELECT d.profile, r.zone,\n       CASE WHEN r.meter_id LIKE 'RO-%-90000%' THEN 'sim-normal'\n            WHEN r.meter_id LIKE 'RO-%-9100%' THEN 'sim-peak'\n            WHEN r.meter_id LIKE 'k6-o9-20261115%' THEN 'k6-storm' ELSE 'other' END AS cohort,\n       COUNT_BIG(*) AS readings, COUNT(DISTINCT r.meter_id) AS meters, SUM(r.kwh) AS kwh\nFROM days d\nJOIN dbo.meter_readings r ON r.reading_ts>=d.from_utc AND r.reading_ts<DATEADD(day,1,d.from_utc)\nJOIN dbo.files f ON f.id=r.file_id AND f.status=N'CONFIRMED'\nGROUP BY d.profile, r.zone,\n         CASE WHEN r.meter_id LIKE 'RO-%-90000%' THEN 'sim-normal'\n              WHEN r.meter_id LIKE 'RO-%-9100%' THEN 'sim-peak'\n              WHEN r.meter_id LIKE 'k6-o9-20261115%' THEN 'k6-storm' ELSE 'other' END\nORDER BY d.profile, r.zone, cohort;",
+    "dataset-counts": "SELECT category, storage_type, status, COUNT_BIG(*) AS files, SUM(size_bytes) AS bytes\nFROM dbo.files GROUP BY category, storage_type, status ORDER BY category, storage_type, status;\nSELECT CASE WHEN r.meter_id LIKE 'RO-%-90000%' THEN 'sim-normal'\n            WHEN r.meter_id LIKE 'RO-%-9100%' THEN 'sim-peak'\n            WHEN r.meter_id LIKE 'k6-o9-20261115%' THEN 'k6-storm' END AS cohort,\n       zone, COUNT_BIG(*) AS readings, COUNT(DISTINCT meter_id) AS meters, COUNT(DISTINCT r.file_id) AS files,\n       MIN(reading_ts) AS first_reading_utc, MAX(reading_ts) AS last_reading_utc\nFROM dbo.meter_readings r JOIN dbo.files f ON f.id=r.file_id AND f.status=N'CONFIRMED'\nGROUP BY CASE WHEN r.meter_id LIKE 'RO-%-90000%' THEN 'sim-normal'\n              WHEN r.meter_id LIKE 'RO-%-9100%' THEN 'sim-peak'\n              WHEN r.meter_id LIKE 'k6-o9-20261115%' THEN 'k6-storm' END, zone\nORDER BY cohort, zone;",
+    "metric-counts": "SELECT source, scenario, category, storage, operation,\n       COUNT_BIG(*) AS samples, SUM(CONVERT(bigint, 1-ok)) AS errors, SUM(size_bytes) AS bytes,\n       MIN(ts) AS first_utc, MAX(ts) AS last_utc\nFROM dbo.operation_metrics\nGROUP BY source, scenario, category, storage, operation\nORDER BY source, scenario, category, storage, operation;",
+    "simulator-rejections": "SELECT scenario, category, COUNT_BIG(*) AS rejected\nFROM dbo.operation_metrics\nWHERE source = N'live' AND operation = N'rejected'\n  AND ((scenario = N'normal' AND ts >= CONVERT(datetime2(7), '2026-11-15T05:13:37.417970', 126) AND ts < CONVERT(datetime2(7), '2026-11-15T05:15:11.500793', 126))\n    OR (scenario = N'peak' AND ts >= CONVERT(datetime2(7), '2026-11-15T05:15:12.503466', 126) AND ts < CONVERT(datetime2(7), '2026-11-15T05:16:47.345049', 126)))\nGROUP BY scenario, category\nORDER BY scenario, category;"
+  },
+  "prometheus": {
+    "afterStorm": {
+      "capturedAt": "2026-11-15T05:13:36.773283Z",
+      "metrics": {
+        "up{job=\"api\"}": {
+          "status": "success",
+          "data": {
+            "resultType": "vector",
+            "result": [
+              {
+                "metric": {
+                  "__name__": "up",
+                  "instance": "192.168.208.6:8080",
+                  "job": "api"
+                },
+                "value": [
+                  1794719616.911,
+                  "1"
+                ]
+              },
+              {
+                "metric": {
+                  "__name__": "up",
+                  "instance": "192.168.208.7:8080",
+                  "job": "api"
+                },
+                "value": [
+                  1794719616.911,
+                  "1"
+                ]
+              },
+              {
+                "metric": {
+                  "__name__": "up",
+                  "instance": "192.168.208.8:8080",
+                  "job": "api"
+                },
+                "value": [
+                  1794719616.911,
+                  "1"
+                ]
+              }
+            ]
+          }
+        },
+        "filegrid_opmetrics_dropped_total{job=\"api\"}": {
+          "status": "success",
+          "data": {
+            "resultType": "vector",
+            "result": [
+              {
+                "metric": {
+                  "__name__": "filegrid_opmetrics_dropped_total",
+                  "instance": "192.168.208.7:8080",
+                  "job": "api"
+                },
+                "value": [
+                  1794719617.064,
+                  "0"
+                ]
+              },
+              {
+                "metric": {
+                  "__name__": "filegrid_opmetrics_dropped_total",
+                  "instance": "192.168.208.8:8080",
+                  "job": "api"
+                },
+                "value": [
+                  1794719617.064,
+                  "0"
+                ]
+              },
+              {
+                "metric": {
+                  "__name__": "filegrid_opmetrics_dropped_total",
+                  "instance": "192.168.208.6:8080",
+                  "job": "api"
+                },
+                "value": [
+                  1794719617.064,
+                  "0"
+                ]
+              }
+            ]
+          }
+        },
+        "sum by(instance)(filegrid_operation_seconds_count{job=\"api\"})": {
+          "status": "success",
+          "data": {
+            "resultType": "vector",
+            "result": [
+              {
+                "metric": {
+                  "instance": "192.168.208.8:8080"
+                },
+                "value": [
+                  1794719617.226,
+                  "1502"
+                ]
+              },
+              {
+                "metric": {
+                  "instance": "192.168.208.6:8080"
+                },
+                "value": [
+                  1794719617.226,
+                  "1509"
+                ]
+              },
+              {
+                "metric": {
+                  "instance": "192.168.208.7:8080"
+                },
+                "value": [
+                  1794719617.226,
+                  "1462"
+                ]
+              }
+            ]
+          }
+        },
+        "sum by(category)(filegrid_bulkhead_rejected_total{job=\"api\"})": {
+          "status": "success",
+          "data": {
+            "resultType": "vector",
+            "result": [
+              {
+                "metric": {
+                  "category": "CONNECTION_DOC"
+                },
+                "value": [
+                  1794719617.39,
+                  "0"
+                ]
+              },
+              {
+                "metric": {
+                  "category": "INSPECTION_VIDEO"
+                },
+                "value": [
+                  1794719617.39,
+                  "0"
+                ]
+              },
+              {
+                "metric": {
+                  "category": "METER_READING"
+                },
+                "value": [
+                  1794719617.39,
+                  "0"
+                ]
+              },
+              {
+                "metric": {
+                  "category": "OUTAGE_RECORD"
+                },
+                "value": [
+                  1794719617.39,
+                  "0"
+                ]
+              }
+            ]
+          }
+        }
+      }
+    },
+    "afterSimulator": {
+      "capturedAt": "2026-11-15T05:16:51.325789Z",
+      "metrics": {
+        "up{job=\"api\"}": {
+          "status": "success",
+          "data": {
+            "resultType": "vector",
+            "result": [
+              {
+                "metric": {
+                  "__name__": "up",
+                  "instance": "192.168.208.6:8080",
+                  "job": "api"
+                },
+                "value": [
+                  1794719811.472,
+                  "1"
+                ]
+              },
+              {
+                "metric": {
+                  "__name__": "up",
+                  "instance": "192.168.208.7:8080",
+                  "job": "api"
+                },
+                "value": [
+                  1794719811.472,
+                  "1"
+                ]
+              },
+              {
+                "metric": {
+                  "__name__": "up",
+                  "instance": "192.168.208.8:8080",
+                  "job": "api"
+                },
+                "value": [
+                  1794719811.472,
+                  "1"
+                ]
+              }
+            ]
+          }
+        },
+        "filegrid_opmetrics_dropped_total{job=\"api\"}": {
+          "status": "success",
+          "data": {
+            "resultType": "vector",
+            "result": [
+              {
+                "metric": {
+                  "__name__": "filegrid_opmetrics_dropped_total",
+                  "instance": "192.168.208.7:8080",
+                  "job": "api"
+                },
+                "value": [
+                  1794719811.624,
+                  "0"
+                ]
+              },
+              {
+                "metric": {
+                  "__name__": "filegrid_opmetrics_dropped_total",
+                  "instance": "192.168.208.8:8080",
+                  "job": "api"
+                },
+                "value": [
+                  1794719811.624,
+                  "0"
+                ]
+              },
+              {
+                "metric": {
+                  "__name__": "filegrid_opmetrics_dropped_total",
+                  "instance": "192.168.208.6:8080",
+                  "job": "api"
+                },
+                "value": [
+                  1794719811.624,
+                  "0"
+                ]
+              }
+            ]
+          }
+        },
+        "sum by(instance)(filegrid_operation_seconds_count{job=\"api\"})": {
+          "status": "success",
+          "data": {
+            "resultType": "vector",
+            "result": [
+              {
+                "metric": {
+                  "instance": "192.168.208.8:8080"
+                },
+                "value": [
+                  1794719811.779,
+                  "1637"
+                ]
+              },
+              {
+                "metric": {
+                  "instance": "192.168.208.6:8080"
+                },
+                "value": [
+                  1794719811.779,
+                  "3637"
+                ]
+              },
+              {
+                "metric": {
+                  "instance": "192.168.208.7:8080"
+                },
+                "value": [
+                  1794719811.779,
+                  "2473"
+                ]
+              }
+            ]
+          }
+        },
+        "sum by(category)(filegrid_bulkhead_rejected_total{job=\"api\"})": {
+          "status": "success",
+          "data": {
+            "resultType": "vector",
+            "result": [
+              {
+                "metric": {
+                  "category": "CONNECTION_DOC"
+                },
+                "value": [
+                  1794719811.936,
+                  "0"
+                ]
+              },
+              {
+                "metric": {
+                  "category": "INSPECTION_VIDEO"
+                },
+                "value": [
+                  1794719811.936,
+                  "0"
+                ]
+              },
+              {
+                "metric": {
+                  "category": "METER_READING"
+                },
+                "value": [
+                  1794719811.936,
+                  "756"
+                ]
+              },
+              {
+                "metric": {
+                  "category": "OUTAGE_RECORD"
+                },
+                "value": [
+                  1794719811.936,
+                  "0"
+                ]
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+}
