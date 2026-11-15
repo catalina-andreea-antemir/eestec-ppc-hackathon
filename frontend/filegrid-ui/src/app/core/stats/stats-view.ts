@@ -231,12 +231,30 @@ export function hasOutageData(res: OutageZones): boolean {
 
 // ---------- 5. Cerințele de business ----------
 
-export type Tone = 'green' | 'red';
+export type Tone = 'green' | 'red' | 'neutral';
 
-/** OK → verde; AT_RISK sau orice valoare necunoscută → roșu (mai bine o alarmă falsă decât una ratată). */
-export function requirementTone(req: Pick<Requirement, 'status'>): Tone {
-  return req.status === 'OK' ? 'green' : 'red';
+/** true doar când serverul spune explicit `current.sufficientData: false` (lipsa câmpului = date suficiente). */
+export function hasInsufficientData(req: { current?: Record<string, unknown> | null }): boolean {
+  return req.current?.['sufficientData'] === false;
 }
+
+/**
+ * AT_RISK sau orice valoare necunoscută → roșu (mai bine o alarmă falsă decât una ratată), chiar dacă datele sunt puține.
+ * OK cu `current.sufficientData === false` → neutru (gri): prea puține măsurători pentru un verdict. Altfel OK → verde.
+ */
+export function requirementTone(req: Pick<Requirement, 'status'> & { current?: Record<string, unknown> | null }): Tone {
+  if (req.status !== 'OK') {
+    return 'red';
+  }
+  return hasInsufficientData(req) ? 'neutral' : 'green';
+}
+
+/** Eticheta de pe plăcuță, după ton. */
+export const TONE_LABELS: Readonly<Record<Tone, string>> = {
+  green: 'Îndeplinită',
+  red: 'În pericol',
+  neutral: 'Date insuficiente',
+};
 
 /** Plăcuțele în ordinea R1–R4. */
 export function sortRequirements(items: Requirement[]): Requirement[] {
@@ -251,18 +269,34 @@ export function requirementsInterpretation(res: Requirements): string {
   if (res.interpretation?.trim()) {
     return res.interpretation;
   }
-  const atRisk = sortRequirements(res.requirements).filter((r) => requirementTone(r) === 'red');
+  const sorted = sortRequirements(res.requirements);
+  const atRisk = sorted.filter((r) => requirementTone(r) === 'red');
+  const unknown = sorted.filter((r) => requirementTone(r) === 'neutral');
   const total = res.requirements.length;
-  if (atRisk.length === 0) {
+  if (atRisk.length === 0 && unknown.length === 0) {
     return `Toate cele ${total} cerințe de business sunt îndeplinite acum; nu e nevoie de nicio intervenție.`;
   }
-  const list = atRisk.map((r) => `${r.id} (${r.title.charAt(0).toLowerCase()}${r.title.slice(1)}): ${r.message}`).join(' ');
-  const ok = total - atRisk.length;
-  const head =
-    atRisk.length === 1
-      ? `${ok} din ${total} cerințe sunt îndeplinite; una e în pericol.`
-      : `${ok} din ${total} cerințe sunt îndeplinite; ${atRisk.length} sunt în pericol.`;
-  return `${head} ${list} Recomandăm verificarea acum, înainte să devină incident.`;
+  const ok = total - atRisk.length - unknown.length;
+  const detail = (r: Requirement) => `${r.id} (${r.title.charAt(0).toLowerCase()}${r.title.slice(1)}): ${r.message}`;
+  const parts = [`${ok} din ${total} cerințe sunt îndeplinite`];
+  if (atRisk.length) {
+    parts.push(atRisk.length === 1 ? 'una e în pericol' : `${atRisk.length} sunt în pericol`);
+  }
+  if (unknown.length) {
+    // Fără destule măsurători nu spunem nici „îndeplinită”, nici „în pericol”.
+    parts.push(
+      unknown.length === 1
+        ? 'una nu are încă date suficiente pentru un verdict'
+        : `${unknown.length} nu au încă date suficiente pentru un verdict`,
+    );
+  }
+  const sentences = [`${parts.join('; ')}.`, ...atRisk.map(detail), ...unknown.map(detail)];
+  sentences.push(
+    atRisk.length
+      ? 'Recomandăm verificarea acum, înainte să devină incident.'
+      : 'Nicio cerință nu e în pericol; verdictul complet apare după ce sistemul strânge destule măsurători.',
+  );
+  return sentences.join(' ');
 }
 
 // ---------- erori ----------

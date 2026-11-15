@@ -8,6 +8,7 @@ import { StatsApi } from '../../../core/stats/stats-api';
 import { UNAVAILABLE_REASONS } from '../../../core/stats/stats-view';
 import { OutageZonesCard } from './outage-zones-card';
 import { PeakCard } from './peak-card';
+import { RequirementsCard } from './requirements-card';
 import { StorageAdvisorCard } from './storage-advisor-card';
 
 /** Răspunsul mock-ului pentru o cale, transformat într-un Observable sincron (valoare sau eroare). */
@@ -27,6 +28,7 @@ async function render(card: Type<unknown>, mode: MockStatsMode): Promise<HTMLEle
     outageZones: await fromMock('/stats/outage-zones', mode),
     peakVsNormal: await fromMock('/stats/peak-vs-normal', mode),
     storageAdvisor: await fromMock('/stats/storage-advisor', mode),
+    requirements: await fromMock('/stats/requirements', mode),
   };
   TestBed.configureTestingModule({
     providers: [
@@ -36,6 +38,7 @@ async function render(card: Type<unknown>, mode: MockStatsMode): Promise<HTMLEle
           outageZones: () => api.outageZones,
           peakVsNormal: () => api.peakVsNormal,
           storageAdvisor: () => api.storageAdvisor,
+          requirements: () => api.requirements,
         },
       },
     ],
@@ -75,6 +78,18 @@ describe('cărțile dashboard-ului în situațiile din O7', () => {
     expect(info?.textContent).toContain(UNAVAILABLE_REASONS[reason]);
     expect(info?.getAttribute('role')).toBe('status');
     expect(el.querySelector('.error')).toBeNull();
+  });
+
+  it('cerințe: plăcuța cu date insuficiente e gri, AT_RISK roșu, celelalte verzi', async () => {
+    const el = await render(RequirementsCard, 'normal');
+    const tile = (id: string) => [...el.querySelectorAll('.tile')].find((t) => t.textContent?.includes(`${id} ·`))!;
+    expect(tile('R4').className).toContain('neutral');
+    expect(tile('R4').textContent).toContain('Date insuficiente: 3 din minim 5 transferuri video');
+    expect(tile('R4').querySelector('.status')?.textContent).toContain('Date insuficiente');
+    expect(tile('R2').className).toContain('red');
+    expect(tile('R1').className).toContain('green');
+    expect(tile('R3').className).toContain('green');
+    expect(el.querySelector('.interpretation')?.textContent).not.toContain('Toate cele 4');
   });
 
   it('pe aceeași simulare, cartea de avarii merge în continuare', async () => {

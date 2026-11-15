@@ -20,7 +20,8 @@ import { apiError, MockUser, nowIso, respond } from './mock-uploads';
  * - /stats/peak-vs-normal: `peakScenario=storm` (implicit) e exemplul din contract (furtună: avariile cresc
  *   de 13 ori); `peakScenario=peak` e o zi de vârf de consum (citirile se dublează). Alt scenariu → 0 cereri.
  * - /stats/outage-zones: clasamentul din contract, cu distribuția pe ore completată (sumele se potrivesc).
- * - /stats/requirements: exemplul din contract (R2 roșu). Schema nu are `interpretation`, deci nici mock-ul.
+ * - /stats/requirements: exemplul din contract (R2 roșu), cu R4 ca în C12 când sunt prea puține transferuri
+ *   (`current.sufficientData: false` → plăcuță gri). Schema nu are `interpretation`, deci nici mock-ul.
  * - Situațiile din O7 se simulează din selectorul „Simulare (mock)” al paginii Statistici (MockStatsMode).
  */
 export function handleStatsRoutes(
@@ -288,8 +289,8 @@ const REQUIREMENTS: Requirements = {
   generatedAt: '2026-11-14T13:05:00Z',
   requirements: [
     { id: 'R1', category: 'METER_READING', title: 'Nicio citire nu se pierde și nu se dublează', status: 'OK', message: '0 citiri neconfirmate, 0 citiri abandonate.', thresholds: { unconfirmedMax: 0, abandonedMax: 0 }, current: { unconfirmed: 0, abandoned: 0 } },
-    { id: 'R2', category: 'OUTAGE_RECORD', title: 'Avariile sunt disponibile imediat pentru dispecerat', status: 'AT_RISK', message: 'Latența p95 pentru avarii este 2,4 s în ultimele 5 minute (prag 2 s).', thresholds: { p95MaxSeconds: 2.0, windowMinutes: 5 }, current: { p95Seconds: 2.4 } },
+    { id: 'R2', category: 'OUTAGE_RECORD', title: 'Avariile sunt disponibile imediat pentru dispecerat', status: 'AT_RISK', message: 'Latența p95 pentru avarii este 2,4 s în ultimele 5 minute (prag 2 s).', thresholds: { p95MaxSeconds: 2.0, windowMinutes: 5 }, current: { p95Seconds: 2.4, samples: 37, sufficientData: true } },
     { id: 'R3', category: 'CONNECTION_DOC', title: 'Datele personale rămân protejate și verificabile la audit', status: 'OK', message: 'Criptare activă, 0 accesuri refuzate în ultimele 5 minute.', thresholds: { encryptionRequired: true, deniedMax: 0, windowMinutes: 5 }, current: { encryptionActive: true, denied: 0 } },
-    { id: 'R4', category: 'INSPECTION_VIDEO', title: 'Transferul rezistă pe conexiuni lente sau instabile', status: 'OK', message: '0 transferuri eșuate din 9 (0%), sub pragul de 5%.', thresholds: { failedMaxPercent: 5.0 }, current: { failedPercent: 0.0, transfers: 9 } },
+    { id: 'R4', category: 'INSPECTION_VIDEO', title: 'Transferul rezistă pe conexiuni lente sau instabile', status: 'OK', message: 'Date insuficiente: 3 din minim 5 transferuri video în ultimele 5 minute.', thresholds: { failedMaxPercent: 5.0 }, current: { failedPercent: 0.0, samples: 3, sufficientData: false } },
   ],
 };

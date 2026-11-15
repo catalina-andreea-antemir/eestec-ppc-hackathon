@@ -176,6 +176,59 @@ describe('stats-view', () => {
       expect(text).toContain('3 din 4 cerințe sunt îndeplinite; una e în pericol.');
       expect(text).toContain('R2 (avariile sunt disponibile imediat): p95 2,4 s.');
     });
+
+    describe('date insuficiente (current.sufficientData === false)', () => {
+      const withCurrent = (status: string, current: Record<string, unknown>): Requirement => ({ ...req('R4', status), current });
+
+      it('OK cu date insuficiente → gri (neutral), nu verde', () => {
+        expect(requirementTone(withCurrent('OK', { samples: 3, sufficientData: false }))).toBe('neutral');
+      });
+
+      it('AT_RISK rămâne roșu chiar dacă datele sunt puține (alerta are prioritate)', () => {
+        expect(requirementTone(withCurrent('AT_RISK', { samples: 2, sufficientData: false }))).toBe('red');
+      });
+
+      it('lipsa câmpului sau sufficientData: true → normal (verde)', () => {
+        expect(requirementTone(withCurrent('OK', {}))).toBe('green');
+        expect(requirementTone(withCurrent('OK', { sufficientData: true }))).toBe('green');
+        expect(requirementTone({ status: 'OK' })).toBe('green');
+      });
+
+      it('interpretarea compusă nu spune „îndeplinită” pentru cerința fără date', () => {
+        const res: Requirements = {
+          generatedAt: '',
+          requirements: [
+            req('R1', 'OK'),
+            req('R2', 'OK'),
+            req('R3', 'OK'),
+            {
+              ...req('R4', 'OK', 'Transferul rezistă pe conexiuni lente', 'Date insuficiente: 3 din minim 5 transferuri video.'),
+              current: { samples: 3, sufficientData: false },
+            },
+          ],
+        };
+        const text = requirementsInterpretation(res);
+        expect(text).not.toContain('Toate cele 4');
+        expect(text).toContain('3 din 4 cerințe sunt îndeplinite; una nu are încă date suficiente pentru un verdict.');
+        expect(text).toContain('R4 (transferul rezistă pe conexiuni lente): Date insuficiente: 3 din minim 5 transferuri video.');
+        expect(text).toContain('Nicio cerință nu e în pericol');
+      });
+
+      it('interpretarea compusă cu o cerință roșie și una gri le numește pe amândouă', () => {
+        const res: Requirements = {
+          generatedAt: '',
+          requirements: [
+            req('R1', 'OK'),
+            req('R2', 'AT_RISK', 'Avarii', 'p95 2,4 s.'),
+            req('R3', 'OK'),
+            { ...req('R4', 'OK'), current: { sufficientData: false } },
+          ],
+        };
+        const text = requirementsInterpretation(res);
+        expect(text).toContain('2 din 4 cerințe sunt îndeplinite; una e în pericol; una nu are încă date suficiente');
+        expect(text).toContain('Recomandăm verificarea acum');
+      });
+    });
   });
 
   it('canViewStats: doar DISPATCH și ADMIN', () => {
