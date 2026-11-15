@@ -2,7 +2,15 @@
 
 În Compose, API-ul păstrează logurile Logstash pe stdout și le scrie și în volumul `api-logs`. Logback folosește un fișier append-only pentru fiecare combinație de hostname al containerului, zi UTC și index de rotație. Rotația trece la o cale nouă, astfel că Promtail poate relua fiecare fișier după offset chiar dacă în timpul opririi lui au apărut fișiere noi.
 
-Promtail rulează fără privilegii și citește volumul în mod read-only. Pozițiile se salvează la 2 s pe volumul separat `promtail-positions`. Eticheta `replica` conține hostname-ul containerului API, iar `filename` separă fișierele rotite în stream-uri distincte. `traceId` rămâne în linia JSON și se caută cu LogQL.
+Promtail rulează fără privilegii și citește volumul în mod read-only. Pozițiile se salvează la 2 s pe volumul separat `promtail-positions`. Eticheta `replica` conține hostname-ul containerului API, iar `filename` separă fișierele rotite în stream-uri distincte. `traceId` rămâne în linia JSON.
+
+În Grafana la `https://localhost/grafana/`, deschide **Explore**, selectează **Loki** și caută după valoarea headerului `X-Trace-Id`. Alege intervalul care conține cererea și deschide detaliile rezultatului pentru a vedea eticheta `replica`. Cererea apare în Loki dacă API-ul a emis un log asociat acelui trace.
+
+```logql
+{job="filegrid-api"} | json | traceId="TRACE_ID"
+```
+
+Aceeași căutare este disponibilă și din rețeaua Compose.
 
 ```sh
 docker compose exec -T api curl -fsSG http://loki:3100/loki/api/v1/query_range \
