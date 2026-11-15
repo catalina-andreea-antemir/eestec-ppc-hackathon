@@ -1,0 +1,22 @@
+# C14 - suprascriere pentru testul de scalare, intr-un proiect Docker IZOLAT (filegrid-c14): volume, retele si
+# containere separate de stack-ul principal (filegrid). Nu se foloseste direct; il porneste run.sh:
+#   docker compose -p filegrid-c14 --env-file tests/integration/c14/.env.c14 \
+#     -f docker-compose.yml -f tests/integration/c14/docker-compose.c14.yml up -d --build --scale api=3 nginx api
+# Doar nginx, api (3 replici) si dependentele lor (mssql, mssql-init, minio, minio-init, ftp, api-logs-init);
+# fara observabilitate, ca sa incapa langa stack-ul principal in 8 GB.
+
+services:
+  nginx:
+    # Stack-ul principal ocupa 80/443; aici doar HTTPS, pe 127.0.0.1.
+    ports: !override
+      - "127.0.0.1:${C14_HTTPS_PORT:-18443}:443"
+
+  api:
+    environment:
+      # Cerinta ADR-003: memoria nu creste cu marimea fisierului; heap fix 256 MB.
+      JAVA_OPTS: "-Xmx256m -XX:+ExitOnOutOfMemoryError"
+
+  mssql:
+    environment:
+      MSSQL_MEMORY_LIMIT_MB: "1024"
+    mem_limit: 1536m
