@@ -6,10 +6,11 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { toApiError } from '../../core/api/api-error';
 import { AuthService } from '../../core/auth/auth.service';
 import { environment } from '../../../environments/environment';
+import { Logo } from '../../shared/logo/logo';
 
 @Component({
   selector: 'app-login',
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, Logo],
   templateUrl: './login.html',
   styleUrl: './login.scss',
 })

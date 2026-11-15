@@ -4,6 +4,7 @@ import { Component, computed, effect, inject, OnInit, signal } from '@angular/co
 import { environment } from '../../../environments/environment';
 import { AuthService } from '../../core/auth/auth.service';
 import { getMockSettings, MockSettings, setMockSettings } from '../../core/mock/mock-settings';
+import { STORAGE_LABELS } from '../../core/i18n/labels';
 import { UploadManager } from '../../core/upload/upload-manager';
 import {
   CATEGORY_RULES,
@@ -32,6 +33,7 @@ export class Upload implements OnInit {
 
   protected readonly rules = CATEGORY_RULES;
   protected readonly zones = ZONES;
+  protected readonly storageLabels = STORAGE_LABELS;
   protected readonly formatBytes = formatBytes;
   protected readonly useMocks = environment.useMocks;
 

@@ -155,7 +155,7 @@ function parseInstant(value: string | null): number | null | undefined {
 function verify(file: StoredFile, deepRequested: boolean): Observable<HttpEvent<unknown>> {
   const { meta, content } = file;
   if (!content) {
-    return apiError(404, 'NOT_FOUND', 'Conținutul nu mai e în memoria mock-ului (pagina a fost reîncărcată după upload).');
+    return apiError(404, 'NOT_FOUND', 'Conținutul nu mai e în memoria mock-ului (pagina a fost reîncărcată după încărcare).');
   }
   const deep = deepRequested && meta.category === 'CONNECTION_DOC';
   return from(hashBlob(content)).pipe(
@@ -205,7 +205,7 @@ async function hashBlob(blob: Blob): Promise<string> {
 
 function downloadLink(file: StoredFile): Observable<HttpEvent<unknown>> {
   if (!file.content) {
-    return apiError(404, 'NOT_FOUND', 'Conținutul nu mai e în memoria mock-ului (pagina a fost reîncărcată după upload).');
+    return apiError(404, 'NOT_FOUND', 'Conținutul nu mai e în memoria mock-ului (pagina a fost reîncărcată după încărcare).');
   }
   const typed = file.content.type ? file.content : new Blob([file.content], { type: file.meta.contentType });
   const url = URL.createObjectURL(typed);

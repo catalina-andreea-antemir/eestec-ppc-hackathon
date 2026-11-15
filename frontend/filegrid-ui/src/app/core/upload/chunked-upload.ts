@@ -42,7 +42,7 @@ export interface ChunkedProgress {
 export class FileMismatchError extends Error {
   constructor(readonly session: UploadSession) {
     super(
-      `Fișierul ales nu corespunde upload-ului început (${session.fileName}, ${session.totalSize} octeți).`,
+      `Fișierul ales nu corespunde încărcării începute (${session.fileName}, ${session.totalSize} octeți).`,
     );
     this.name = 'FileMismatchError';
   }
@@ -51,7 +51,7 @@ export class FileMismatchError extends Error {
 /** Sesiunea nu mai poate primi bucăți (anulată, abandonată sau inexistentă). */
 export class UploadNotActiveError extends Error {
   constructor(readonly session: UploadSession | null) {
-    super('Sesiunea de upload nu mai este activă; începe un upload nou.');
+    super('Sesiunea de încărcare nu mai este activă; începe o încărcare nouă.');
     this.name = 'UploadNotActiveError';
   }
 }

@@ -244,7 +244,7 @@ describe('stats-view', () => {
     const http = (status: number, body: object | null = null) =>
       new HttpErrorResponse({ status, error: body, headers: new HttpHeaders() });
     expect(describeStatsError(http(403, { status: 403, code: 'FORBIDDEN', message: 'm', traceId: 't1' }))).toContain(
-      'doar DISPATCH și ADMIN',
+      'doar Dispecerat și Administrator',
     );
     expect(describeStatsError(http(404))).toBe('Funcția aceasta nu este încă disponibilă pe server.');
     expect(describeStatsError(http(501))).toBe('Funcția aceasta nu este încă disponibilă pe server.');

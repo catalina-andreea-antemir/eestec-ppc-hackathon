@@ -47,7 +47,7 @@
             · erori {{ row.item.normal.errorRatePercent | number: '1.0-1' }}% →
             {{ row.item.peak.errorRatePercent | number: '1.0-1' }}%
             @if (row.item.peak.rejected > 0) {
-              · <span class="rejected">{{ row.item.peak.rejected }} respinse de bulkhead</span>
+              · <span class="rejected">{{ row.item.peak.rejected }} respinse (limită de capacitate atinsă)</span>
             }
           </p>
         </div>

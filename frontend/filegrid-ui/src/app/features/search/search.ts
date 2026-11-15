@@ -26,6 +26,7 @@ import {
   rangeLabel,
   toQueryParams,
 } from '../../core/files/search-query';
+import { FILE_STATUS_LABELS, STORAGE_LABELS } from '../../core/i18n/labels';
 import { formatBytes } from '../../core/upload/upload.models';
 import { Topbar } from '../../shared/topbar/topbar';
 import { FileActions } from '../download/file-actions';
@@ -51,6 +52,8 @@ export class Search implements OnInit {
   private readonly destroyRef = inject(DestroyRef);
 
   protected readonly labels = CATEGORY_LABELS;
+  protected readonly statusLabels = FILE_STATUS_LABELS;
+  protected readonly storageLabels = STORAGE_LABELS;
   protected readonly pageSizes = PAGE_SIZES;
   protected readonly formatBytes = formatBytes;
   protected readonly rangeLabel = rangeLabel;

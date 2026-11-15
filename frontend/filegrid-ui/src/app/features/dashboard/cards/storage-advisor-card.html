@@ -1,5 +1,5 @@
 <app-stat-card
-  heading="Ce storage pentru fiecare categorie"
+  heading="Unde stocăm fiecare categorie"
   question="Unde e mai bine să stea fiecare tip de fișier: FTP, S3 sau baza de date?"
   [state]="result().state"
   [error]="errorOf()"
@@ -8,13 +8,13 @@
   @if (matrix(); as m) {
     <div class="scroll">
       <table>
-        <caption class="sr-only">Scorul 0–100 pentru fiecare categorie și storage; mai mare e mai bine.</caption>
+        <caption class="sr-only">Scorul 0–100 pentru fiecare categorie și tip de stocare; mai mare e mai bine.</caption>
         <thead>
           <tr>
             <th scope="col">Categorie</th>
             <th scope="col">FTP</th>
             <th scope="col">S3</th>
-            <th scope="col">DB</th>
+            <th scope="col">Bază de date</th>
           </tr>
         </thead>
         <tbody>
@@ -24,7 +24,7 @@
                 {{ row.label }}
                 @if (row.recommendation; as rec) {
                   @if (!rec.matchesPolicy) {
-                    <span class="badge change">de schimbat: {{ rec.currentPolicyStorage }} → {{ rec.recommendedStorage }}</span>
+                    <span class="badge change">de schimbat: {{ storageLabels[rec.currentPolicyStorage] }} → {{ storageLabels[rec.recommendedStorage] }}</span>
                   }
                 }
               </th>
@@ -61,7 +61,7 @@
     <ul class="rationale">
       @for (row of m.rows; track row.category) {
         @if (row.recommendation; as rec) {
-          <li><strong>{{ row.label }} → {{ rec.recommendedStorage }}:</strong> {{ rec.rationale }}</li>
+          <li><strong>{{ row.label }} → {{ storageLabels[rec.recommendedStorage] }}:</strong> {{ rec.rationale }}</li>
         }
       }
     </ul>

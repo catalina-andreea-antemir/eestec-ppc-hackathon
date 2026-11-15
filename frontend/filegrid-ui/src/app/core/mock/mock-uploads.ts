@@ -335,10 +335,10 @@ function withSession(
   }
   const stored = load(id);
   if (!stored) {
-    return apiError(404, 'NOT_FOUND', 'Upload-ul nu există.');
+    return apiError(404, 'NOT_FOUND', 'Încărcarea nu există.');
   }
   if (stored.createdBy !== user.sub && user.role !== 'ADMIN') {
-    return apiError(403, 'FORBIDDEN', 'Doar cine a inițiat upload-ul (sau ADMIN) îl poate accesa.');
+    return apiError(403, 'FORBIDDEN', 'Doar cine a inițiat încărcarea (sau administratorul) îl poate accesa.');
   }
   return handler(stored);
 }

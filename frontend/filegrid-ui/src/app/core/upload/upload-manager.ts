@@ -123,7 +123,7 @@ export class UploadManager {
     const pending = this.pending();
     this.clearPending();
     this.currentFile.set(null);
-    this.stateSignal.set({ ...IDLE, message: 'Upload anulat.' });
+    this.stateSignal.set({ ...IDLE, message: 'Încărcare anulată.' });
     if (pending) {
       try {
         await withRetry(() => this.api.abortUpload(pending.uploadId), { timeoutMs: 15_000 });
@@ -343,7 +343,7 @@ function retryReason(error: unknown): string {
     return 'Server ocupat (limita categoriei)';
   }
   if (status === 503) {
-    return 'Storage indisponibil';
+    return 'Stocare indisponibilă';
   }
   return `Eroare de server (${status})`;
 }
@@ -352,7 +352,7 @@ function retryReason(error: unknown): string {
 export function describeError(error: unknown, resumable: boolean): string {
   if (error instanceof RetryTimeoutError) {
     return resumable
-      ? 'Conexiunea nu și-a revenit în 2 minute. Upload-ul e păstrat: apasă „Continuă” când rețeaua merge.'
+      ? 'Conexiunea nu și-a revenit în 2 minute. Încărcarea e păstrată: apasă „Continuă” când rețeaua merge.'
       : 'Serverul nu a răspuns în 2 minute. Încearcă din nou.';
   }
   if (
@@ -370,7 +370,7 @@ export function describeError(error: unknown, resumable: boolean): string {
       case 403:
         return 'Rolul tău nu are voie să încarce această categorie.';
       case 404:
-        return 'Sesiunea de upload nu mai există pe server; începe un upload nou.';
+        return 'Sesiunea de încărcare nu mai există pe server; începe o încărcare nouă.';
       case 413:
         return 'Fișierul depășește mărimea maximă permisă pentru categorie.';
     }
