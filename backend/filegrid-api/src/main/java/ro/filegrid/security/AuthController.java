@@ -14,8 +14,8 @@ import jakarta.validation.constraints.Size;
 import ro.filegrid.api.ApiException;
 
 /**
- * Login minim (contract: {@code POST /auth/login}, {@code POST /auth/refresh}; planul v4 secțiunea 4, C4). Ambele
- * sunt publice; un header {@code Authorization} trimis aici se ignoră (vezi {@link SecurityConfig}).
+ * Minimal login (contract {@code POST /auth/login}, {@code POST /auth/refresh}; C4). Both are public; an
+ * {@code Authorization} header sent here is ignored (see {@link SecurityConfig}).
  */
 @RestController
 @RequestMapping("/api/v1/auth")
@@ -31,19 +31,19 @@ public class AuthController {
         this.tokens = tokens;
     }
 
-    /** 200 cu {@code accessToken} (15 minute), {@code refreshToken} (8 ore) și {@code expiresIn}; altfel 401. */
+    /** 200 with {@code accessToken} (15 minutes), {@code refreshToken} (8 hours) and {@code expiresIn}; otherwise 401. */
     @PostMapping("/login")
     public TokenPair login(@Valid @RequestBody LoginRequest request) {
         Role role = users.authenticate(request.username(), request.password()).orElseThrow(() -> {
-            log.warn("Autentificare eșuată pentru utilizatorul {}", printable(request.username()));
+            log.warn("Login failed for user {}", printable(request.username()));
             return ApiException.unauthorized("Utilizator sau parolă greșită.");
         });
-        log.info("Autentificare reușită: {} ({})", request.username(), role);
+        log.info("Login succeeded: {} ({})", request.username(), role);
         return new TokenPair(tokens.issueAccessToken(request.username(), role),
                 tokens.issueRefreshToken(request.username()), tokens.accessTokenTtlSeconds());
     }
 
-    /** 200 cu un {@code accessToken} nou, fără parolă; refreshToken invalid, expirat sau utilizator dezactivat: 401. */
+    /** 200 with a fresh {@code accessToken}, no password; invalid or expired refreshToken, or disabled user: 401. */
     @PostMapping("/refresh")
     public AccessToken refresh(@Valid @RequestBody RefreshRequest request) {
         String username;
@@ -57,7 +57,7 @@ public class AuthController {
         return new AccessToken(tokens.issueAccessToken(username, role), tokens.accessTokenTtlSeconds());
     }
 
-    /** Numele din loguri: fără caractere de control, maxim 100 de caractere. */
+    /** Name as logged: no control characters, at most 100 characters. */
     private static String printable(String value) {
         String clean = value == null ? "" : value.replaceAll("\\p{Cntrl}", "?");
         return clean.length() > 100 ? clean.substring(0, 100) + "…" : clean;

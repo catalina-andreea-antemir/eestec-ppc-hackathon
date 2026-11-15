@@ -1,5 +1,5 @@
-// Transformări pure ale răspunsurilor /stats/* în ce afișează cărțile din dashboard.
-// Fără Angular, ca să se poată testa simplu (stats-view.spec.ts).
+// Pure transformations of /stats/* responses into what the dashboard cards display.
+// No Angular dependency, so they are simple to test (stats-view.spec.ts).
 
 import { HttpErrorResponse } from '@angular/common/http';
 
@@ -21,21 +21,21 @@ import {
   ZoneRank,
 } from './stats.models';
 
-// ---------- 1. Unde se stochează fiecare categorie ----------
-// Decizia echipei pentru demo: pe fiecare categorie apare DOAR storage-ul ales de politică (currentPolicyStorage),
-// cu cifrele măsurate în benchmark pentru acel storage. Fără comparații între storage-uri și fără sugestii.
-// Câmpurile recommendedStorage / matchesPolicy / rationale și interpretarea serverului se ignoră.
+// ---------- 1. Where each category is stored ----------
+// Team decision for the demo: each category shows ONLY the storage chosen by the policy (currentPolicyStorage),
+// with the benchmark figures measured for that storage. No comparisons between storages and no suggestions.
+// recommendedStorage / matchesPolicy / rationale and the server interpretation are ignored.
 
 export interface PolicyRow {
   category: Category;
   label: string;
-  /** Storage-ul din politică; null dacă serverul n-a trimis categoria. */
+  /** The policy storage; null if the server did not send the category. */
   storage: StorageType | null;
-  /** Cifrele din benchmark pentru exact acest storage; null dacă lipsesc. */
+  /** Benchmark figures for exactly this storage; null if missing. */
   measured: StorageScore | null;
 }
 
-/** Cele 4 categorii în ordine fixă, fiecare cu storage-ul din politică și măsurătorile lui. */
+/** The 4 categories in fixed order, each with its policy storage and its measurements. */
 export function policyRows(advisor: StorageAdvisor): PolicyRow[] {
   return ALL_CATEGORIES.map((category) => {
     const storage = advisor.recommendations.find((r) => r.category === category)?.currentPolicyStorage ?? null;
@@ -54,11 +54,11 @@ export function policyInterpretation(rows: PolicyRow[], storageLabels: Record<St
   return `Politica actuală: ${list}; cifrele sunt din benchmark-ul pe cele 12 combinații categorie × stocare.`;
 }
 
-// ---------- 2. Zi normală vs. vârf ----------
+// ---------- 2. Normal day vs. peak ----------
 
 export type ChangeLevel = 'stable' | 'moderate' | 'high';
 
-/** Sub 10% = stabil, sub 50% = moderat, altfel ridicat (pentru culoarea procentului p95). */
+/** Below 10% = stable, below 50% = moderate, otherwise high (for the p95 percentage colour). */
 export function changeLevel(percent: number): ChangeLevel {
   const abs = Math.abs(percent);
   return abs < 10 ? 'stable' : abs < 50 ? 'moderate' : 'high';
@@ -68,15 +68,15 @@ export interface ComparisonRow {
   category: Category;
   label: string;
   item: CategoryComparison;
-  /** Lățimile barelor p95 (procente), scalate pe rând: latențele diferă enorm între categorii. */
+  /** p95 bar widths (percent), scaled per row: latencies differ enormously between categories. */
   normalBar: number;
   peakBar: number;
-  /** De câte ori au crescut cererile (null dacă ziua normală n-a avut cereri). */
+  /** How many times requests grew (null if the normal day had no requests). */
   requestsRatio: number | null;
   level: ChangeLevel;
 }
 
-/** Rândurile comparației, în ordinea fixă a categoriilor. */
+/** Comparison rows, in the fixed category order. */
 export function comparisonRows(categories: CategoryComparison[]): ComparisonRow[] {
   return ALL_CATEGORIES.flatMap((category) => {
     const item = categories.find((c) => c.category === category);
@@ -98,19 +98,19 @@ export function comparisonRows(categories: CategoryComparison[]): ComparisonRow[
   });
 }
 
-// ---------- 3. Anomalii ----------
+// ---------- 3. Anomalies ----------
 
-/** Anomaliile cele mai grave primele (după câte abateri standard depășesc mediana). */
+/** Worst anomalies first (by how many standard deviations they exceed the median). */
 export function sortAnomalies(items: MeterAnomaly[]): MeterAnomaly[] {
   return [...items].sort((a, b) => b.deviations - a.deviations);
 }
 
-/** Contoarele tăcute de cel mai mult timp primele. */
+/** Meters silent for the longest time first. */
 export function sortSilentMeters(items: SilentMeter[]): SilentMeter[] {
   return [...items].sort((a, b) => b.silentMinutes - a.silentMinutes);
 }
 
-/** „155 min” sau „2 h 35 min”. */
+/** "155 min" or "2 h 35 min". */
 export function formatMinutes(minutes: number): string {
   if (minutes < 60) {
     return `${minutes} min`;
@@ -120,17 +120,17 @@ export function formatMinutes(minutes: number): string {
   return m ? `${h} h ${m} min` : `${h} h`;
 }
 
-// ---------- 4. Zone de avarii ----------
+// ---------- 4. Outage zones ----------
 
 export interface ZoneBar {
   zone: ZoneRank;
-  /** Lățimea barei, procent din zona cu cele mai multe avarii. */
+  /** Bar width, as a percentage of the zone with the most outages. */
   width: number;
-  /** Avariile pe cele 24 de ore (UTC), pentru banda orară. */
+  /** Outages over the 24 hours (UTC), for the hourly strip. */
   hours: number[];
 }
 
-/** Clasamentul descrescător după avarii (nu ne bazăm pe ordinea din răspuns) și barele lui. */
+/** Descending ranking by outages (we do not rely on the response order) and its bars. */
 export function zoneBars(ranking: ZoneRank[], byHour: ZoneHourOutages[]): ZoneBar[] {
   const sorted = [...ranking].sort((a, b) => b.outages - a.outages || a.rank - b.rank);
   const max = Math.max(1, ...sorted.map((z) => z.outages));
@@ -145,25 +145,25 @@ export function zoneBars(ranking: ZoneRank[], byHour: ZoneHourOutages[]): ZoneBa
   });
 }
 
-/** „09:00”. */
+/** "09:00". */
 export function formatHour(hour: number): string {
   return `${String(hour).padStart(2, '0')}:00`;
 }
 
-/** Ce afișăm pentru o valoare pe care serverul n-o poate calcula (null), ca să nu pară 0. */
+/** What we display for a value the server cannot compute (null), so it does not look like 0. */
 export const NO_VALUE = '—';
 
-/** „09:00”, sau „—” când zona n-a avut avarii (peakHour null). */
+/** "09:00", or a dash when the zone had no outages (peakHour null). */
 export function formatPeakHour(hour: number | null): string {
   return hour === null ? NO_VALUE : formatHour(hour);
 }
 
-/** „54,9%”, „0%” (0 real) sau „—” (null: nedefinit). */
+/** "54,9%", "0%" (a real 0) or a dash (null: undefined). */
 export function formatShare(percent: number | null): string {
   return percent === null ? NO_VALUE : `${percent.toLocaleString('ro-RO', { maximumFractionDigits: 1 })}%`;
 }
 
-/** „×1,65”, „×0,00” (0 real) sau „—” (null: nedefinit). */
+/** "x1,65", "x0,00" (a real 0) or a dash (null: undefined). */
 export function formatRatio(ratio: number | null): string {
   return ratio === null
     ? NO_VALUE
@@ -171,8 +171,8 @@ export function formatRatio(ratio: number | null): string {
 }
 
 /**
- * Are statistica de avarii sens pentru intervalul ales? Nu, dacă intervalul n-are nicio avarie: total 0,
- * clasament gol sau toate câmpurile calculate null (O7 trimite atunci null în loc de procente).
+ * Does the outage statistic make sense for the chosen interval? Not if the interval has no outages at all:
+ * total 0, empty ranking, or every computed field null (O7 then sends null instead of percentages).
  */
 export function hasOutageData(res: OutageZones): boolean {
   return (
@@ -182,18 +182,18 @@ export function hasOutageData(res: OutageZones): boolean {
   );
 }
 
-// ---------- 5. Cerințele de business ----------
+// ---------- 5. Business requirements ----------
 
 export type Tone = 'green' | 'red' | 'neutral';
 
-/** true doar când serverul spune explicit `current.sufficientData: false` (lipsa câmpului = date suficiente). */
+/** true only when the server explicitly says `current.sufficientData: false` (a missing field = enough data). */
 export function hasInsufficientData(req: { current?: Record<string, unknown> | null }): boolean {
   return req.current?.['sufficientData'] === false;
 }
 
 /**
- * AT_RISK sau orice valoare necunoscută → roșu (mai bine o alarmă falsă decât una ratată), chiar dacă datele sunt puține.
- * OK cu `current.sufficientData === false` → neutru (gri): prea puține măsurători pentru un verdict. Altfel OK → verde.
+ * AT_RISK or any unknown value -> red (a false alarm beats a missed one), even with little data.
+ * OK with `current.sufficientData === false` -> neutral (grey): too few measurements for a verdict. Otherwise OK -> green.
  */
 export function requirementTone(req: Pick<Requirement, 'status'> & { current?: Record<string, unknown> | null }): Tone {
   if (req.status !== 'OK') {
@@ -202,21 +202,21 @@ export function requirementTone(req: Pick<Requirement, 'status'> & { current?: R
   return hasInsufficientData(req) ? 'neutral' : 'green';
 }
 
-/** Eticheta de pe plăcuță, după ton. */
+/** Tile label, by tone. */
 export const TONE_LABELS: Readonly<Record<Tone, string>> = {
   green: 'Îndeplinită',
   red: 'În pericol',
   neutral: 'Date insuficiente',
 };
 
-/** Plăcuțele în ordinea R1–R4. */
+/** Tiles in R1-R4 order. */
 export function sortRequirements(items: Requirement[]): Requirement[] {
   return [...items].sort((a, b) => a.id.localeCompare(b.id));
 }
 
 /**
- * Propoziția de interpretare: cea de la server dacă există; altfel compusă din plăcuțe
- * (schema Requirements din contract nu are câmpul `interpretation`).
+ * The interpretation sentence: the server's if present; otherwise composed from the tiles
+ * (the contract's Requirements schema has no `interpretation` field).
  */
 export function requirementsInterpretation(res: Requirements): string {
   if (res.interpretation?.trim()) {
@@ -236,7 +236,7 @@ export function requirementsInterpretation(res: Requirements): string {
     parts.push(atRisk.length === 1 ? 'una e în pericol' : `${atRisk.length} sunt în pericol`);
   }
   if (unknown.length) {
-    // Fără destule măsurători nu spunem nici „îndeplinită”, nici „în pericol”.
+    // Without enough measurements we say neither "met" nor "at risk".
     parts.push(
       unknown.length === 1
         ? 'una nu are încă date suficiente pentru un verdict'
@@ -252,11 +252,11 @@ export function requirementsInterpretation(res: Requirements): string {
   return sentences.join(' ');
 }
 
-// ---------- erori ----------
+// ---------- errors ----------
 
 /**
- * 503 cu `details.reason` de la O7: statistica de performanță nu se poate calcula încă, pentru că lipsesc
- * măsurătorile (C12). Nu e o defecțiune, deci cartea arată un mesaj informativ, nu o eroare.
+ * 503 with `details.reason` from O7: the performance statistic cannot be computed yet because measurements
+ * (C12) are missing. Not a failure, so the card shows an informative message rather than an error.
  */
 export const UNAVAILABLE_REASONS: Readonly<Record<string, string>> = {
   REQUEST_METRICS_UNAVAILABLE:
@@ -267,12 +267,12 @@ export const UNAVAILABLE_REASONS: Readonly<Record<string, string>> = {
 };
 
 export interface StatsFailure {
-  /** unavailable = lipsesc încă datele (informativ); error = ceva nu merge. */
+  /** unavailable = data not there yet (informative); error = something is broken. */
   kind: 'unavailable' | 'error';
   message: string;
 }
 
-/** Ca describeStatsError, dar separă „încă nu sunt date” (503 cu reason cunoscut) de erorile adevărate. */
+/** Like describeStatsError, but separates "no data yet" (503 with a known reason) from real errors. */
 export function describeStatsFailure(error: unknown): StatsFailure {
   const api = toApiError(error);
   const status = api?.status ?? (error instanceof HttpErrorResponse ? error.status : -1);
@@ -283,7 +283,7 @@ export function describeStatsFailure(error: unknown): StatsFailure {
   return { kind: 'error', message: describeStatsError(error) };
 }
 
-/** Mesaj în română pentru erorile de la /stats/*, în stilul din file-errors.ts. */
+/** Romanian user-facing message for /stats/* errors, in the style of file-errors.ts. */
 export function describeStatsError(error: unknown): string {
   const api = toApiError(error);
   const status = api?.status ?? (error instanceof HttpErrorResponse ? error.status : -1);
@@ -298,7 +298,7 @@ export function describeStatsError(error: unknown): string {
     case 404:
     case 405:
     case 501:
-      // Endpoint-ul nu e (încă) implementat pe server.
+      // The endpoint is not implemented on the server (yet).
       return 'Funcția aceasta nu este încă disponibilă pe server.';
     case 429:
     case 503:

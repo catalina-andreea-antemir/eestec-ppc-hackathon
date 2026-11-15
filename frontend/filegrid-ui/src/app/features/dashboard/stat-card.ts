@@ -5,8 +5,8 @@ import { Observable } from 'rxjs';
 import { describeStatsFailure } from '../../core/stats/stats-view';
 
 /**
- * Starea unei cărți: se încarcă, are date, încă nu sunt date (503 cu reason de la O7, mesaj informativ)
- * sau a primit o eroare. Fiecare carte separat.
+ * A card's state: loading, has data, no data yet (503 with a reason from O7, informative message)
+ * or failed. Tracked per card.
  */
 export type Loadable<T> =
   | { state: 'loading' }
@@ -15,8 +15,8 @@ export type Loadable<T> =
   | { state: 'error'; message: string };
 
 /**
- * Pornește cererea și pune rezultatul în semnal. O carte care dă eroare (de exemplu 501 pe un endpoint
- * încă neimplementat) nu le strică pe celelalte.
+ * Starts the request and stores the result in the signal. A failing card (e.g. 501 on an endpoint that is
+ * not implemented yet) does not break the others.
  */
 export function loadInto<T>(target: WritableSignal<Loadable<T>>, source: Observable<T>, destroyRef: DestroyRef): void {
   target.set({ state: 'loading' });
@@ -34,8 +34,8 @@ export function loadable<T>(): WritableSignal<Loadable<T>> {
 }
 
 /**
- * Rama comună a celor 5 cărți: titlul, întrebarea la care răspunde cartea și, sus și vizibil,
- * propoziția de interpretare de la server. Datele (tabel, bare) vin dedesubt, prin conținut proiectat.
+ * Shared frame of the 5 cards: the title, the question the card answers and, prominently on top,
+ * the server's interpretation sentence. The data (table, bars) goes underneath, through content projection.
  */
 @Component({
   selector: 'app-stat-card',
@@ -119,7 +119,7 @@ export class StatCard {
   readonly heading = input.required<string>();
   readonly question = input.required<string>();
   readonly state = input.required<Loadable<unknown>['state']>();
-  /** Mesajul pentru stările error și unavailable. */
+  /** Message for the error and unavailable states. */
   readonly error = input<string>('');
   readonly interpretation = input<string | null>(null);
 }

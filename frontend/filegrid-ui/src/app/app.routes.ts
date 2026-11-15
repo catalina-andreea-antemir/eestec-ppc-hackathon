@@ -21,7 +21,7 @@ export const routes: Routes = [
   },
   {
     path: 'stats',
-    // x-roles din contract pentru /stats/*: DISPATCH și ADMIN.
+    // Contract x-roles for /stats/*: DISPATCH and ADMIN.
     canActivate: [authGuard, roleGuard(...STATS_ROLES)],
     loadComponent: () => import('./features/dashboard/dashboard').then((m) => m.Dashboard),
   },

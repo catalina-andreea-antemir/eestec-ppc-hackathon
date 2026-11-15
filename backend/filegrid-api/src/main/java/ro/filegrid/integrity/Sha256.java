@@ -6,7 +6,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 
-/** SHA-256 calculat în streaming (C7): fluxul se citește o singură dată, de storage, iar hash-ul iese la final. */
+/** Streaming SHA-256 (C7): the stream is read once, by the storage layer, and the hash is available at the end. */
 public final class Sha256 {
 
     private static final HexFormat HEX = HexFormat.of();
@@ -22,7 +22,7 @@ public final class Sha256 {
         }
     }
 
-    /** Învelește sursa; hash-ul se ia cu {@code stream.getMessageDigest().digest()} după ce a fost citită. */
+    /** Wraps the source; take the hash with {@code stream.getMessageDigest().digest()} once it has been read. */
     public static DigestInputStream digesting(InputStream source) {
         return new DigestInputStream(source, newDigest());
     }

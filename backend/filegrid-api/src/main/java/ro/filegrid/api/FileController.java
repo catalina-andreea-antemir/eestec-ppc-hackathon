@@ -27,9 +27,9 @@ import ro.filegrid.ingest.Zones;
 import ro.filegrid.resilience.CategoryBulkheads;
 
 /**
- * {@code POST /api/v1/files} (C7): upload multipart pentru {@code OUTAGE_RECORD} și {@code CONNECTION_DOC}.
- * Fișierul ajunge în fișierul temporar multipart al containerului (șters de Spring după cerere) și de acolo în
- * storage, în streaming. Rolurile pe categorii vin la C10; acum e nevoie doar de un token valid.
+ * {@code POST /api/v1/files} (C7): multipart upload for {@code OUTAGE_RECORD} and {@code CONNECTION_DOC}.
+ * The file lands in the container's multipart temp file (deleted by Spring after the request) and is streamed
+ * from there to storage.
  */
 @RestController
 public class FileController {
@@ -67,7 +67,7 @@ public class FileController {
         if (ingestion == null) {
             throw IngestErrors.storageUnavailable("Baza de metadate nu este configurată (profilul db).");
         }
-        // Categoria vine din corpul multipart, deja parsat de container; permisul se ia înainte de munca grea (storage).
+        // The category comes from the multipart body, already parsed by the container; take the permit before the heavy (storage) work.
         try (var permit = bulkheads.acquire(category)) {
             FileRecord stored;
             try {
@@ -124,7 +124,7 @@ public class FileController {
         }
     }
 
-    /** Doar numele (fără cale), fără caractere de control, cel mult 255 de caractere. */
+    /** Bare name only (no path), no control characters, at most 255 characters. */
     static String originalName(String name) {
         String clean = name == null ? "" : name.replaceAll("\\p{Cntrl}", "");
         clean = clean.substring(Math.max(clean.lastIndexOf('/'), clean.lastIndexOf('\\')) + 1).strip();

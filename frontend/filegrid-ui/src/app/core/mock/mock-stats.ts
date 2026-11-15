@@ -14,15 +14,15 @@ import {
 import { apiError, MockUser, nowIso, respond } from './mock-uploads';
 
 /**
- * Mock pentru dashboard (GET /stats/*), cu exemplele din contract (docs/api/openapi.yaml).
+ * Mock for the dashboard (GET /stats/*), using the contract examples (docs/api/openapi.yaml).
  *
- * - Doar DISPATCH și ADMIN primesc date (x-roles); celelalte roluri primesc 403 FORBIDDEN.
- * - /stats/peak-vs-normal: `peakScenario=storm` (implicit) e exemplul din contract (furtună: avariile cresc
- *   de 13 ori); `peakScenario=peak` e o zi de vârf de consum (citirile se dublează). Alt scenariu → 0 cereri.
- * - /stats/outage-zones: clasamentul din contract, cu distribuția pe ore completată (sumele se potrivesc).
- * - /stats/requirements: exemplul din contract (R2 roșu), cu R4 ca în C12 când sunt prea puține transferuri
- *   (`current.sufficientData: false` → plăcuță gri). Schema nu are `interpretation`, deci nici mock-ul.
- * - Situațiile din O7 se simulează din selectorul „Simulare (mock)” al paginii Statistici (MockStatsMode).
+ * - Only DISPATCH and ADMIN get data (x-roles); other roles get 403 FORBIDDEN.
+ * - /stats/peak-vs-normal: `peakScenario=storm` (default) is the contract example (storm: outages grow
+ *   13x); `peakScenario=peak` is a peak consumption day (readings double). Any other scenario -> 0 requests.
+ * - /stats/outage-zones: the contract ranking, with the hourly distribution filled in (sums match).
+ * - /stats/requirements: the contract example (R2 red), with R4 as in C12 when there are too few transfers
+ *   (`current.sufficientData: false` -> grey tile). The schema has no `interpretation`, so neither does the mock.
+ * - The O7 situations are simulated from the "Simulare" selector on the Statistics page (MockStatsMode).
  */
 export function handleStatsRoutes(
   req: HttpRequest<unknown>,
@@ -40,7 +40,7 @@ export function handleStatsRoutes(
     return apiError(403, 'FORBIDDEN', `Rolul ${user.role} nu are acces la statistici.`);
   }
   if (mode === 'metrics-missing' && path in MISSING_METRICS) {
-    // Ca O7 cât timp lipsesc măsurătorile C12: 503 STORAGE_UNAVAILABLE cu details.reason și Retry-After.
+    // Like O7 while C12 measurements are missing: 503 STORAGE_UNAVAILABLE with details.reason and Retry-After.
     return apiError(503, 'STORAGE_UNAVAILABLE', 'Măsurătorile de performanță nu sunt încă disponibile.', {
       retryAfterSeconds: 60,
       details: MISSING_METRICS[path],
@@ -98,7 +98,7 @@ const NORMAL_DAY: CategoryComparison[] = [
   { category: 'INSPECTION_VIDEO', normal: { requests: 3, throughputPerMinute: 0.1, latencyP50Ms: 9800, latencyP95Ms: 9800, latencyP99Ms: 9800, errorRatePercent: 0.0, rejected: 0 }, peak: { requests: 0, throughputPerMinute: 0, latencyP50Ms: 0, latencyP95Ms: 0, latencyP99Ms: 0, errorRatePercent: 0, rejected: 0 }, p95ChangePercent: 0 },
 ];
 
-/** Ziua de vârf per scenariu: [cereri, throughput/min, p50, p95, p99, erori %, respinse] per categorie. */
+/** Peak day per scenario: [requests, throughput/min, p50, p95, p99, error %, rejected] per category. */
 const PEAK_DAYS: Record<string, { values: number[][]; interpretation: string }> = {
   storm: {
     values: [
@@ -189,7 +189,7 @@ function anomalies(req: HttpRequest<unknown>): Observable<HttpEvent<unknown>> {
   });
 }
 
-/** Avariile pe ore (UTC) per zonă; sumele dau clasamentul din contract (78 / 41 / 23). */
+/** Outages per hour (UTC) per zone; the sums give the contract ranking (78 / 41 / 23). */
 const HOURS: Record<'Muntenia' | 'Dobrogea' | 'Banat', Record<number, number>> = {
   Muntenia: { 6: 2, 7: 6, 8: 12, 9: 19, 10: 9, 11: 5, 12: 4, 13: 3, 14: 4, 15: 3, 16: 3, 17: 3, 18: 2, 19: 2, 20: 1 },
   Dobrogea: { 6: 1, 7: 4, 8: 9, 9: 7, 10: 5, 11: 3, 12: 3, 13: 2, 14: 2, 15: 2, 16: 1, 17: 1, 18: 1 },
@@ -214,7 +214,7 @@ const OUTAGE_ZONES: OutageZones = {
     'capacitate suplimentară de intervenție în zonă în intervalul 08:00–10:00.',
 };
 
-/** Interval fără avarii: O7 păstrează NULL-urile din SQL (procente, rapoarte și ore de vârf nedefinite). */
+/** Interval without outages: O7 keeps the SQL NULLs (percentages, ratios and peak hours undefined). */
 const NO_OUTAGES: OutageZones = {
   ...OUTAGE_ZONES,
   totalOutages: 0,
@@ -223,7 +223,7 @@ const NO_OUTAGES: OutageZones = {
   interpretation: 'Nu a fost înregistrată nicio avarie în intervalul ales; nu există zone de prioritizat.',
 };
 
-/** Banat fără avarii, celelalte zone cu avarii: 0 real (0% și ×0,00), doar ora de vârf e null. */
+/** Banat without outages, other zones with outages: a real 0 (0% and x0.00), only the peak hour is null. */
 const ZONE_WITHOUT_OUTAGES: OutageZones = {
   ...OUTAGE_ZONES,
   totalOutages: 119,
@@ -242,7 +242,7 @@ function outageZones(mode: MockStatsMode): OutageZones {
   return mode === 'no-outages' ? NO_OUTAGES : mode === 'zone-without-outages' ? ZONE_WITHOUT_OUTAGES : OUTAGE_ZONES;
 }
 
-/** details din 503-urile O7 (docs/api/o7-analytics.md, „C12 and shared contract gaps”). */
+/** details of the O7 503s (docs/api/o7-analytics.md, "C12 and shared contract gaps"). */
 const MISSING_METRICS: Record<string, Record<string, unknown>> = {
   '/stats/peak-vs-normal': {
     reason: 'REQUEST_METRICS_UNAVAILABLE',
@@ -251,11 +251,11 @@ const MISSING_METRICS: Record<string, Record<string, unknown>> = {
   '/stats/storage-advisor': { reason: 'STORAGE_MEASUREMENTS_INCOMPLETE' },
 };
 
-// ---------- situația simulată ----------
+// ---------- simulated situation ----------
 
 /**
- * normal = exemplele din contract; zone-without-outages = o zonă cu 0 avarii; no-outages = interval fără
- * avarii (null-uri); metrics-missing = 503 pe cele două statistici de performanță (lipsesc măsurătorile C12).
+ * normal = contract examples; zone-without-outages = one zone with 0 outages; no-outages = interval without
+ * outages (nulls); metrics-missing = 503 on both performance statistics (C12 measurements missing).
  */
 export type MockStatsMode = 'normal' | 'zone-without-outages' | 'no-outages' | 'metrics-missing';
 
@@ -281,7 +281,7 @@ export function setMockStatsMode(mode: MockStatsMode): void {
   try {
     localStorage.setItem(MODE_KEY, mode);
   } catch {
-    /* ignorat */
+    /* ignored */
   }
 }
 

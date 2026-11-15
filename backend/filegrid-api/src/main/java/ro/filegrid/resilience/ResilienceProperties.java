@@ -6,21 +6,21 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.bind.DefaultValue;
 
 /**
- * Configurația {@code filegrid.resilience} (C11): retry cu backoff și circuit breaker per storage, plus verificarea
- * periodică a stării (health).
+ * {@code filegrid.resilience} configuration (C11): per-storage retry with backoff and circuit breaker, plus periodic
+ * health checks.
  *
- * @param retryAttempts        încercări totale pentru operațiile care se pot repeta (get, exists, delete, finish, abort)
- * @param retryInitialBackoff  pauza înainte de a doua încercare; crește exponențial
- * @param retryMultiplier      factorul de creștere al pauzei
- * @param retryJitter          abaterea aleatoare relativă a pauzei (0,5 = ±50%)
- * @param failureRateThreshold procentul de apeluri eșuate care deschide circuitul
- * @param minimumCalls         apeluri minime în fereastră înainte ca pragul să conteze
- * @param slidingWindow        mărimea ferestrei (în apeluri)
- * @param openWait             cât rămâne circuitul deschis înainte de proba HALF_OPEN
- * @param halfOpenCalls        apeluri de probă permise în HALF_OPEN
- * @param healthInterval       intervalul verificării periodice a fiecărui storage
- * @param healthTimeout        timeout-ul unei verificări (cel mult 2 s)
- * @param healthFailuresToOpen verificări căzute la rând după care circuitul se deschide
+ * @param retryAttempts        total attempts for repeatable operations (get, exists, delete, finish, abort)
+ * @param retryInitialBackoff  pause before the second attempt; grows exponentially
+ * @param retryMultiplier      backoff growth factor
+ * @param retryJitter          relative random deviation of the pause (0.5 = +-50%)
+ * @param failureRateThreshold failed-call percentage that opens the circuit
+ * @param minimumCalls         minimum calls in the window before the threshold applies
+ * @param slidingWindow        window size (in calls)
+ * @param openWait             how long the circuit stays open before the HALF_OPEN probe
+ * @param halfOpenCalls        probe calls allowed in HALF_OPEN
+ * @param healthInterval       interval of the periodic check of each storage
+ * @param healthTimeout        timeout of a single check (at most 2 s)
+ * @param healthFailuresToOpen consecutive failed checks after which the circuit opens
  */
 @ConfigurationProperties("filegrid.resilience")
 public record ResilienceProperties(@DefaultValue("3") int retryAttempts,

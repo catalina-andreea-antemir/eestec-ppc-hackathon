@@ -7,7 +7,7 @@ import { PEAK_SCENARIOS, PeakVsNormal } from '../../../core/stats/stats.models';
 import { comparisonRows } from '../../../core/stats/stats-view';
 import { loadable, loadInto, StatCard } from '../stat-card';
 
-/** Cartea 2: cum s-a comportat sistemul într-o zi de vârf față de una normală (doar trafic live). */
+/** Card 2: how the system behaved on a peak day compared to a normal one (live traffic only). */
 @Component({
   selector: 'app-peak-card',
   imports: [StatCard, DecimalPipe, DatePipe, FormsModule],

@@ -9,7 +9,7 @@ fail() {
 
 case "${1:-}" in
     ""|--rotate) ;;
-    *) fail "foloseste --rotate pentru rotatie." ;;
+    *) fail "use --rotate to rotate." ;;
 esac
 
 dir=/metrics-auth
@@ -19,13 +19,13 @@ MC_CONFIG_DIR=$(mktemp -d)
 work=$(mktemp -d "$dir/.init.XXXXXXXX")
 trap 'rm -rf -- "$work" "$MC_CONFIG_DIR"' EXIT
 
-# Imaginile Prometheus din Compose ruleaza cu grupul nobody (65534).
+# The Prometheus images in Compose run with group nobody (65534).
 chown 0:65534 "$dir"
 chmod 0710 "$dir"
 
-# Alias-ul administrativ este temporar. Nicio iesire mc nu este trimisa in log.
+# The admin alias is temporary. No mc output is sent to the log.
 mc alias set provision http://minio:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null 2>&1 ||
-    fail "aliasul de provisioning nu a putut fi configurat."
+    fail "the provisioning alias could not be configured."
 
 probe() (
     set -e
@@ -42,9 +42,9 @@ retire_inactive() {
         [[ -f "$file" && "$file" != "$dir/$active" ]] || continue
         name=${file##*/}
         name=${name%.jwt}
-        [[ "$name" =~ ^filegrid-prometheus-[a-f0-9]{24}$ ]] || fail "nume de identitate neasteptat."
+        [[ "$name" =~ ^filegrid-prometheus-[a-f0-9]{24}$ ]] || fail "unexpected identity name."
         mc admin user rm provision "$name" >/dev/null 2>&1 ||
-            fail "revocarea identitatii precedente a esuat; reporneste initializarea."
+            fail "revoking the previous identity failed; restart the initialization."
         rm -- "$file"
     done
 }
@@ -52,13 +52,13 @@ retire_inactive() {
 active=
 if [[ -L "$dir/token" ]]; then
     active=$(readlink "$dir/token")
-    [[ "$active" =~ ^filegrid-prometheus-[a-f0-9]{24}\.jwt$ ]] || fail "referinta tokenului este invalida."
+    [[ "$active" =~ ^filegrid-prometheus-[a-f0-9]{24}\.jwt$ ]] || fail "the token reference is invalid."
 fi
 
 if [[ -n "$active" && "${1:-}" != --rotate ]]; then
-    probe "$dir/token" 2>/dev/null || fail "tokenul existent nu a putut fi validat; dupa verificarea MinIO ruleaza --rotate."
+    probe "$dir/token" 2>/dev/null || fail "the existing token could not be validated; after checking MinIO, run --rotate."
     retire_inactive
-    echo "MinIO metrics: tokenul existent este valid."
+    echo "MinIO metrics: the existing token is valid."
     exit 0
 fi
 
@@ -66,7 +66,7 @@ cat > "$work/policy.json" <<'JSON'
 {"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["admin:Prometheus"]}]}
 JSON
 mc admin policy create provision "$policy" "$work/policy.json" >/dev/null 2>&1 ||
-    fail "politica de metrics nu a putut fi instalata."
+    fail "the metrics policy could not be installed."
 
 random_hex() {
     local bytes
@@ -78,7 +78,7 @@ identity=filegrid-prometheus-$(random_hex 12)
 secret=$(random_hex 32)
 MC_HOST_metrics="http://$identity:$secret@minio:9000" \
     mc --no-color admin prometheus generate metrics cluster --api-version v2 > "$work/scrape.yml" 2>/dev/null ||
-    fail "mc nu a generat configuratia autentificata."
+    fail "mc did not generate the authenticated configuration."
 
 token=
 while IFS= read -r line; do
@@ -87,22 +87,22 @@ while IFS= read -r line; do
         break
     fi
 done < "$work/scrape.yml"
-[[ -n "$token" ]] || fail "configuratia mc nu contine un token JWT."
+[[ -n "$token" ]] || fail "the mc configuration contains no JWT token."
 
-# Fisierul identifica si candidatii ramasi dupa o intrerupere de bootstrap.
+# The file also identifies candidates left over after an interrupted bootstrap.
 printf '%s\n' "$token" > "$work/token"
 chown 0:65534 "$work/token"
 chmod 0440 "$work/token"
 mv -T -- "$work/token" "$dir/$identity.jwt"
 mc admin user add provision "$identity" "$secret" >/dev/null 2>&1 ||
-    fail "identitatea de metrics nu a putut fi creata."
+    fail "the metrics identity could not be created."
 unset secret token
 mc admin policy attach provision "$policy" --user "$identity" >/dev/null 2>&1 ||
-    fail "politica de metrics nu a putut fi atasata."
-probe "$dir/$identity.jwt" 2>/dev/null || fail "tokenul candidat nu este autorizat."
+    fail "the metrics policy could not be attached."
+probe "$dir/$identity.jwt" 2>/dev/null || fail "the candidate token is not authorized."
 
 ln -s "$identity.jwt" "$work/next"
 mv -Tf -- "$work/next" "$dir/token"
 active=$identity.jwt
 retire_inactive
-echo "MinIO metrics: tokenul a fost publicat."
+echo "MinIO metrics: the token has been published."

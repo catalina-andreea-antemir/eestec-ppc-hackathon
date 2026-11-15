@@ -6,7 +6,7 @@ import { OutageZones } from '../../../core/stats/stats.models';
 import { formatHour, formatPeakHour, formatRatio, formatShare, hasOutageData, zoneBars } from '../../../core/stats/stats-view';
 import { loadable, loadInto, StatCard } from '../stat-card';
 
-/** Cartea 4: zonele cu cele mai multe avarii și orele lor de vârf. */
+/** Card 4: zones with the most outages and their peak hours. */
 @Component({
   selector: 'app-outage-zones-card',
   imports: [StatCard, DatePipe],
@@ -24,7 +24,7 @@ export class OutageZonesCard {
     const r = this.result();
     return r.state === 'ok' ? r.data : null;
   });
-  /** false = interval fără avarii: procentele și orele de vârf sunt null, nu 0. */
+  /** false = interval without outages: percentages and peak hours are null, not 0. */
   protected readonly hasData = computed(() => {
     const d = this.data();
     return !!d && hasOutageData(d);
@@ -33,7 +33,7 @@ export class OutageZonesCard {
     const d = this.data();
     return d && this.hasData() ? zoneBars(d.ranking, d.byHour) : [];
   });
-  /** Maximul pe oră, comun tuturor zonelor, ca intensitățile din benzi să fie comparabile. */
+  /** Hourly maximum shared by every zone, so the strip intensities are comparable. */
   protected readonly hourMax = computed(() => Math.max(1, ...this.bars().flatMap((b) => b.hours)));
   protected readonly hour = formatHour;
   protected readonly peakHour = formatPeakHour;

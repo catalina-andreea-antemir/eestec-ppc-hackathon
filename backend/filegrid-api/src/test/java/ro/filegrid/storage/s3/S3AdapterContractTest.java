@@ -8,8 +8,8 @@ import ro.filegrid.storage.StorageAdapter;
 import ro.filegrid.storage.StorageAdapterContractTest;
 
 /**
- * Testul de contract comun ({@link StorageAdapterContractTest}) rulat pe {@link S3Adapter}, contra MinIO-ului real din
- * stack (vezi {@link S3TestSupport}); se sare dacă MinIO nu e disponibil.
+ * The shared contract test ({@link StorageAdapterContractTest}) run on {@link S3Adapter} against the stack's real MinIO
+ * (see {@link S3TestSupport}); skipped if MinIO is not available.
  */
 class S3AdapterContractTest extends StorageAdapterContractTest {
 

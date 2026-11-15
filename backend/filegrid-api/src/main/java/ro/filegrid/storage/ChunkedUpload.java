@@ -3,13 +3,13 @@ package ro.filegrid.storage;
 import java.util.Objects;
 
 /**
- * Datele unei sesiuni de upload în bucăți de care are nevoie un {@link ChunkedWriter}; apelantul le reconstruiește din
- * rândul {@code upload_sessions} la fiecare cerere (writer-ul nu ține stare).
+ * The chunked upload session data a {@link ChunkedWriter} needs; the caller rebuilds it from the
+ * {@code upload_sessions} row on every request (the writer is stateless).
  *
- * @param key       cheia obiectului final
- * @param uploadRef referința întoarsă de {@link ChunkedWriter#open} ({@code upload_sessions.storage_upload_ref})
- * @param totalSize mărimea totală, în octeți ({@code > 0})
- * @param chunkSize mărimea nominală a unei bucăți, în octeți ({@code > 0}); ultima bucată poate fi mai mică
+ * @param key       key of the final object
+ * @param uploadRef reference returned by {@link ChunkedWriter#open} ({@code upload_sessions.storage_upload_ref})
+ * @param totalSize total size in bytes ({@code > 0})
+ * @param chunkSize nominal chunk size in bytes ({@code > 0}); the last chunk may be smaller
  */
 public record ChunkedUpload(String key, String uploadRef, long totalSize, int chunkSize) {
 
@@ -27,24 +27,24 @@ public record ChunkedUpload(String key, String uploadRef, long totalSize, int ch
         }
     }
 
-    /** Numărul total de bucăți: {@code ceil(totalSize / chunkSize)}. */
+    /** Total number of chunks: {@code ceil(totalSize / chunkSize)}. */
     public int totalChunks() {
         return Math.toIntExact((totalSize + chunkSize - 1) / chunkSize);
     }
 
-    /** Offsetul (în octeți, de la 0) la care începe bucata {@code n} în obiectul final. */
+    /** Byte offset (zero-based) where chunk {@code n} starts in the final object. */
     public long offsetOf(int n) {
         requireChunkNumber(n);
         return (long) (n - 1) * chunkSize;
     }
 
-    /** Mărimea exactă a bucății {@code n}: {@code chunkSize}, cu excepția ultimei, care poate fi mai mică. */
+    /** Exact size of chunk {@code n}: {@code chunkSize}, except the last one, which may be smaller. */
     public long expectedLength(int n) {
         long offset = offsetOf(n);
         return Math.min(chunkSize, totalSize - offset);
     }
 
-    /** @throws IllegalArgumentException dacă {@code n} nu este între 1 și {@link #totalChunks()} */
+    /** @throws IllegalArgumentException if {@code n} is not between 1 and {@link #totalChunks()} */
     public void requireChunkNumber(int n) {
         if (n < 1 || n > totalChunks()) {
             throw new IllegalArgumentException("Bucata " + n + " nu există (1–" + totalChunks() + ")");

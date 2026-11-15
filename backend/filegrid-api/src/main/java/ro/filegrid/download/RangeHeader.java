@@ -10,8 +10,8 @@ import ro.filegrid.api.ApiException;
 import ro.filegrid.storage.ByteRange;
 
 /**
- * Header-ul {@code Range} al descărcării: un singur interval {@code bytes=a-b}, {@code bytes=a-} sau {@code bytes=-n}.
- * Orice altceva (altă unitate, mai multe intervale, început după sfârșitul fișierului, {@code b < a}) dă 416.
+ * Download {@code Range} header: a single range {@code bytes=a-b}, {@code bytes=a-} or {@code bytes=-n}.
+ * Anything else (another unit, multiple ranges, start past the end of the file, {@code b < a}) yields 416.
  */
 public final class RangeHeader {
 
@@ -20,7 +20,7 @@ public final class RangeHeader {
     private RangeHeader() {
     }
 
-    /** Intervalul rezolvat față de mărimea fișierului; {@code end} e inclusiv. */
+    /** The range resolved against the file size; {@code end} is inclusive. */
     public record Resolved(long start, long end, long total) {
 
         public long length() {
@@ -31,13 +31,13 @@ public final class RangeHeader {
             return ByteRange.of(start, length());
         }
 
-        /** Valoarea header-ului {@code Content-Range} al unui răspuns 206. */
+        /** {@code Content-Range} header value for a 206 response. */
         public String contentRange() {
             return "bytes " + start + "-" + end + "/" + total;
         }
     }
 
-    /** @return intervalul cerut, sau gol dacă nu există header */
+    /** @return the requested range, or empty if there is no header */
     public static Optional<Resolved> parse(String header, long size) {
         if (header == null || header.isBlank()) {
             return Optional.empty();
@@ -47,7 +47,7 @@ public final class RangeHeader {
             throw unsatisfiable(size);
         }
         try {
-            if (m.group(1).isEmpty()) { // bytes=-n: ultimii n octeți
+            if (m.group(1).isEmpty()) { // bytes=-n: the last n bytes
                 long n = Long.parseLong(m.group(2));
                 if (n == 0 || size == 0) {
                     throw unsatisfiable(size);

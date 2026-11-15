@@ -12,9 +12,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
- * Utilizatorii de test din configurație (login minim, planul v4 secțiunea 4 și C4): câte unul per rol, cu parolele
- * din {@code FILEGRID_USER_*_PASSWORD}. Parolele se țin doar ca SHA-256 și se compară în timp constant; un utilizator
- * fără parolă nu se poate autentifica.
+ * Test users from configuration (minimal login, C4): one per role, with passwords from
+ * {@code FILEGRID_USER_*_PASSWORD}. Passwords are only kept as SHA-256 and compared in constant time; a user without
+ * a password cannot log in.
  */
 @Component
 public class TestUserDirectory {
@@ -31,29 +31,29 @@ public class TestUserDirectory {
                 throw new IllegalStateException("Utilizatorul de test " + username + " nu are rol");
             }
             if (user.password() == null || user.password().isBlank()) {
-                log.warn("Utilizatorul de test {} ({}) nu are parolă (FILEGRID_USER_*_PASSWORD) și este dezactivat",
+                log.warn("Test user {} ({}) has no password (FILEGRID_USER_*_PASSWORD) and is disabled",
                         username, user.role());
                 return;
             }
             enabled.put(username, new Account(user.role(), sha256(user.password())));
         });
         if (enabled.isEmpty()) {
-            log.warn("Niciun utilizator de test activ: login-ul va răspunde mereu 401");
+            log.warn("No active test users: login will always return 401");
         }
         this.accounts = Map.copyOf(enabled);
-        log.info("Utilizatori de test activi: {}", enabled.keySet());
+        log.info("Active test users: {}", enabled.keySet());
     }
 
-    /** Rolul utilizatorului dacă parola este corectă. */
+    /** The user's role if the password is correct. */
     public Optional<Role> authenticate(String username, String password) {
         Account account = username == null ? null : accounts.get(username);
         byte[] given = sha256(password == null ? "" : password);
-        // Același cost pentru utilizator necunoscut și parolă greșită.
+        // Same cost for an unknown user and a wrong password, so timing does not reveal which usernames exist.
         boolean matches = MessageDigest.isEqual(given, account == null ? NO_USER : account.passwordSha256());
         return account != null && matches ? Optional.of(account.role()) : Optional.empty();
     }
 
-    /** Rolul curent al unui utilizator activ (la refresh: un utilizator dezactivat nu mai primește token). */
+    /** Current role of an active user (on refresh, a disabled user no longer gets a token). */
     public Optional<Role> roleOf(String username) {
         Account account = username == null ? null : accounts.get(username);
         return account == null ? Optional.empty() : Optional.of(account.role());

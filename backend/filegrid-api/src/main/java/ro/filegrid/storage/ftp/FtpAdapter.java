@@ -32,39 +32,40 @@ import ro.filegrid.storage.StorageObjectNotFoundException;
 import ro.filegrid.storage.StorageUnavailableException;
 
 /**
- * {@link StorageAdapter} și {@link ChunkedWriter} pe serverul FTP (vsftpd), cu commons-net (C6; planul v4 4.1, ADR-003).
+ * {@link StorageAdapter} and {@link ChunkedWriter} on the FTP server (vsftpd), using commons-net (C6, ADR-003).
  *
- * <h2>Aranjarea în {@code /srv/ftp} (rădăcina utilizatorului)</h2>
+ * <h2>Layout under {@code /srv/ftp} (the user's root)</h2>
  * <pre>
- *   /o/&lt;key&gt;            obiect scris cu put (complet)
- *   /o/&lt;key&gt;~tmp        put în curs: nume temporar, redenumit atomic abia când e complet
- *   /u/&lt;key&gt;/c&lt;n&gt;       bucata n, completă
- *   /u/&lt;key&gt;/c&lt;n&gt;.part  bucata n în curs de scriere (sau rămasă parțială după o eroare)
- *   /u/&lt;key&gt;/manifest   scris la finish: prezența lui = obiectul în bucăți e complet
+ *   /o/&lt;key&gt;            object written with put (complete)
+ *   /o/&lt;key&gt;~tmp        put in progress: temp name, atomically renamed only once complete
+ *   /u/&lt;key&gt;/c&lt;n&gt;       chunk n, complete
+ *   /u/&lt;key&gt;/c&lt;n&gt;.part  chunk n being written (or left partial after an error)
+ *   /u/&lt;key&gt;/manifest   written on finish: its presence = the chunked object is complete
  * </pre>
- * Cheile sunt validate de {@link StorageKeys} (fără {@code /}, fără {@code ~}), deci niciun nume nu iese din directoarele
- * de mai sus și numele temporare nu se pot ciocni cu o cheie.
+ * Keys are validated by {@link StorageKeys} (no {@code /}, no {@code ~}), so no name escapes the directories above
+ * and temp names can never collide with a key.
  *
- * <h2>Comportament</h2>
+ * <h2>Behaviour</h2>
  * <ul>
- *   <li><b>Conexiune per operație</b> (login, mod pasiv, transfer binar), închisă la sfârșit; nu rămâne stare între
- *       apeluri, deci orice instanță poate continua un upload. Operațiile idempotente (exists, delete, finish, abort,
- *       open) reîncearcă <b>o singură dată</b> dacă o conexiune deja stabilită s-a pierdut; fără alt retry (reziliența
- *       vine la C11). Adresa din răspunsul {@code PASV} se ignoră: datele merg mereu la {@code FTP_HOST}.</li>
- *   <li><b>put / append</b>: în streaming, buffer fix de 64 KiB, sub nume temporar, apoi {@code RNFR}/{@code RNTO}; la
- *       eșec numele temporar se șterge (best-effort) și obiectul nu devine vizibil.</li>
- *   <li><b>get</b>: {@code SIZE}, apoi {@code REST} la offset și {@code RETR} în streaming; pe un obiect în bucăți
- *       concatenează bucățile în ordine pe aceeași conexiune. La sfârșitul fiecărui segment citit complet se apelează
- *       {@code completePendingCommand}; un stream închis înainte de sfârșit (sau un interval care se oprește în mijlocul
- *       fișierului) închide conexiunea, fără să aștepte restul transferului.</li>
- *   <li><b>Erori</b>: rețea, timeout, conexiune refuzată sau întreruptă și răspunsurile FTP 4xx →
- *       {@link StorageUnavailableException}; cheie inexistentă la citire → {@link StorageObjectNotFoundException};
- *       sursa apelantului prea scurtă sau întreruptă, autentificare refuzată și răspunsurile 5xx →
- *       {@link StorageException}. Mesajele conțin operația și codul FTP, niciodată parola.</li>
+ *   <li><b>One connection per operation</b> (login, passive mode, binary transfer), closed at the end; no state is
+ *       kept between calls, so any instance can continue an upload. Idempotent operations (exists, delete, finish,
+ *       abort, open) retry <b>once</b> if an already established connection was lost; no other retry (resilience
+ *       is layered on top, C11). The address in the {@code PASV} reply is ignored: data always goes to
+ *       {@code FTP_HOST}.</li>
+ *   <li><b>put / append</b>: streamed with a fixed 64 KiB buffer under a temp name, then {@code RNFR}/{@code RNTO};
+ *       on failure the temp name is deleted (best effort) and the object never becomes visible.</li>
+ *   <li><b>get</b>: {@code SIZE}, then {@code REST} at the offset and a streamed {@code RETR}; for a chunked object
+ *       the chunks are concatenated in order on the same connection. {@code completePendingCommand} is called at the
+ *       end of each fully read segment; a stream closed early (or a range stopping mid-file) closes the connection
+ *       without waiting for the rest of the transfer.</li>
+ *   <li><b>Errors</b>: network, timeout, refused or dropped connection and FTP 4xx replies ->
+ *       {@link StorageUnavailableException}; missing key on read -> {@link StorageObjectNotFoundException};
+ *       a short or broken caller source, rejected login and 5xx replies -> {@link StorageException}. Messages include
+ *       the operation and FTP code, never the password.</li>
  * </ul>
  *
- * Fără stare per cerere în câmpuri: o instanță se folosește concurent. Apelurile pentru același upload le serializează
- * apelantul (lease per upload).
+ * No per-request state in fields: one instance is used concurrently. Calls for the same upload are serialized by
+ * the caller (per-upload lease).
  */
 public class FtpAdapter implements StorageAdapter, ChunkedWriter {
 
@@ -72,7 +73,7 @@ public class FtpAdapter implements StorageAdapter, ChunkedWriter {
     private static final StorageType TYPE = StorageType.FTP;
     private static final int BUFFER_SIZE = 64 * 1024;
     private static final int MAX_DETAIL = 200;
-    /** Cât se așteaptă răspunsul serverului când un stream e închis înainte de sfârșit. */
+    /** How long to wait for the server's reply when a stream is closed early. */
     private static final int GRACEFUL_CLOSE_MILLIS = 2000;
     private static final int MAX_MANIFEST_BYTES = 4096;
     private static final String MANIFEST_HEADER = "filegrid-ftp-manifest v1";
@@ -88,7 +89,7 @@ public class FtpAdapter implements StorageAdapter, ChunkedWriter {
     private final Duration controlTimeout;
     private final Duration dataTimeout;
     private final Duration healthTimeout;
-    /** Motivul pentru care adaptorul nu e configurat (numele variabilelor lipsă), sau {@code null}. */
+    /** Why the adapter is not configured (names of the missing variables), or {@code null}. */
     private final String notConfigured;
 
     public FtpAdapter(String host, int port, String user, String password, Duration connectTimeout,
@@ -117,16 +118,16 @@ public class FtpAdapter implements StorageAdapter, ChunkedWriter {
     }
 
     /**
-     * Adaptorul din configurație. Dacă lipsesc variabile ({@code FTP_*}), întoarce un adaptor neconfigurat: aplicația
-     * pornește, {@link #health()} e down, iar operațiile aruncă {@link StorageUnavailableException}.
+     * Adapter built from configuration. If variables ({@code FTP_*}) are missing, returns an unconfigured adapter: the
+     * app starts, {@link #health()} is down and operations throw {@link StorageUnavailableException}.
      */
     public static FtpAdapter fromProperties(FtpProperties p) {
         if (!p.isConfigured()) {
             String reason = "FTP neconfigurat (lipsesc " + p.missing() + ")";
-            log.warn("{}: storage-ul FTP va fi raportat indisponibil", reason);
+            log.warn("{}: FTP storage will be reported as unavailable", reason);
             return new FtpAdapter(reason);
         }
-        log.info("FtpAdapter: {}:{}, mod pasiv, conexiune per operație", p.host(), p.port());
+        log.info("FtpAdapter: {}:{}, passive mode, one connection per operation", p.host(), p.port());
         return new FtpAdapter(p.host().trim(), p.port(), p.user().trim(), p.password(), p.connectTimeout(),
                 p.controlTimeout(), p.dataTimeout(), p.healthTimeout());
     }
@@ -136,7 +137,7 @@ public class FtpAdapter implements StorageAdapter, ChunkedWriter {
         return TYPE;
     }
 
-    /** Clientul FTP nou pentru o conexiune; testele îl pot înlocui (de exemplu cu o fabrică de socket-uri). */
+    /** A fresh FTP client for one connection; tests can override it (e.g. with a socket factory). */
     protected FTPClient newClient() {
         return new FTPClient();
     }
@@ -233,8 +234,8 @@ public class FtpAdapter implements StorageAdapter, ChunkedWriter {
     // --- ChunkedWriter ----------------------------------------------------------------------------------------
 
     /**
-     * Creează directorul bucăților ({@code /u/<key>}) și întoarce referința {@code u/<key>}. Referința nu conține
-     * secrete; writer-ul rederivă calea din cheie, deci nu depinde de ea.
+     * Creates the chunk directory ({@code /u/<key>}) and returns the reference {@code u/<key>}. The reference holds no
+     * secrets; the writer re-derives the path from the key, so it does not depend on it.
      */
     @Override
     public String open(String key, long totalSize, int chunkSize) {
@@ -260,7 +261,7 @@ public class FtpAdapter implements StorageAdapter, ChunkedWriter {
                     "Bucata " + n + " are " + upload.expectedLength(n) + " octeți, nu " + length);
         }
         String finalPath = chunkPath(upload.key(), n);
-        // Directorul bucăților există de la open(); dacă upload-ul a fost abandonat, scrierea eșuează cu 550.
+        // The chunk directory exists since open(); if the upload was abandoned, the write fails with 550.
         run("append", false, ftp -> {
             writeAtomically(ftp, "append", finalPath + ".part", finalPath, data, length);
             return null;
@@ -275,7 +276,7 @@ public class FtpAdapter implements StorageAdapter, ChunkedWriter {
         String key = upload.key();
         return run("finish", true, ftp -> {
             if (sizeOf(ftp, "finish", manifestPath(key)) >= 0) {
-                return upload.totalSize(); // deja încheiat (finish repetat)
+                return upload.totalSize(); // already completed (repeated finish)
             }
             int total = upload.totalChunks();
             if (chunks.size() != total) {
@@ -308,15 +309,15 @@ public class FtpAdapter implements StorageAdapter, ChunkedWriter {
         String key = upload.key();
         run("abort", true, ftp -> {
             deleteUploadDir(ftp, "abort", key);
-            deleteFile(ftp, "abort", objectPath(key)); // și un obiect eventual scris cu put pe aceeași cheie
+            deleteFile(ftp, "abort", objectPath(key)); // and any object written with put under the same key
             deleteFile(ftp, "abort", objectPath(key) + "~tmp");
             return null;
         });
     }
 
-    // --- citire -----------------------------------------------------------------------------------------------
+    // --- reading ----------------------------------------------------------------------------------------------
 
-    /** Un interval de citit dintr-un fișier: {@code length} octeți de la {@code offset}. */
+    /** A range to read from one file: {@code length} bytes from {@code offset}. */
     private record Segment(String path, long offset, long length) {
     }
 
@@ -347,7 +348,7 @@ public class FtpAdapter implements StorageAdapter, ChunkedWriter {
         return segments;
     }
 
-    /** Fișier lipsă la RETR (550). */
+    /** File missing on RETR (550). */
     private static final class MissingFileException extends IOException {
         MissingFileException(String message) {
             super(message);
@@ -357,7 +358,7 @@ public class FtpAdapter implements StorageAdapter, ChunkedWriter {
     private record Manifest(long totalSize, long chunkSize, int chunks) {
     }
 
-    /** Manifestul unui obiect în bucăți, sau {@code null} dacă nu există (upload neterminat sau cheie necunoscută). */
+    /** Manifest of a chunked object, or {@code null} if absent (unfinished upload or unknown key). */
     private Manifest readManifest(FTPClient ftp, String key) throws IOException {
         String path = manifestPath(key);
         long size = sizeOf(ftp, "get", path);
@@ -402,9 +403,9 @@ public class FtpAdapter implements StorageAdapter, ChunkedWriter {
     }
 
     /**
-     * Citește un obiect (sau un interval) segment cu segment, pe o singură conexiune. Un segment ajuns la capătul
-     * cerut e încheiat corect cu {@code completePendingCommand} când fișierul s-a terminat acolo; dacă fișierul
-     * continuă (interval care se oprește în mijloc) sau stream-ul e închis mai devreme, conexiunea se închide.
+     * Reads an object (or a range) segment by segment over a single connection. A segment that reaches the requested end
+     * is closed cleanly with {@code completePendingCommand} when the file ends there; if the file continues (range
+     * stopping midway) or the stream is closed early, the connection is closed.
      */
     private static final class ObjectStream extends InputStream {
 
@@ -423,7 +424,7 @@ public class FtpAdapter implements StorageAdapter, ChunkedWriter {
             this.segments = segments;
         }
 
-        /** Deschide următorul segment: {@code REST} la offset, apoi {@code RETR}. */
+        /** Opens the next segment: {@code REST} at the offset, then {@code RETR}. */
         void openNext() throws IOException {
             Segment segment = segments.next();
             ftp.setRestartOffset(segment.offset());
@@ -483,7 +484,7 @@ public class FtpAdapter implements StorageAdapter, ChunkedWriter {
             return 0;
         }
 
-        /** Segmentul cerut a fost citit: dacă fișierul s-a terminat aici, comanda se încheie; altfel conexiunea cade. */
+        /** The requested segment has been read: if the file ends here the command is completed; otherwise the connection is dropped. */
         private void endSegment() throws IOException {
             boolean naturalEnd = data.read() < 0;
             if (!naturalEnd) {
@@ -507,9 +508,9 @@ public class FtpAdapter implements StorageAdapter, ChunkedWriter {
         }
 
         /**
-         * Încheie transferul în curs fără să citească restul datelor: închide conexiunea de date, apoi (dacă transferul
-         * nu a eșuat deja) așteaptă scurt răspunsul serverului la comandă ({@code completePendingCommand}, de obicei
-         * 426) și trimite {@code QUIT}, ca serverul să elibereze sesiunea imediat; la orice problemă închide brusc.
+         * Ends the current transfer without reading the remaining data: closes the data connection, then (unless the
+         * transfer already failed) briefly waits for the server's reply ({@code completePendingCommand}, usually 426) and
+         * sends {@code QUIT} so the server frees the session right away; on any problem it closes abruptly.
          */
         private void abandon() {
             finished = true;
@@ -519,7 +520,7 @@ public class FtpAdapter implements StorageAdapter, ChunkedWriter {
                 try {
                     pending.close();
                 } catch (IOException | RuntimeException e) {
-                    // conexiunea se închide oricum mai jos
+                    // the connection is closed below anyway
                 }
                 if (!failed) {
                     try {
@@ -527,7 +528,7 @@ public class FtpAdapter implements StorageAdapter, ChunkedWriter {
                         ftp.completePendingCommand();
                         ftp.logout();
                     } catch (IOException | RuntimeException e) {
-                        // serverul nu a răspuns la timp: se închide brusc mai jos
+                        // the server did not reply in time: closed abruptly below
                     }
                 }
             }
@@ -544,12 +545,12 @@ public class FtpAdapter implements StorageAdapter, ChunkedWriter {
         }
     }
 
-    // --- scriere ----------------------------------------------------------------------------------------------
+    // --- writing ----------------------------------------------------------------------------------------------
 
     /**
-     * Scrie {@code length} octeți din {@code data} în {@code tmpPath} (STOR, în streaming) și abia apoi îl redenumește
-     * în {@code finalPath} ({@code RNFR}/{@code RNTO}, atomic; înlocuiește un fișier existent). La orice eroare
-     * numele temporar se șterge (best-effort), deci obiectul final nu apare pe jumătate.
+     * Writes {@code length} bytes from {@code data} to {@code tmpPath} (streamed STOR) and only then renames it to
+     * {@code finalPath} ({@code RNFR}/{@code RNTO}, atomic; replaces an existing file). On any error the temp name is
+     * deleted (best effort), so the final object never shows up half-written.
      */
     private void writeAtomically(FTPClient ftp, String op, String tmpPath, String finalPath, InputStream data,
             long length) throws IOException {
@@ -591,9 +592,9 @@ public class FtpAdapter implements StorageAdapter, ChunkedWriter {
         }
     }
 
-    // --- comenzi FTP ------------------------------------------------------------------------------------------
+    // --- FTP commands -----------------------------------------------------------------------------------------
 
-    /** Mărimea fișierului ({@code SIZE}) sau -1 dacă nu există. */
+    /** File size ({@code SIZE}) or -1 if it does not exist. */
     private long sizeOf(FTPClient ftp, String op, String path) throws IOException {
         int code = ftp.sendCommand(FTPCmd.SIZE, path);
         if (code == FTPReply.FILE_STATUS) {
@@ -610,7 +611,7 @@ public class FtpAdapter implements StorageAdapter, ChunkedWriter {
         throw failure(op, ftp);
     }
 
-    /** {@code DELE}; {@code false} dacă fișierul nu exista. */
+    /** {@code DELE}; {@code false} if the file did not exist. */
     private boolean deleteFile(FTPClient ftp, String op, String path) throws IOException {
         if (ftp.deleteFile(path)) {
             return true;
@@ -621,7 +622,7 @@ public class FtpAdapter implements StorageAdapter, ChunkedWriter {
         throw failure(op, ftp);
     }
 
-    /** Șterge fișierele din {@code /u/<key>} și directorul; {@code false} dacă nu exista. */
+    /** Deletes the files in {@code /u/<key>} and the directory; {@code false} if it did not exist. */
     private boolean deleteUploadDir(FTPClient ftp, String op, String key) throws IOException {
         String dir = uploadDir(key);
         if (!ftp.changeWorkingDirectory(dir)) {
@@ -646,7 +647,7 @@ public class FtpAdapter implements StorageAdapter, ChunkedWriter {
         return true;
     }
 
-    /** {@code MKD}; un director existent (550) nu e eroare. */
+    /** {@code MKD}; an existing directory (550) is not an error. */
     private void ensureDir(FTPClient ftp, String dir) throws IOException {
         if (!ftp.makeDirectory(dir) && ftp.getReplyCode() != FTPReply.FILE_UNAVAILABLE) {
             throw failure("mkdir", ftp);
@@ -659,11 +660,11 @@ public class FtpAdapter implements StorageAdapter, ChunkedWriter {
                 run("cleanup", false, ftp -> deleteFile(ftp, "cleanup", path));
             }
         } catch (RuntimeException e) {
-            // Curățare cât se poate; eroarea originală e cea care contează.
+            // Best-effort cleanup; the original error is the one that matters.
         }
     }
 
-    // --- conexiune și erori -----------------------------------------------------------------------------------
+    // --- connection and errors --------------------------------------------------------------------------------
 
     @FunctionalInterface
     private interface FtpOp<T> {
@@ -671,8 +672,8 @@ public class FtpAdapter implements StorageAdapter, ChunkedWriter {
     }
 
     /**
-     * Rulează {@code body} pe o conexiune proaspătă, închisă la final. Cu {@code retryOnLostConnection}, o operație
-     * idempotentă se repetă o singură dată dacă o conexiune deja stabilită s-a pierdut în timpul ei.
+     * Runs {@code body} on a fresh connection, closed at the end. With {@code retryOnLostConnection}, an idempotent
+     * operation is repeated once if an already established connection was lost during it.
      */
     private <T> T run(String op, boolean retryOnLostConnection, FtpOp<T> body) {
         requireConfigured();
@@ -685,7 +686,7 @@ public class FtpAdapter implements StorageAdapter, ChunkedWriter {
                 return body.apply(ftp);
             } catch (IOException e) {
                 if (retryOnLostConnection && connected && attempt == 1 && !(e instanceof ConnectException)) {
-                    log.debug("FTP {}: conexiune pierdută ({}), o reîncerc o dată", op, e.getClass().getSimpleName());
+                    log.debug("FTP {}: connection lost ({}), retrying once", op, e.getClass().getSimpleName());
                     continue;
                 }
                 throw translate(op, e);
@@ -706,7 +707,7 @@ public class FtpAdapter implements StorageAdapter, ChunkedWriter {
             ftp.setDefaultTimeout(millis(controlT));
             ftp.setDataTimeout(dataTimeout);
             ftp.setBufferSize(BUFFER_SIZE);
-            // Datele merg mereu la gazda configurată, nu la adresa din răspunsul PASV (care poate fi a containerului).
+            // Data always goes to the configured host, not the PASV reply address (which may be the container's own IP).
             ftp.setPassiveNatWorkaroundStrategy(hostname -> host);
             ftp.connect(host, port);
             ftp.setSoTimeout(millis(deadline == Long.MAX_VALUE ? controlT : remaining(deadline)));
@@ -759,7 +760,7 @@ public class FtpAdapter implements StorageAdapter, ChunkedWriter {
                     ftp.disconnect();
                 }
             } catch (IOException | RuntimeException e) {
-                // deja închisă
+                // already closed
             }
         }
     }
@@ -769,7 +770,7 @@ public class FtpAdapter implements StorageAdapter, ChunkedWriter {
             try {
                 out.close();
             } catch (IOException | RuntimeException e) {
-                // conexiunea se închide oricum
+                // the connection is closed anyway
             }
         }
     }
@@ -787,7 +788,7 @@ public class FtpAdapter implements StorageAdapter, ChunkedWriter {
         return (int) Math.min(Integer.MAX_VALUE, Math.max(1, d.toMillis()));
     }
 
-    // --- căi --------------------------------------------------------------------------------------------------
+    // --- paths ------------------------------------------------------------------------------------------------
 
     private static String objectPath(String key) {
         return OBJECTS + "/" + key;
@@ -813,8 +814,8 @@ public class FtpAdapter implements StorageAdapter, ChunkedWriter {
     }
 
     /**
-     * Citește cel mult {@code length} octeți din sursa apelantului; dacă sursa se termină mai devreme sau aruncă, reține
-     * motivul, ca eroarea să nu fie confundată cu storage-ul căzut. {@code close()} nu închide sursa.
+     * Reads at most {@code length} bytes from the caller's source; if the source ends early or throws, the reason is
+     * recorded so the error is not mistaken for a storage outage. {@code close()} does not close the source.
      */
     static final class BoundedSource extends InputStream {
 
@@ -866,7 +867,7 @@ public class FtpAdapter implements StorageAdapter, ChunkedWriter {
 
         @Override
         public void close() {
-            // Sursa o închide apelantul.
+            // The caller closes the source.
         }
     }
 }

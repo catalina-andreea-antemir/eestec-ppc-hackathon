@@ -3,13 +3,13 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { toApiError } from '../api/api-error';
 import { LinkExpiredError } from './file-downloader';
 
-/** Rezultatul afișat după „Verifică integritatea”. */
+/** The result shown after "Verify integrity". */
 export type VerifyOutcome =
   | { kind: 'ok'; expectedSha256: string; actualSha256: string; deep: boolean; plainOk: boolean | null; verifiedAt: string }
   | { kind: 'corrupt'; expectedSha256: string | null; actualSha256: string | null; message: string; traceId: string }
   | { kind: 'error'; message: string };
 
-/** 409 FILE_CORRUPT → „Corupt” (cu hash-urile din details); orice altă eroare → mesaj. */
+/** 409 FILE_CORRUPT -> "Corrupt" (with the hashes from details); any other error -> a message. */
 export function verifyErrorOutcome(error: unknown): VerifyOutcome {
   const api = toApiError(error);
   if (api?.status === 409 && api.code === 'FILE_CORRUPT') {
@@ -25,7 +25,7 @@ export function verifyErrorOutcome(error: unknown): VerifyOutcome {
   return { kind: 'error', message: describeFileError(error) };
 }
 
-/** Mesaj în română pentru erorile de la /files/*, după codurile din contract. */
+/** Romanian user-facing message for /files/* errors, based on the contract codes. */
 export function describeFileError(error: unknown): string {
   if (error instanceof LinkExpiredError) {
     return error.message;
@@ -46,7 +46,7 @@ export function describeFileError(error: unknown): string {
       return `Fișierul nu există (sau conținutul lui nu mai e disponibil).${trace}`;
     case 405:
     case 501:
-      // Endpoint-ul nu e (încă) implementat pe server, de exemplu GET /files înainte de C8.
+      // The endpoint is not implemented on the server (yet).
       return 'Funcția aceasta nu este încă disponibilă pe server.';
     case 409:
       return `${api?.message ?? 'Conflict'}${trace}`;

@@ -14,15 +14,14 @@ import java.util.concurrent.ConcurrentSkipListMap;
 import ro.filegrid.domain.StorageType;
 
 /**
- * Adaptor de test, în memorie, care respectă {@link StorageAdapter} și {@link ChunkedWriter} (doar pentru teste: ține
- * obiectele în {@code byte[]}, ceea ce un adaptor real nu are voie să facă). Poate simula un storage căzut cu
- * {@link #setUp(boolean)}.
+ * In-memory test adapter that honours {@link StorageAdapter} and {@link ChunkedWriter} (tests only: it keeps objects
+ * in {@code byte[]}, which a real adapter must never do). Can simulate a storage outage with {@link #setUp(boolean)}.
  */
 public class InMemoryStorageAdapter implements StorageAdapter, ChunkedWriter {
 
     private final StorageType type;
     private final Map<String, byte[]> objects = new ConcurrentHashMap<>();
-    /** uploadRef → bucățile primite (n → conținut). */
+    /** uploadRef -> received chunks (n -> content). */
     private final Map<String, NavigableMap<Integer, byte[]>> uploads = new ConcurrentHashMap<>();
     private volatile boolean up = true;
 
@@ -85,7 +84,7 @@ public class InMemoryStorageAdapter implements StorageAdapter, ChunkedWriter {
     public String open(String key, long totalSize, int chunkSize) {
         StorageKeys.requireValid(key);
         requireUp();
-        // Referința e chiar cheia: o nouă sesiune cu aceeași cheie o ia de la capăt.
+        // The reference is the key itself: a new session with the same key starts over.
         uploads.put(key, new ConcurrentSkipListMap<>());
         return key;
     }
@@ -111,7 +110,7 @@ public class InMemoryStorageAdapter implements StorageAdapter, ChunkedWriter {
         if (parts == null) {
             byte[] done = objects.get(upload.key());
             if (done != null && done.length == upload.totalSize()) {
-                return done.length; // finish repetat
+                return done.length; // repeated finish
             }
             throw new StorageException(type, "Upload inexistent sau anulat");
         }

@@ -6,24 +6,24 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.util.unit.DataSize;
 
 /**
- * Configurația {@code filegrid.s3} (MinIO, C5), din variabilele {@code S3_ENDPOINT}, {@code S3_REGION},
- * {@code S3_BUCKET}, {@code S3_ACCESS_KEY}, {@code S3_SECRET_KEY} (setate în compose; credențialele sunt ale
- * utilizatorului aplicației creat de {@code minio-init}, nu contul root). Fără valori implicite pentru credențiale:
- * dacă lipsesc, adaptorul pornește „neconfigurat” ({@code health} = down, operațiile → 503), iar aplicația pornește.
+ * {@code filegrid.s3} configuration (MinIO, C5), from {@code S3_ENDPOINT}, {@code S3_REGION}, {@code S3_BUCKET},
+ * {@code S3_ACCESS_KEY}, {@code S3_SECRET_KEY} (set in compose; the credentials belong to the app user created by
+ * {@code minio-init}, not the root account). No credential defaults: if they are missing the adapter starts
+ * "unconfigured" ({@code health} = down, operations -> 503) while the app still starts.
  *
- * @param endpoint         URL-ul S3, de exemplu {@code http://minio:9000} (path-style)
- * @param region           regiunea de semnare (MinIO o acceptă pe oricare; implicit {@code us-east-1})
- * @param bucket           bucket-ul (creat de {@code minio-init})
- * @param accessKey        cheia de acces a utilizatorului aplicației
- * @param secretKey        cheia secretă a utilizatorului aplicației
- * @param connectTimeout   timeout de conectare TCP (implicit 2 s)
- * @param socketTimeout    timeout de inactivitate la citire / scriere pe socket (implicit 30 s)
- * @param operationTimeout timeout total pentru operațiile mici: HEAD, DELETE, creare / încheiere / abandon multipart
- *                         (implicit 10 s); transferurile de date au doar {@code socketTimeout}
- * @param healthTimeout    timeout total pentru {@code health()} (implicit 2 s, maxim 2 s după contract)
- * @param partSize         mărimea părților la {@code put} pentru obiecte mari, care trec intern prin multipart
- *                         (implicit 16 MiB, minim 5 MiB, limita S3 / MinIO)
- * @param maxConnections   conexiuni HTTP maxime în pool (implicit 50)
+ * @param endpoint         S3 URL, e.g. {@code http://minio:9000} (path-style)
+ * @param region           signing region (MinIO accepts any; default {@code us-east-1})
+ * @param bucket           the bucket (created by {@code minio-init})
+ * @param accessKey        the app user's access key
+ * @param secretKey        the app user's secret key
+ * @param connectTimeout   TCP connect timeout (default 2 s)
+ * @param socketTimeout    socket read / write idle timeout (default 30 s)
+ * @param operationTimeout total timeout for small operations: HEAD, DELETE, multipart create / complete / abort
+ *                         (default 10 s); data transfers only have {@code socketTimeout}
+ * @param healthTimeout    total timeout for {@code health()} (default 2 s, at most 2 s per the contract)
+ * @param partSize         part size for {@code put} of large objects, which go through multipart internally
+ *                         (default 16 MiB, minimum 5 MiB, the S3 / MinIO limit)
+ * @param maxConnections   maximum HTTP connections in the pool (default 50)
  */
 @ConfigurationProperties("filegrid.s3")
 public record S3Properties(String endpoint, String region, String bucket, String accessKey, String secretKey,
@@ -46,17 +46,17 @@ public record S3Properties(String endpoint, String region, String bucket, String
         }
     }
 
-    /** Credențiale și adrese pentru teste sau cod, cu restul valorilor implicite. */
+    /** Credentials and addresses for tests or code, everything else default. */
     public static S3Properties of(String endpoint, String region, String bucket, String accessKey, String secretKey) {
         return new S3Properties(endpoint, region, bucket, accessKey, secretKey, null, null, null, null, null, null);
     }
 
-    /** {@code true} dacă sunt setate endpoint-ul, bucket-ul și ambele chei. */
+    /** {@code true} if endpoint, bucket and both keys are set. */
     public boolean isConfigured() {
         return missing().isEmpty();
     }
 
-    /** Numele variabilelor lipsă (fără valori), pentru log și pentru {@code health}. */
+    /** Names of the missing variables (no values), for the log and for {@code health}. */
     String missing() {
         StringBuilder sb = new StringBuilder();
         append(sb, endpoint, "S3_ENDPOINT");
@@ -66,7 +66,7 @@ public record S3Properties(String endpoint, String region, String bucket, String
         return sb.toString();
     }
 
-    /** Fără cheia secretă (record-ul implicit ar afișa-o). */
+    /** Without the secret key (the default record toString would print it). */
     @Override
     public String toString() {
         return "S3Properties[endpoint=" + endpoint + ", region=" + region + ", bucket=" + bucket + "]";

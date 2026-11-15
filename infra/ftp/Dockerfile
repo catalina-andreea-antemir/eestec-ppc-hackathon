@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
-# Storage FTP (C6): vsftpd pe Alpine, mod pasiv. Porturile pasive (21000-21049) exista doar in reteaua interna
-# storage-net; nu se publica nimic. Utilizatorul si parola vin din .env (FTP_USER, FTP_PASSWORD), la pornire.
+# FTP storage (C6): vsftpd on Alpine, passive mode. Passive ports (21000-21049) exist only on the internal
+# storage-net; nothing is published. User and password come from .env (FTP_USER, FTP_PASSWORD) at startup.
 FROM alpine:3.24.4
 
 RUN apk add --no-cache vsftpd \

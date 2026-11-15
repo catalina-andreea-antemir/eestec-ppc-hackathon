@@ -1,7 +1,7 @@
-// Configurația pentru `ng serve`.
-// useMocks: true -> cererile către /api/v1 sunt servite de mock-api.interceptor.ts,
-// ca interfața să meargă înainte ca backend-ul să existe. Când API-ul rulează
-// (docker compose), pune false și cererile trec prin proxy.conf.json.
+// Configuration for `ng serve`.
+// useMocks: true -> requests to /api/v1 are served by mock-api.interceptor.ts, so the UI works
+// without a backend. When the API is running (docker compose), set it to false and requests go
+// through proxy.conf.json.
 export const environment = {
   production: false,
   apiBaseUrl: '/api/v1',

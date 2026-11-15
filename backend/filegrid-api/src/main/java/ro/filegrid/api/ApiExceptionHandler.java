@@ -16,7 +16,7 @@ import org.springframework.web.multipart.MultipartException;
 import jakarta.servlet.http.HttpServletRequest;
 import ro.filegrid.observability.TraceIdFilter;
 
-/** Transformă excepțiile în formatul {@link ApiError} din contract. */
+/** Maps exceptions to the contract's {@link ApiError} format. */
 @RestControllerAdvice
 public class ApiExceptionHandler {
 
@@ -55,7 +55,7 @@ public class ApiExceptionHandler {
                 "Resursa nu există.", TraceIdFilter.traceId(request)));
     }
 
-    /** Corpul multipart depășește limita {@code spring.servlet.multipart} (limita pe categorie o verifică ingestia). */
+    /** The multipart body exceeds {@code spring.servlet.multipart} (the per-category limit is enforced by ingest). */
     @ExceptionHandler(MaxUploadSizeExceededException.class)
     ResponseEntity<ApiError> tooLarge(MaxUploadSizeExceededException e, HttpServletRequest request) {
         return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).body(ApiError.of(413, "PAYLOAD_TOO_LARGE",

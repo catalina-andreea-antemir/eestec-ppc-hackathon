@@ -29,7 +29,7 @@ describe('FileDownloader', () => {
     backend = TestBed.inject(HttpTestingController);
   });
 
-  // verify() pică dacă a rămas vreo cerere HTTP neașteptată (de exemplu un GET pe fișier).
+  // verify() fails if any unexpected HTTP request is left (e.g. a GET on the file).
   afterEach(() => backend.verify());
 
   async function flushLink(link: DownloadLink): Promise<void> {
@@ -46,7 +46,7 @@ describe('FileDownloader', () => {
     await expect(done).resolves.toEqual(link);
 
     expect(opened).toEqual([{ url: '/api/v1/downloads/tok.sig', fileName: FILE.originalName }]);
-    // Singura cerere HTTP a fost POST download-link; GET /downloads/{token} îl face browserul nativ.
+    // The only HTTP request was POST download-link; the browser performs GET /downloads/{token} natively.
     backend.expectNone((r) => r.url.includes('/downloads/'));
   });
 

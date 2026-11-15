@@ -10,7 +10,7 @@ import jakarta.servlet.http.HttpServletRequest;
 
 import ro.filegrid.security.Role;
 
-/** {@code GET /api/v1/stats/requirements} (DISPATCH și ADMIN): starea celor 4 cerințe de business. */
+/** {@code GET /api/v1/stats/requirements} (DISPATCH and ADMIN): status of the 4 business requirements. */
 @RestController
 @Profile("db")
 @RequestMapping("/api/v1/stats")

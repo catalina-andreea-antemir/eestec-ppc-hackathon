@@ -8,7 +8,7 @@
   } @else {
     @let s = state();
 
-    <!-- Upload video neterminat (păstrat în sessionStorage), de exemplu după un refresh de pagină. -->
+    <!-- Unfinished video upload (kept in sessionStorage), e.g. after a page refresh. -->
     @if (pending(); as p) {
       @if (!manager.busy() && s.phase !== 'paused') {
         <section class="card pending" aria-live="polite">

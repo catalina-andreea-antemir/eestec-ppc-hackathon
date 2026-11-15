@@ -14,23 +14,23 @@ import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import org.springframework.core.io.support.ResourcePatternResolver;
 
 /**
- * De unde se citesc fișierele de politică: implicit {@code classpath:/policies/} (din jar, fără recitire utilă), iar
- * în Docker un director montat, dat prin {@code FILEGRID_POLICY_DIR} (de exemplu {@code /app/policies}). Se citesc
- * toate fișierele {@code *.yml} și {@code *.yaml}, în ordinea numelui.
+ * Where policy files are read from: {@code classpath:/policies/} by default (inside the jar, so reloading is moot),
+ * and in Docker a mounted directory given by {@code FILEGRID_POLICY_DIR} (e.g. {@code /app/policies}). All
+ * {@code *.yml} and {@code *.yaml} files are read, in name order.
  */
 @FunctionalInterface
 public interface PolicySource {
 
-    /** Numele fișierului → conținutul. */
+    /** File name -> content. */
     Map<String, byte[]> read() throws IOException;
 
-    /** O descriere pentru loguri (calea). */
+    /** A description for logs (the path). */
     default String description() {
         return toString();
     }
 
     /**
-     * @param location {@code classpath:...}, {@code file:...} sau o cale de director (absolută sau relativă)
+     * @param location {@code classpath:...}, {@code file:...} or a directory path (absolute or relative)
      */
     static PolicySource of(String location) {
         String base = toResourceLocation(location);

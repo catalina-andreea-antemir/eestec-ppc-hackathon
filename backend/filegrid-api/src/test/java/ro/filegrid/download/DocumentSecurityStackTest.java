@@ -45,11 +45,11 @@ import ro.filegrid.storage.StorageAdapter;
 import ro.filegrid.storage.StorageAdapterRegistry;
 
 /**
- * C10 pe stack-ul real, cu CONNECTION_DOC pe fiecare storage (DB, S3, FTP): document urcat ca CONNECTIONS și citit
- * înapoi cu hash plain identic, nimic în clar în storage (dump direct din {@code blob_chunks} pentru DB) și nici numele
- * fișierului în {@code files}, fără token 401, rol greșit 403, segment alterat 409, rânduri în {@code audit_log} pentru
- * accese și refuzuri (lanț de hash-uri valid), metrica {@code filegrid_doc_access_total}. Datele se șterg la final.
- * Fără stack, testul se <b>sare</b>.
+ * C10 on the real stack, with CONNECTION_DOC on every storage (DB, S3, FTP): a document uploaded as CONNECTIONS and
+ * read back with an identical plain hash, nothing in plaintext in storage (direct dump of {@code blob_chunks} for DB)
+ * nor the file name in {@code files}, 401 without a token, 403 with the wrong role, 409 for a tampered segment,
+ * {@code audit_log} rows for accesses and denials (valid hash chain), the {@code filegrid_doc_access_total} metric.
+ * Data is deleted at the end. Without the stack, the test is <b>skipped</b>.
  */
 class DocumentSecurityStackTest {
 
@@ -137,10 +137,10 @@ class DocumentSecurityStackTest {
 
         String marker = "DOCUMENT-PERSONAL-" + UUID.randomUUID();
         String fileName = "cerere-racordare-" + UUID.randomUUID().toString().substring(0, 8) + "-Ionescu.txt";
-        byte[] content = (marker + "\n").repeat(9_000).getBytes(StandardCharsets.UTF_8); // peste 3 segmente de 64 KiB
+        byte[] content = (marker + "\n").repeat(9_000).getBytes(StandardCharsets.UTF_8); // more than 3 segments of 64 KiB
         String plainHash = Sha256.hex(Sha256.of(content));
 
-        // --- fără token 401, rol greșit 403 ------------------------------------------------------------------
+        // --- no token 401, wrong role 403 --------------------------------------------------------------------
         assertThat(send(base, "GET", "/api/v1/files?category=CONNECTION_DOC", null, null, null).status()).isEqualTo(401);
         assertThat(upload(base, bearer.get(DISP), "CONNECTION_DOC", fileName, content).status()).isEqualTo(403);
         assertThat(upload(base, bearer.get(FIELD), "CONNECTION_DOC", fileName, content).status()).isEqualTo(403);
@@ -148,7 +148,7 @@ class DocumentSecurityStackTest {
         assertThat(upload(base, bearer.get(CONN), "OUTAGE_RECORD", fileName, content).status()).isEqualTo(403);
         double deniedBefore = counter(metrics, "denied");
 
-        // --- upload ca CONNECTIONS -----------------------------------------------------------------------------
+        // --- upload as CONNECTIONS -----------------------------------------------------------------------------
         Resp created = upload(base, bearer.get(CONN), "CONNECTION_DOC", fileName, content);
         assertThat(created.status()).as(new String(created.body(), StandardCharsets.UTF_8)).isEqualTo(201);
         JsonNode file = created.json();
@@ -160,7 +160,7 @@ class DocumentSecurityStackTest {
         assertThat(file.get("sha256").asText()).isNotEqualTo(plainHash);
         assertThat(file.get("size").asLong()).isEqualTo(content.length);
 
-        // --- nimic în clar în storage și în files --------------------------------------------------------------
+        // --- nothing in plaintext in storage or in files -------------------------------------------------------
         String storageKey = meta.queryForObject("SELECT storage_key FROM dbo.files WHERE id = CAST(:id AS UNIQUEIDENTIFIER)",
                 new MapSqlParameterSource("id", id), String.class);
         String storedName = meta.queryForObject("SELECT original_filename FROM dbo.files WHERE id = CAST(:id AS UNIQUEIDENTIFIER)",
@@ -174,7 +174,7 @@ class DocumentSecurityStackTest {
         assertThat(contains(raw, marker)).isFalse();
         assertThat(contains(raw, "Ionescu")).isFalse();
         assertThat(Sha256.hex(Sha256.of(raw))).isEqualTo(file.get("sha256").asText());
-        if (type == StorageType.DB) { // dump direct din FileGridStorage.blob_chunks
+        if (type == StorageType.DB) { // direct dump of FileGridStorage.blob_chunks
             var template = new NamedParameterJdbcTemplate(storageDb);
             List<byte[]> chunks = template.query("SELECT c.chunk_data FROM dbo.blob_chunks c JOIN dbo.blob_versions v"
                     + " ON v.version_key = c.storage_key WHERE v.logical_key = :key ORDER BY c.chunk_offset",
@@ -186,7 +186,7 @@ class DocumentSecurityStackTest {
             assertThat(contains(dump.toByteArray(), "Ionescu")).isFalse();
         }
 
-        // --- citire înapoi cu hash plain identic, fără Range ----------------------------------------------------
+        // --- read back with an identical plain hash, no Range ---------------------------------------------------
         Resp download = send(base, "GET", "/api/v1/files/" + id + "/download", bearer.get(CONN), "bytes=0-9", null);
         assertThat(download.status()).isEqualTo(200);
         assertThat(download.headers().firstValue("Accept-Ranges")).isEmpty();
@@ -210,7 +210,7 @@ class DocumentSecurityStackTest {
         assertThat(byLink.status()).isEqualTo(200);
         assertThat(byLink.body()).isEqualTo(content);
 
-        // --- căutare: nume decriptat doar rolurilor autorizate ---------------------------------------------------
+        // --- search: decrypted name only for authorized roles ---------------------------------------------------
         for (String user : new String[] {CONN, ADMIN}) {
             JsonNode items = send(base, "GET", "/api/v1/files?category=CONNECTION_DOC&size=100", bearer.get(user), null, null)
                     .json().get("items");
@@ -233,7 +233,7 @@ class DocumentSecurityStackTest {
         }
         assertThat(send(base, "GET", "/api/v1/files", bearer.get(METER), null, null).status()).isEqualTo(403);
 
-        // --- refuzuri pe document existent: 403, nimic din conținut ---------------------------------------------
+        // --- denials on an existing document: 403, no content leaked --------------------------------------------
         for (String user : new String[] {DISP, FIELD}) {
             for (String path : new String[] {"/api/v1/files/" + id, "/api/v1/files/" + id + "/download",
                     "/api/v1/files/" + id + "/verify"}) {
@@ -261,13 +261,13 @@ class DocumentSecurityStackTest {
         assertThat(actions.get(FIELD)).contains("UPLOAD_DENIED", "DOWNLOAD_DENIED");
         assertThat(app.getBean(AuditLog.class).verifyChain()).isGreaterThanOrEqualTo(15);
 
-        // --- segment alterat în storage -> 409 FILE_CORRUPT ---------------------------------------------------------
+        // --- tampered segment in storage -> 409 FILE_CORRUPT -------------------------------------------------------
         raw[raw.length / 2] ^= 1;
         storage.put(storageKey, new java.io.ByteArrayInputStream(raw), raw.length, "application/octet-stream");
         Resp corruptVerify = send(base, "GET", "/api/v1/files/" + id + "/verify", bearer.get(CONN), null, null);
         assertThat(corruptVerify.status()).isEqualTo(409);
         assertThat(corruptVerify.json().get("code").asText()).isEqualTo("FILE_CORRUPT");
-        // hash-ul stocat „reparat” (ca un atacator cu acces la baza de date): doar GCM mai prinde alterarea
+        // stored hash "fixed up" (like an attacker with database access): only GCM can still catch the tampering
         meta.update("UPDATE dbo.files SET sha256 = :h WHERE id = CAST(:id AS UNIQUEIDENTIFIER)",
                 new MapSqlParameterSource("h", Sha256.of(raw)).addValue("id", id));
         assertThat(send(base, "GET", "/api/v1/files/" + id + "/verify", bearer.get(CONN), null, null).status())
@@ -294,10 +294,10 @@ class DocumentSecurityStackTest {
                     template.update("DELETE FROM dbo.blob_versions WHERE logical_key = :key", p);
                 }
             } catch (RuntimeException e) {
-                // cleanup best-effort: obiectul poate lipsi deja
+                // best-effort cleanup: the object may already be gone
             }
         }
-        var users = new MapSqlParameterSource("p", "it-c10-%"); // și resturile unor rulări întrerupte
+        var users = new MapSqlParameterSource("p", "it-c10-%"); // and leftovers from interrupted runs
         meta.update("DELETE FROM dbo.audit_log WHERE actor LIKE :p OR file_id IN (SELECT id FROM dbo.files"
                 + " WHERE created_by LIKE :p)", users);
         meta.update("DELETE FROM dbo.files WHERE created_by LIKE :p", users);
@@ -378,7 +378,7 @@ class DocumentSecurityStackTest {
         return b;
     }
 
-    /** Variabilele de mediu, completate cu {@code .env} din rădăcina repo-ului (mediul are prioritate). */
+    /** Environment variables, completed from the repo-root {@code .env} (the environment wins). */
     private static Map<String, String> environment() {
         Map<String, String> values = new HashMap<>();
         for (Path dir = Path.of("").toAbsolutePath(); dir != null; dir = dir.getParent()) {
@@ -392,7 +392,7 @@ class DocumentSecurityStackTest {
                         }
                     }
                 } catch (IOException e) {
-                    // Fără .env lizibil rămân variabilele de mediu.
+                    // Without a readable .env, only the environment variables remain.
                 }
                 break;
             }

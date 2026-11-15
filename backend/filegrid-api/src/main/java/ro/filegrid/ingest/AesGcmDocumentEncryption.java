@@ -23,15 +23,15 @@ import ro.filegrid.policy.CategoryPolicy;
 import ro.filegrid.policy.PolicyEngine;
 
 /**
- * AES-256-GCM pe segmente de 64 KiB, în streaming (4.1 „Criptare și hash la documente”). Cheia vine din
- * {@code DOC_ENCRYPTION_KEY} (base64, 32 de octeți) și nu se loghează. Aplicația refuză să pornească cu cheie lipsă
- * sau invalidă doar dacă politica are cel puțin o categorie cu {@code encryption: true}.
+ * Streaming AES-256-GCM over 64 KiB segments. The key comes from {@code DOC_ENCRYPTION_KEY} (base64, 32 bytes) and
+ * is never logged. The app refuses to start with a missing or invalid key only if some policy has
+ * {@code encryption: true}.
  *
- * <p>Format: {@code [versiune 1B][salt 16B][prefix nonce 4B]} apoi segmentele {@code [ciphertext + tag 16B]}. Cheia
- * fiecărui fișier se derivă din cheia principală și salt (HMAC-SHA256), deci o coliziune a prefixului de 4 octeți între
- * fișiere nu refolosește perechea (cheie, nonce). Nonce = prefix + contor de segment pe 8 octeți; AAD = versiunea,
- * indexul segmentului și marcajul „ultimul segment”, deci reordonarea sau trunchierea fac tag-ul să cadă. Fiecare
- * segment e plin (64 KiB) în afară de ultimul; un fișier gol are un singur segment (doar tag).
+ * <p>Format: {@code [version 1B][salt 16B][nonce prefix 4B]} followed by segments {@code [ciphertext + tag 16B]}. Each
+ * file key is derived from the master key and the salt (HMAC-SHA256), so a 4-byte prefix collision between files
+ * never reuses a (key, nonce) pair. Nonce = prefix + 8-byte segment counter; AAD = version, segment index and the
+ * "last segment" flag, so reordering or truncation makes the tag check fail. Every segment is full (64 KiB) except
+ * the last; an empty file has a single segment (tag only).
  */
 @Component
 public class AesGcmDocumentEncryption implements DocumentEncryption {
@@ -42,7 +42,7 @@ public class AesGcmDocumentEncryption implements DocumentEncryption {
     static final int PREFIX = 4;
     static final int HEADER = 1 + SALT + PREFIX;
     static final int TAG = 16;
-    /** Numele: versiune 1B + nonce 12B + text + tag, în base64; cel mult 350 de octeți UTF-8 încap în NVARCHAR(512). */
+    /** Name: version 1B + nonce 12B + text + tag, base64; at most 350 UTF-8 bytes fit in NVARCHAR(512). */
     static final int NAME_MAX_BYTES = 350;
 
     private static final SecureRandom RANDOM = new SecureRandom();
@@ -62,7 +62,7 @@ public class AesGcmDocumentEncryption implements DocumentEncryption {
         this.master = key;
     }
 
-    /** Pentru teste: cheia brută (32 de octeți). */
+    /** For tests: the raw key (32 bytes). */
     public AesGcmDocumentEncryption(byte[] key) {
         if (key == null || key.length != 32) {
             throw new IllegalArgumentException("Cheia AES-256 trebuie să aibă 32 de octeți");
@@ -170,7 +170,7 @@ public class AesGcmDocumentEncryption implements DocumentEncryption {
             return bytes;
         }
         int end = max;
-        while (end > 0 && (bytes[end] & 0xC0) == 0x80) { // nu tăia în mijlocul unui caracter
+        while (end > 0 && (bytes[end] & 0xC0) == 0x80) { // do not cut in the middle of a character
             end--;
         }
         return Arrays.copyOf(bytes, end);
@@ -186,7 +186,7 @@ public class AesGcmDocumentEncryption implements DocumentEncryption {
         return cipher;
     }
 
-    /** Citește până la {@code len} octeți (sau EOF). */
+    /** Reads up to {@code len} bytes (or until EOF). */
     private static int readFully(InputStream in, byte[] buf, int off, int len) throws IOException {
         int total = 0;
         while (total < len) {
@@ -199,7 +199,7 @@ public class AesGcmDocumentEncryption implements DocumentEncryption {
         return total;
     }
 
-    /** Baza celor două fluxuri: segmentul curent în {@code out}, următorul se produce la cerere. */
+    /** Base for both streams: current segment in {@code out}, the next one is produced on demand. */
     private abstract static class SegmentStream extends InputStream {
         byte[] out;
         int pos;
@@ -231,7 +231,7 @@ public class AesGcmDocumentEncryption implements DocumentEncryption {
         }
     }
 
-    /** Segmentele cifrate; un segment plin se ține până se știe dacă mai urmează date (ca să fie marcat „ultimul”). */
+    /** Encrypted segments; a full segment is held until we know whether more data follows (so it can be flagged "last"). */
     private static final class EncryptingStream extends SegmentStream {
         private final InputStream plain;
         private final SecretKey key;
@@ -243,7 +243,7 @@ public class AesGcmDocumentEncryption implements DocumentEncryption {
             this.plain = plain;
             this.key = key;
             this.prefix = prefix;
-            this.out = header; // antetul iese primul
+            this.out = header; // the header goes out first
         }
 
         @Override

@@ -4,7 +4,7 @@ import java.util.Map;
 import org.springframework.http.HttpStatus;
 import ro.filegrid.api.ApiException;
 
-/** Erorile {@code /uploads} în formatul {@code Error} din contract (coduri stabile). */
+/** {@code /uploads} errors in the contract's {@code Error} format (stable codes). */
 final class UploadErrors {
 
     static final int BUSY_RETRY_AFTER_SECONDS = 1;

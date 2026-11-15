@@ -21,9 +21,9 @@ import ro.filegrid.storage.StorageAdapter;
 import ro.filegrid.storage.StorageAdapterRegistry;
 
 /**
- * Alege storage-ul unei scrieri din {@link PolicyEngine}: principalul dacă e sănătos, altfel rezerva. Starea
- * {@code health()} se ține minte {@value #HEALTH_TTL_MILLIS} ms, ca o cerere să nu deschidă o conexiune de verificare
- * per storage (FTP). Circuit breaker-ul și retry-ul vin la C11.
+ * Picks the storage for a write from {@link PolicyEngine}: the primary if healthy, otherwise the fallback.
+ * {@code health()} is cached for {@value #HEALTH_TTL_MILLIS} ms so a request does not open a probe connection per
+ * storage (FTP). Circuit breaker and retry are layered on top (C11).
  */
 @Component
 public class StorageSelector {
@@ -48,8 +48,8 @@ public class StorageSelector {
     }
 
     /**
-     * Storage-urile de încercat, în ordine: cel ales de politică (principal sau, dacă e căzut, rezerva), apoi
-     * rezerva, dacă e sănătoasă (pentru o scriere care eșuează deși verificarea era bună). Gol: ambele sunt căzute.
+     * Storage backends to try, in order: the one the policy picked (primary, or the fallback if the primary is down),
+     * then the fallback if healthy (for a write that fails despite a good health check). Empty: both are down.
      */
     public List<StorageAdapter> candidates(Category category) {
         CategoryPolicy policy = policies.policy(category);
@@ -63,7 +63,7 @@ public class StorageSelector {
         return result;
     }
 
-    /** Marchează storage-ul căzut după o scriere eșuată, ca următoarele cereri să treacă direct pe rezervă. */
+    /** Marks a storage as down after a failed write, so subsequent requests go straight to the fallback. */
     public void markDown(StorageType type) {
         health.put(type, new Health(false, clock.instant().plusMillis(HEALTH_TTL_MILLIS)));
     }
@@ -78,7 +78,7 @@ public class StorageSelector {
             try {
                 return adapter.health().up();
             } catch (RuntimeException e) {
-                log.warn("Verificarea storage-ului {} a eșuat: {}", type, e.getMessage());
+                log.warn("Health check of storage {} failed: {}", type, e.getMessage());
                 return false;
             }
         }).orElse(false);

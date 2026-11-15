@@ -16,7 +16,7 @@ import ro.filegrid.ingest.FileRecord;
 import ro.filegrid.ingest.FileSearch;
 import ro.filegrid.ingest.IngestErrors;
 
-/** {@code GET /files} și {@code GET /files/{id}} (C8): citește din {@code files}, rolul vine din {@link FileAccess}. */
+/** {@code GET /files} and {@code GET /files/{id}} (C8): reads {@code files}; the role check comes from {@link FileAccess}. */
 @Service
 @Profile("db")
 public class FileQueryService {
@@ -31,7 +31,7 @@ public class FileQueryService {
         this.access = access;
     }
 
-    /** Pagina de rezultate; fără {@code category} se restrânge la categoriile permise rolului. */
+    /** One page of results; without {@code category} it is restricted to the categories the role may see. */
     public Page search(Authentication user, Category category, String q, Instant from, Instant to, int page,
                        int size) {
         if (category != null) {
@@ -47,19 +47,19 @@ public class FileQueryService {
         return new Page(result.items().stream().map(access::reveal).toList(), page, size, result.total(), (int) pages);
     }
 
-    /** Fișierul confirmat, după verificarea rolului pe categorie (acțiunea {@code READ}); numele în clar. */
+    /** The confirmed file after the per-category role check (action {@code READ}); plaintext name. */
     public FileRecord get(Authentication user, UUID id) {
         return get(user, id, "READ");
     }
 
-    /** La fel, pentru o acțiune anume ({@code DOWNLOAD}, {@code VERIFY}, ...): un refuz se auditează cu ea. */
+    /** Same, for a specific action ({@code DOWNLOAD}, {@code VERIFY}, ...): a denial is audited with it. */
     public FileRecord get(Authentication user, UUID id, String action) {
         FileRecord file = lookup(id);
         access.requireRole(user, file.category(), action, file.id());
         return file;
     }
 
-    /** Fișierul confirmat, fără verificarea rolului (link semnat: rolul s-a verificat la crearea lui). */
+    /** The confirmed file without a role check (signed link: the role was checked when the link was created). */
     public FileRecord lookup(UUID id) {
         try {
             return files.findWithOutage(id).filter(f -> FileRecord.CONFIRMED.equals(f.status())).map(access::reveal)

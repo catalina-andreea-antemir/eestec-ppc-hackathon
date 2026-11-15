@@ -8,7 +8,7 @@ import { loadable, loadInto, StatCard } from '../stat-card';
 
 const PAGE_SIZE = 10;
 
-/** Cartea 3: consumuri anormale și contoare care nu mai trimit nimic. */
+/** Card 3: abnormal consumption and meters that stopped reporting. */
 @Component({
   selector: 'app-anomalies-card',
   imports: [StatCard, DecimalPipe, DatePipe],

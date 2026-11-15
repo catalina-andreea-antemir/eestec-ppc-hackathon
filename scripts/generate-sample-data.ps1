@@ -1,20 +1,20 @@
 <#
 .SYNOPSIS
-  Genereaza datele de test FileGrid in sample-data/ (taskul F3).
+  Generates the FileGrid test data in sample-data/ (task F3).
 
 .DESCRIPTION
-  Creeaza cele 4 categorii de fisiere din contract (docs/api/openapi.yaml):
-    meter-readings/     loturi JSON {meterId, zone, readings:[{ts,kwh}]} de 1-50 KB + anomalies-expected.csv
-    outage-records/     fisiere CSV de avarie de 1-10 MB + manifest.json (zone, stationId, occurredAt)
-    connection-docs/    PDF-uri si PNG-uri mici, cu date personale EXCLUSIV FICTIVE
-    inspection-videos/  .mp4 de 100 MiB, 500 MiB si 1,1 GiB (ignorate de Git), scrise in streaming
+  Creates the 4 file categories from the contract (docs/api/openapi.yaml):
+    meter-readings/     JSON batches {meterId, zone, readings:[{ts,kwh}]} of 1-50 KB + anomalies-expected.csv
+    outage-records/     outage CSV files of 1-10 MB + manifest.json (zone, stationId, occurredAt)
+    connection-docs/    small PDFs and PNGs with STRICTLY FICTIONAL personal data
+    inspection-videos/  .mp4 files of 100 MiB, 500 MiB and 1.1 GiB (ignored by Git), written as a stream
 
-  Datele (in afara de continutul video-urilor) sunt deterministe: aceeasi samanta => aceiasi octeti,
-  identici cu cei produsi de scripts/generate-sample-data.sh.
+  Everything except the video payload is deterministic: same seed => same bytes,
+  identical to what scripts/generate-sample-data.sh produces.
 
-  Idempotent: fisierele existente sunt sarite; -Force le regenereaza. Video-urile cu marime gresita
-  (de exemplu dupa o intrerupere) se regenereaza automat. Fisierele se scriu intai ca .tmp-<nume> si
-  abia la final se redenumesc, deci un fisier existent e mereu complet.
+  Idempotent: existing files are skipped; -Force regenerates them. Videos with the wrong size
+  (e.g. after an interruption) are regenerated automatically. Files are first written as .tmp-<name>
+  and renamed only at the end, so an existing file is always complete.
 
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File scripts\generate-sample-data.ps1
@@ -25,15 +25,15 @@
 #>
 [CmdletBinding()]
 param(
-    # Directorul de iesire (implicit <repo>/sample-data).
+    # Output directory (default <repo>/sample-data).
     [string]$OutputDir = '',
-    # Regenereaza si fisierele care exista deja.
+    # Regenerate files that already exist.
     [switch]$Force,
-    # Sare peste video-urile de 500 MiB si 1,1 GiB (il pastreaza pe cel de 100 MiB).
+    # Skip the 500 MiB and 1.1 GiB videos (keeps the 100 MiB one).
     [switch]$SkipLargeVideos,
-    # Sare peste toate video-urile.
+    # Skip all videos.
     [switch]$SkipVideos,
-    # Samanta generatorului pseudo-aleator (aceeasi samanta => aceleasi date).
+    # PRNG seed (same seed => same data).
     [long]$Seed = 20261114
 )
 
@@ -43,9 +43,9 @@ Set-StrictMode -Version 2.0
 $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 $Stats = @{ created = 0; skipped = 0 }
 
-# ---------------------------------------------------------------- utilitare
+# ---------------------------------------------------------------- helpers
 
-# Generator MINSTD (Park-Miller): acelasi algoritm si in scriptul bash, ca datele sa fie identice.
+# MINSTD (Park-Miller) generator: the bash script uses the same algorithm, so the data is identical.
 $script:Rng = 1L
 function Set-RngSeed([long]$value) { $script:Rng = ($value % 2147483646L) + 1L }
 function Get-Rand([long]$n) {
@@ -58,7 +58,7 @@ function Ensure-Dir([string]$path) {
     if (-not (Test-Path -LiteralPath $path)) { New-Item -ItemType Directory -Path $path | Out-Null }
 }
 
-# Decide daca un fisier trebuie (re)generat. $expectedSize > 0 cere si marimea exacta.
+# Decides whether a file must be (re)generated. $expectedSize > 0 also requires the exact size.
 function Need-File([string]$path, [long]$expectedSize = 0) {
     if ($Force) { return $true }
     if (-not (Test-Path -LiteralPath $path)) { return $true }
@@ -94,9 +94,9 @@ function Write-BytesFile([string]$path, [byte[]]$bytes) {
 function Pad([long]$v, [int]$w) { return $v.ToString().PadLeft($w, '0') }
 function Fmt-Milli([long]$m) { return '{0}.{1}' -f (Div $m 1000), (Pad ($m % 1000) 3) }
 
-# ---------------------------------------------------------------- pregatire
+# ---------------------------------------------------------------- setup
 
-# In Windows PowerShell 5.1 $PSScriptRoot nu e disponibil in valorile implicite din param(), deci il calculam aici.
+# In Windows PowerShell 5.1 $PSScriptRoot is not available in param() defaults, so it is resolved here.
 if ($OutputDir -eq '') {
     $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
     $OutputDir = Join-Path (Split-Path -Parent $scriptDir) 'sample-data'
@@ -109,14 +109,14 @@ $dirDocs   = Join-Path $OutputDir 'connection-docs'
 $dirVideo  = Join-Path $OutputDir 'inspection-videos'
 foreach ($d in @($dirMeter, $dirOutage, $dirDocs, $dirVideo)) {
     Ensure-Dir $d
-    # resturi de la o rulare intrerupta
+    # leftovers from an interrupted run
     Get-ChildItem -LiteralPath $d -Force -Filter '.tmp-*' | Remove-Item -Force
 }
-Write-Host "Generez date de test in $OutputDir (samanta $Seed)"
+Write-Host "Generating test data in $OutputDir (seed $Seed)"
 
-# ---------------------------------------------------------------- 1. citiri contoare
+# ---------------------------------------------------------------- 1. meter readings
 
-# Factorul orar de consum (procente): noapte mic, varf dimineata si seara.
+# Hourly consumption factor (percent): low at night, peaks in the morning and evening.
 $HourFactor = @(60,60,60,60,60,60,80,115,115,100,100,100,100,100,100,100,100,110,125,125,125,125,90,90)
 
 $meters = @(
@@ -124,12 +124,12 @@ $meters = @(
     @('RO-BAN-0001377','Banat'),    @('RO-BAN-0003051','Banat'),    @('RO-BAN-0007712','Banat'),    @('RO-BAN-0010458','Banat'),
     @('RO-DOB-0000412','Dobrogea'), @('RO-DOB-0002290','Dobrogea'), @('RO-DOB-0005538','Dobrogea'), @('RO-DOB-0008804','Dobrogea')
 )
-# Loturi: meterId, zona, ziua din noiembrie 2026 (start 00:00 UTC), numar de citiri.
+# Batches: meterId, zone, day of November 2026 (starting 00:00 UTC), number of readings.
 $batches = New-Object System.Collections.ArrayList
 foreach ($day in 13, 14) {
     foreach ($m in $meters) {
         $count = 96
-        # Contorul "tacut" din contract: ultima citire la 10:30 (43 de citiri), apoi nimic.
+        # The "silent" meter from the contract: last reading at 10:30 (43 readings), then nothing.
         if ($m[0] -eq 'RO-DOB-0000412' -and $day -eq 14) { $count = 43 }
         [void]$batches.Add(@($m[0], $m[1], $day, $count))
     }
@@ -140,10 +140,10 @@ foreach ($day in 13, 14) {
 [void]$batches.Add(@('RO-MUN-0040001','Muntenia',7,700))
 [void]$batches.Add(@('RO-DOB-0040002','Dobrogea',7,700))
 
-# Consumuri anormale (kWh * 1000) puse intentionat: "meterId_zi_indexCitire" => valoare.
+# Deliberate consumption anomalies (kWh * 1000): "meterId_day_readingIndex" => value.
 $Spikes = @{
-    'RO-BAN-0001377_14_13'  = 6840   # 2026-11-14T03:15Z, exact ca exemplul din contract
-    'RO-MUN-0009920_14_35'  = 4120   # 2026-11-14T08:45Z, exact ca exemplul din contract
+    'RO-BAN-0001377_14_13'  = 6840   # 2026-11-14T03:15Z, matches the contract example
+    'RO-MUN-0009920_14_35'  = 4120   # 2026-11-14T08:45Z, matches the contract example
     'RO-DOB-0002290_13_8'   = 5310   # 2026-11-13T02:00Z
     'RO-BAN-0007712_13_79'  = 4960   # 2026-11-13T19:45Z
     'RO-MUN-0040001_7_300'  = 7250   # 2026-11-10T03:00Z
@@ -184,12 +184,12 @@ for ($k = 0; $k -lt $batches.Count; $k++) {
 }
 $anomFile = Join-Path $dirMeter 'anomalies-expected.csv'
 if (Need-File $anomFile) { Write-TextFile $anomFile (($anomalyLines -join "`n") + "`n") }
-Write-Host ("  meter-readings:    {0} loturi JSON" -f $batches.Count)
+Write-Host ("  meter-readings:    {0} JSON batches" -f $batches.Count)
 
-# ---------------------------------------------------------------- 2. avarii (1-10 MB)
+# ---------------------------------------------------------------- 2. outages (1-10 MB)
 
-# Distributie intentionat inegala: Muntenia 7, Dobrogea 4, Banat 2 (varfuri la 8-9 in Muntenia/Dobrogea, 14 in Banat).
-# idx, zona, stationId ('' = fara statie), ziua, ora, minutul, marimea tinta in KiB
+# Deliberately uneven distribution: Muntenia 7, Dobrogea 4, Banat 2 (peaks at 8-9 in Muntenia/Dobrogea, 14 in Banat).
+# idx, zone, stationId ('' = no station), day, hour, minute, target size in KiB
 $outages = @(
     @(1,'Muntenia','ST-BRASOV-114',14,9,32,4608),
     @(2,'Muntenia','ST-PLOIESTI-031',14,8,47,9600),
@@ -221,9 +221,9 @@ foreach ($o in $outages) {
 
     if (Need-File $file) {
         Set-RngSeed ($Seed + 1000003L * $idx)
-        $outRows = 2400 + (Get-Rand 4800)          # avaria dureaza 10-30 de minute (randuri la 250 ms)
+        $outRows = 2400 + (Get-Rand 4800)          # the outage lasts 10-30 minutes (one row every 250 ms)
         $feeder = 'F0' + (($idx % 6) + 1)
-        $faultIdx = 2400                           # avaria apare la 10 minute dupa inceputul fisierului
+        $faultIdx = 2400                           # the fault occurs 10 minutes into the file
         $t0 = (($day * 24 + $hour) * 60 + $minute) * 60000 - 600000
         $tmp = Tmp-Path $file
         $w = New-Object System.IO.StreamWriter($tmp, $false, $Utf8NoBom, 1048576)
@@ -263,14 +263,14 @@ foreach ($o in $outages) {
     if ($station -ne '') { $stationJson = "`"$station`"" }
     [void]$manifest.Add(("    {{`n      `"fileName`": `"{0}`",`n      `"category`": `"OUTAGE_RECORD`",`n      `"zone`": `"{1}`",`n      `"stationId`": {2},`n      `"occurredAt`": `"{3}`",`n      `"sizeBytes`": {4}`n    }}" -f $name, $zone, $stationJson, $occurredAt, $size))
 }
-# Manifestul se rescrie mereu (e mic si reflecta marimile reale de pe disc).
+# The manifest is always rewritten (it is small and reflects the actual sizes on disk).
 Write-TextFile (Join-Path $dirOutage 'manifest.json') ("{`n  `"files`": [`n" + ($manifest -join ",`n") + "`n  ]`n}`n")
-Write-Host ("  outage-records:    {0} fisiere CSV + manifest.json" -f $outages.Count)
+Write-Host ("  outage-records:    {0} CSV files + manifest.json" -f $outages.Count)
 
-# ---------------------------------------------------------------- 3. documente de racordare (fictive)
+# ---------------------------------------------------------------- 3. connection documents (fictional)
 
 function New-Pdf([string[]]$lines) {
-    # PDF 1.4 minimal, o pagina A4, Helvetica, doar ASCII (offset-urile xref = numar de caractere).
+    # Minimal PDF 1.4, one A4 page, Helvetica, ASCII only (so xref offsets = character counts).
     $content = "BT`n/F1 11 Tf`n50 790 Td`n16 TL`n"
     foreach ($l in $lines) {
         $esc = $l.Replace('\', '\\').Replace('(', '\(').Replace(')', '\)')
@@ -316,7 +316,7 @@ function Png-Chunk([string]$type, [byte[]]$data) {
     return [byte[]]((BE32 $data.Length) + $td + (BE32 (Get-Crc32 $td)))
 }
 
-# PNG in tonuri de gri, 8 biti, comprimat "stored" (fara compresie) => identic cu varianta bash.
+# 8-bit grayscale PNG with "stored" (uncompressed) deflate blocks => byte-identical to the bash version.
 function New-Png([int]$width, [int]$height, [scriptblock]$pixel) {
     $raw = New-Object 'byte[]' (($width + 1) * $height)
     $p = 0
@@ -361,7 +361,7 @@ foreach ($doc in $docs) {
     if (Need-File $file) { Write-BytesFile $file (New-Pdf $doc[1]) }
 }
 
-# Plan de situatie fictiv: chenar, grila, o "cladire" si o linie de racord.
+# Fictional site plan: border, grid, a "building" and a connection line.
 $file = Join-Path $dirDocs 'plan-situatie-fictiv-005.png'
 if (Need-File $file) {
     Write-BytesFile $file (New-Png 160 100 {
@@ -376,7 +376,7 @@ if (Need-File $file) {
         return 255
     })
 }
-# "Semnatura" fictiva: o curba in zigzag pe fundal alb.
+# Fictional "signature": a zigzag curve on a white background.
 $file = Join-Path $dirDocs 'semnatura-fictiv-006.png'
 if (Need-File $file) {
     Write-BytesFile $file (New-Png 120 40 {
@@ -387,12 +387,12 @@ if (Need-File $file) {
         return 255
     })
 }
-Write-Host ("  connection-docs:   {0} PDF + 2 PNG (date fictive)" -f $docs.Count)
+Write-Host ("  connection-docs:   {0} PDF + 2 PNG (fictional data)" -f $docs.Count)
 
-# ---------------------------------------------------------------- 4. video-uri de inspectie
+# ---------------------------------------------------------------- 4. inspection videos
 
-# Antet "ftyp" ca fisierul sa fie recunoscut ca MP4; restul sunt octeti pseudo-aleatori, scrisi in blocuri
-# de 4 MiB (fara sa tinem fisierul in memorie). Fiecare bloc are indexul stampilat, deci bucatile difera.
+# An "ftyp" header so the file is recognized as MP4; the rest is pseudo-random bytes written in 4 MiB blocks
+# (the file is never held in memory). Each block is stamped with its index, so chunks differ.
 function Write-Video([string]$path, [long]$size) {
     $tmp = Tmp-Path $path
     $fs = New-Object System.IO.FileStream($tmp, [IO.FileMode]::Create, [IO.FileAccess]::Write, [IO.FileShare]::None, 1048576)
@@ -418,15 +418,15 @@ function Write-Video([string]$path, [long]$size) {
 $videos = @(
     @('drona-inspectie-100MB.mp4', 104857600L, $false),
     @('drona-inspectie-500MB.mp4', 524288000L, $true),
-    @('drona-linie-110kV-tronson-7.mp4', 1181116006L, $true)   # 1,1 GiB, numele si marimea din exemplul contractului
+    @('drona-linie-110kV-tronson-7.mp4', 1181116006L, $true)   # 1.1 GiB, name and size from the contract example
 )
 foreach ($v in $videos) {
-    if ($SkipVideos -or ($SkipLargeVideos -and $v[2])) { Write-Host "  inspection-videos: sar peste $($v[0])"; continue }
+    if ($SkipVideos -or ($SkipLargeVideos -and $v[2])) { Write-Host "  inspection-videos: skipping $($v[0])"; continue }
     $file = Join-Path $dirVideo $v[0]
     if (Need-File $file $v[1]) {
-        Write-Host ("  inspection-videos: scriu {0} ({1:N0} octeti)..." -f $v[0], $v[1])
+        Write-Host ("  inspection-videos: writing {0} ({1:N0} bytes)..." -f $v[0], $v[1])
         Write-Video $file $v[1]
     }
 }
 
-Write-Host ("Gata: {0} fisiere create, {1} existau deja (folositi -Force ca sa le regenerati)." -f $Stats.created, $Stats.skipped)
+Write-Host ("Done: {0} files created, {1} already existed (use -Force to regenerate them)." -f $Stats.created, $Stats.skipped)

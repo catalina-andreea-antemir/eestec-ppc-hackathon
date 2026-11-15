@@ -1,9 +1,9 @@
-// Upload mare (F8, planul echipei): un video de 1,1 GB prin upload in bucati (/uploads/*), rulat la cerere.
-// Continutul se genereaza bucata cu bucata in memorie (un buffer de baza de chunkSize, cu numarul bucatii scris la
-// inceput), iar SHA-256 se calculeaza incremental, deci k6 nu tine niciodata 1,1 GB. La final se compara hash-ul
-// local cu cel din raspunsul `complete` si cu /verify, plus un Range de control.
-//   BIG_SIZE_MB -> marimea in MiB (implicit 1100 = 1,1 GB)
-// Contractul nu are DELETE pentru fisiere: id-ul fisierului creat se afiseaza in rezumat, ca sa poata fi sters.
+// Large upload (F8): a 1.1 GB video through chunked upload (/uploads/*), run on demand.
+// Content is generated chunk by chunk in memory (one base buffer of chunkSize with the chunk number written at the
+// start) and SHA-256 is computed incrementally, so k6 never holds 1.1 GB. At the end the local hash is compared
+// with the `complete` response and with /verify, plus a control Range request.
+//   BIG_SIZE_MB -> size in MiB (default 1100 = 1.1 GB)
+// The contract has no DELETE for files: the created file id is printed in the summary so it can be removed.
 import http from 'k6/http';
 import { check } from 'k6';
 import crypto from 'k6/crypto';
@@ -34,7 +34,7 @@ export const options = {
 function baseBuffer(size) {
   const buf = new Uint8Array(size);
   let x = 0x9e3779b9 | 0;
-  // 32 de biti o data: xorshift scris pe 4 octeti
+  // 32 bits at a time: xorshift written over 4 bytes
   for (let i = 0; i + 3 < size; i += 4) {
     x ^= x << 13; x ^= x >>> 17; x ^= x << 5;
     buf[i] = x & 0xff; buf[i + 1] = (x >>> 8) & 0xff; buf[i + 2] = (x >>> 16) & 0xff; buf[i + 3] = (x >>> 24) & 0xff;
@@ -51,7 +51,7 @@ export default function () {
   track(init, [201], 'video_init');
   if (!check(init, { 'init 201': (r) => r.status === 201 })) return;
   const s = init.json();
-  console.log(`upload ${s.uploadId}: ${SIZE} octeti, ${s.totalChunks} bucati de ${s.chunkSize}, storage ${s.storage}`);
+  console.log(`upload ${s.uploadId}: ${SIZE} bytes, ${s.totalChunks} chunks of ${s.chunkSize}, storage ${s.storage}`);
 
   const base = baseBuffer(s.chunkSize);
   const hasher = crypto.createHash('sha256');
@@ -61,7 +61,7 @@ export default function () {
     const len = Math.min(s.chunkSize, SIZE - sent);
     const chunk = new Uint8Array(len);
     chunk.set(len === base.length ? base : base.subarray(0, len));
-    // bucati diferite intre ele: numarul bucatii in primii 4 octeti
+    // make chunks differ: chunk number in the first 4 bytes
     chunk[0] = n & 0xff; chunk[1] = (n >>> 8) & 0xff; chunk[2] = 0x6b; chunk[3] = 0x36;
     hasher.update(chunk.buffer);
     let put;
@@ -72,12 +72,12 @@ export default function () {
         responseCallback: http.expectedStatuses(200, 409, 429, 503),
       });
       if (put.status === 200) break;
-      console.warn(`bucata ${n}: ${put.status}, reincercare ${attempt}`);
+      console.warn(`chunk ${n}: ${put.status}, retry ${attempt}`);
     }
     track(put, [200], 'video_chunk');
-    if (!check(put, { 'bucata confirmata': (r) => r.status === 200 })) return;
+    if (!check(put, { 'chunk confirmed': (r) => r.status === 200 })) return;
     sent += len;
-    if (n % 10 === 0 || n === s.totalChunks) console.log(`bucata ${n}/${s.totalChunks} (${Math.round(sent / 1048576)} MiB)`);
+    if (n % 10 === 0 || n === s.totalChunks) console.log(`chunk ${n}/${s.totalChunks} (${Math.round(sent / 1048576)} MiB)`);
   }
   const localSha = hasher.digest('hex');
 
@@ -90,11 +90,11 @@ export default function () {
   check(done, {
     'complete 201': (r) => r.status === 201 || r.status === 200,
     'sha256 server = sha256 local': (r) => r.json('sha256') === localSha,
-    'marime corecta': (r) => r.json('size') === SIZE,
+    'correct size': (r) => r.json('size') === SIZE,
   });
   if (done.status !== 201 && done.status !== 200) return;
   const fileId = done.json('id');
-  console.log(`fisier ${fileId} pe ${done.json('storage')}, sha256 ${localSha}, upload ${uploadSecs.toFixed(1)} s`);
+  console.log(`file ${fileId} on ${done.json('storage')}, sha256 ${localSha}, upload ${uploadSecs.toFixed(1)} s`);
 
   const v = http.get(`${BASE_URL}/files/${fileId}/verify`, {
     headers: auth('teren'), tags: { op: 'verify', name: 'GET /files/{id}/verify' }, timeout: LONG,
@@ -102,7 +102,7 @@ export default function () {
   track(v, [200], 'verify');
   check(v, { 'verify 200 ok': (r) => r.status === 200 && r.json('ok') === true });
 
-  // Range de control pe ultimii 1024 de octeti (fara sa descarcam 1,1 GB)
+  // control Range over the last 1024 bytes (without downloading 1.1 GB)
   const r = http.get(`${BASE_URL}/files/${fileId}/download`, {
     headers: auth('teren', { Range: `bytes=${SIZE - 1024}-` }), responseType: 'binary',
     tags: { op: 'download', name: 'GET /files/{id}/download' }, timeout: LONG,
@@ -112,15 +112,15 @@ export default function () {
   const expectedTail = base.subarray(lastLen - 1024, lastLen);
   check(r, {
     'Range final -> 206': (x) => x.status === 206,
-    'ultimii 1024 octeti corecti': (x) => x.status === 206 && sha256hex(x.body) === sha256hex(expectedTail.slice().buffer),
+    'last 1024 bytes correct': (x) => x.status === 206 && sha256hex(x.body) === sha256hex(expectedTail.slice().buffer),
   });
 }
 
-// handleSummary nu vede variabilele VU-ului: durata vine din metrica, id-ul fisierului din logul de mai sus.
+// handleSummary cannot see VU variables: duration comes from the metric, the file id from the log above.
 export const handleSummary = makeSummary('big-upload', (data) => {
   const t = data.metrics.filegrid_big_upload_s ? data.metrics.filegrid_big_upload_s.values.max : 0;
   return [
-    `Upload mare: ${Math.round(SIZE / 1048576)} MiB in ${t.toFixed(1)} s` + (t ? ` (${(SIZE / 1048576 / t).toFixed(1)} MiB/s)` : ''),
-    'Fisierul creat: vezi linia "fisier <id>" din log (contractul nu are DELETE; se sterge manual).',
+    `Large upload: ${Math.round(SIZE / 1048576)} MiB in ${t.toFixed(1)} s` + (t ? ` (${(SIZE / 1048576 / t).toFixed(1)} MiB/s)` : ''),
+    'Created file: see the "file <id>" line in the log (the contract has no DELETE; remove it manually).',
   ];
 });

@@ -26,10 +26,10 @@ import ro.filegrid.storage.StorageKeys;
 import ro.filegrid.storage.StorageUnavailableException;
 
 /**
- * Criteriile de acceptanță C5 pe MinIO-ul real (se sare fără MinIO): fișier de 200 MB urcat și descărcat în streaming cu
- * hash identic (rulat și cu {@code -DargLine=-Xmx256m}), descărcare parțială exactă, upload în bucăți de 16 MiB cu o
- * bucată retrimisă și una întreruptă, abort fără upload-uri multipart neterminate. Datele se generează din
- * {@link GeneratedData}, deci nimic de dimensiunea fișierului nu stă în memorie.
+ * C5 acceptance criteria on the real MinIO (skipped without MinIO): a 200 MB file uploaded and downloaded as a stream
+ * with an identical hash (also run with {@code -DargLine=-Xmx256m}), exact partial download, a chunked upload of 16 MiB
+ * chunks with one resent and one interrupted chunk, and an abort that leaves no unfinished multipart uploads. Data
+ * comes from {@link GeneratedData}, so nothing file-sized is held in memory.
  */
 class S3AdapterLargeObjectTest {
 
@@ -77,7 +77,7 @@ class S3AdapterLargeObjectTest {
         assertThat(actual).isEqualTo(expected);
         assertThat(s3.pendingUploads(key)).isEmpty();
 
-        // Descărcare parțială: exact octeții ceruți, inclusiv peste granița părților de 16 MiB și la sfârșit.
+        // Partial download: exactly the requested bytes, including across 16 MiB part boundaries and at the end.
         assertRange(key, seed, ByteRange.of(123_456_789, 1_000), 1_000);
         assertRange(key, seed, ByteRange.of(16L * MIB - 10, 20), 20);
         assertRange(key, seed, ByteRange.from(size - 777), 777);
@@ -85,7 +85,7 @@ class S3AdapterLargeObjectTest {
         try (InputStream in = s3.get(key, ByteRange.from(size))) {
             assertThat(in.readAllBytes()).isEmpty();
         }
-        // Închiderea înainte de sfârșit (client care renunță) nu blochează și nu golește restul obiectului.
+        // Closing before the end (a client giving up) neither blocks nor drains the rest of the object.
         try (InputStream in = s3.get(key, ByteRange.full())) {
             assertThat(in.readNBytes(1_000)).isEqualTo(GeneratedData.bytes(seed, 0, 1_000));
         }
@@ -102,7 +102,7 @@ class S3AdapterLargeObjectTest {
 
         List<ChunkReceipt> receipts = new ArrayList<>();
         receipts.add(append(upload, 1, seed));
-        // Bucata 2: prima trimitere are alt conținut, a doua se întrerupe la jumătate, a treia e cea bună.
+        // Chunk 2: the first send has different content, the second is cut off midway, the third is the good one.
         append(upload, 2, seed + 1);
         assertThatThrownBy(() -> s3.append(upload, 2, GeneratedData.interrupted(
                 GeneratedData.stream(seed, upload.offsetOf(2), chunk), chunk / 2), chunk))
@@ -167,7 +167,7 @@ class S3AdapterLargeObjectTest {
         assertThat(s3.delete(key)).isFalse();
     }
 
-    // --- utilitare -------------------------------------------------------------------------------------------
+    // --- helpers ---------------------------------------------------------------------------------------------
 
     private static ChunkReceipt append(ChunkedUpload upload, int n, long seed) {
         long length = upload.expectedLength(n);

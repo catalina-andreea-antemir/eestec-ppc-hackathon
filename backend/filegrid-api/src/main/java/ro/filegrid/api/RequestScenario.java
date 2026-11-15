@@ -8,8 +8,8 @@ import jakarta.servlet.http.HttpServletRequest;
 import ro.filegrid.ingest.IngestErrors;
 
 /**
- * Header-ul opțional {@code X-Scenario} ({@code normal}, {@code peak}, {@code storm}...). Se validează și se păstrează
- * ca atribut al cererii; îl scrie în {@code operation_metrics} recorder-ul de la C12.
+ * Optional {@code X-Scenario} header ({@code normal}, {@code peak}, {@code storm}...). Validated and kept as a
+ * request attribute; the C12 recorder writes it to {@code operation_metrics}.
  */
 public final class RequestScenario {
 
@@ -20,7 +20,7 @@ public final class RequestScenario {
     private RequestScenario() {
     }
 
-    /** Citește și reține scenariul; valoare invalidă → 400. */
+    /** Reads and stores the scenario; an invalid value -> 400. */
     public static Optional<String> read(HttpServletRequest request) {
         String value = request.getHeader(HEADER);
         if (value == null || value.isEmpty()) {
@@ -33,7 +33,7 @@ public final class RequestScenario {
         return Optional.of(value);
     }
 
-    /** Scenariul reținut de {@link #read(HttpServletRequest)}, dacă există. */
+    /** The scenario stored by {@link #read(HttpServletRequest)}, if any. */
     public static Optional<String> of(HttpServletRequest request) {
         return Optional.ofNullable((String) request.getAttribute(ATTRIBUTE));
     }

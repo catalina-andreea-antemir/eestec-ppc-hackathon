@@ -6,11 +6,11 @@ import java.util.Map;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
- * Configurația {@code filegrid.security} din {@code application.yml}; valorile secrete vin doar din variabile de mediu
- * ({@code JWT_SECRET}, {@code FILEGRID_USER_*_PASSWORD}), generate de {@code scripts/start.*} în {@code .env}.
+ * {@code filegrid.security} configuration from {@code application.yml}; secret values come only from environment
+ * variables ({@code JWT_SECRET}, {@code FILEGRID_USER_*_PASSWORD}) generated into {@code .env} by {@code scripts/start.*}.
  *
- * @param jwt   cheia și duratele token-urilor
- * @param users utilizatorii de test (login minim, C4): nume → rol și parolă
+ * @param jwt   token key and lifetimes
+ * @param users test users (minimal login, C4): name -> role and password
  */
 @ConfigurationProperties("filegrid.security")
 public record SecurityProperties(Jwt jwt, Map<String, User> users) {
@@ -20,17 +20,17 @@ public record SecurityProperties(Jwt jwt, Map<String, User> users) {
     }
 
     /**
-     * @param secret          cheia HMAC (HS256), în base64, cel puțin 32 de octeți după decodare
-     * @param issuer          claim-ul {@code iss}
-     * @param accessTokenTtl  valabilitatea {@code accessToken} (15 minute)
-     * @param refreshTokenTtl valabilitatea {@code refreshToken} (8 ore)
+     * @param secret          HMAC key (HS256), base64, at least 32 bytes after decoding
+     * @param issuer          the {@code iss} claim
+     * @param accessTokenTtl  {@code accessToken} lifetime (15 minutes)
+     * @param refreshTokenTtl {@code refreshToken} lifetime (8 hours)
      */
     public record Jwt(String secret, String issuer, Duration accessTokenTtl, Duration refreshTokenTtl) {
     }
 
     /**
-     * @param role     rolul
-     * @param password parola în clar, din mediu; goală = utilizator dezactivat
+     * @param role     the role
+     * @param password plaintext password from the environment; empty = disabled user
      */
     public record User(Role role, String password) {
     }

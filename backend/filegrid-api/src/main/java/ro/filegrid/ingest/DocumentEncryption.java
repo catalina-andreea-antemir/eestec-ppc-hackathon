@@ -4,30 +4,30 @@ import java.io.IOException;
 import java.io.InputStream;
 
 /**
- * Pasul de transformare dinaintea storage-ului pentru categoriile cu {@code encryption: true} în politică (4.1
- * „Criptare”): AES-256-GCM pe segmente, în streaming ({@link AesGcmDocumentEncryption}).
+ * Pre-storage transformation step for categories with {@code encryption: true} in their policy:
+ * streaming segmented AES-256-GCM ({@link AesGcmDocumentEncryption}).
  */
 public interface DocumentEncryption {
 
-    /** Mărimea octeților stocați (cifrați) pentru un original de {@code plainLength} octeți. */
+    /** Size of the stored (encrypted) bytes for a {@code plainLength}-byte original. */
     long encryptedLength(long plainLength);
 
-    /** Fluxul cifrat, produs în streaming din {@code plain}; apelantul îl citește o singură dată și îl închide. */
+    /** Encrypted stream produced on the fly from {@code plain}; the caller reads it once and closes it. */
     InputStream encrypt(InputStream plain);
 
     /**
-     * Fluxul în clar, decriptat în streaming din octeții stocați. Un segment alterat, reordonat sau un flux trunchiat
-     * se semnalează cu {@link CorruptCiphertextException} (un {@code IOException}) la citire.
+     * Plaintext stream decrypted on the fly from the stored bytes. A tampered or reordered segment, or a truncated
+     * stream, is reported as {@link CorruptCiphertextException} (an {@code IOException}) on read.
      */
     InputStream decrypt(InputStream stored);
 
-    /** Numele original, criptat (text ASCII sigur de pus în {@code NVARCHAR(512)}). */
+    /** Encrypted original name (ASCII text safe to store in {@code NVARCHAR(512)}). */
     String encryptName(String name);
 
-    /** Inversul lui {@link #encryptName}; {@link CorruptCiphertextException} dacă valoarea nu e autentică. */
+    /** Inverse of {@link #encryptName}; {@link CorruptCiphertextException} if the value is not authentic. */
     String decryptName(String stored) throws CorruptCiphertextException;
 
-    /** Octeți stocați care nu se autentifică (alterați, reordonați, trunchiați) sau format necunoscut. */
+    /** Stored bytes that fail authentication (tampered, reordered, truncated) or have an unknown format. */
     class CorruptCiphertextException extends IOException {
         public CorruptCiphertextException(String message) {
             super(message);

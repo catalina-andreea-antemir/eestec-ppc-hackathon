@@ -3,8 +3,8 @@ package ro.filegrid.storage;
 import ro.filegrid.domain.StorageType;
 
 /**
- * Cheia nu există în storage la {@link StorageAdapter#get}. Pentru un fișier {@code CONFIRMED} în {@code files} înseamnă
- * pierdere de date sau ștergere manuală (se loghează și se tratează ca integritate compromisă).
+ * The key does not exist in storage on {@link StorageAdapter#get}. For a {@code CONFIRMED} file in {@code files} this
+ * means data loss or manual deletion (logged and treated as compromised integrity).
  */
 public class StorageObjectNotFoundException extends StorageException {
 

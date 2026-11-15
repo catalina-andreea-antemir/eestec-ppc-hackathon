@@ -11,7 +11,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
-/** Schelet: aplicatia porneste fara baza de date (profil implicit) si expune health/prometheus. */
+/** Smoke: the app starts without a database (default profile) and exposes health/prometheus. */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class FileGridApplicationTests {
 

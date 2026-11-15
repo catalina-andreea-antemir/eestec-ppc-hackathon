@@ -1,5 +1,5 @@
-# Alertele 1-4 sunt acum reguli Prometheus + Alertmanager (O8, observability/prometheus/rules).
-# Sterge din Grafana regulile vechi din F7, ramase in volumul grafana pe instalarile existente.
+# Alerts 1-4 are now Prometheus + Alertmanager rules (O8, observability/prometheus/rules).
+# Deletes the old F7 Grafana rules still present in the grafana volume of existing installs.
 apiVersion: 1
 
 deleteRules:

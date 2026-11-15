@@ -7,8 +7,8 @@ import { requirementsInterpretation, requirementTone, sortRequirements, TONE_LAB
 import { loadable, loadInto, StatCard } from '../stat-card';
 
 /**
- * Cartea 5: cele 4 cerințe de business ca plăcuțe verzi (îndeplinită), roșii (în pericol) sau gri
- * (date insuficiente: `current.sufficientData === false`).
+ * Card 5: the 4 business requirements as green (met), red (at risk) or grey tiles
+ * (insufficient data: `current.sufficientData === false`).
  */
 @Component({
   selector: 'app-requirements-card',

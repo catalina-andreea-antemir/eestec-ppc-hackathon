@@ -8,8 +8,8 @@ import { policyInterpretation, policyRows } from '../../../core/stats/stats-view
 import { loadable, loadInto, StatCard } from '../stat-card';
 
 /**
- * Cartea 1: unde se stochează fiecare categorie (storage-ul din politică) și cifrele măsurate în benchmark
- * pentru acel storage. Decizie pentru demo: fără recomandări, comparații sau sugestii de schimbare.
+ * Card 1: where each category is stored (the policy storage) and the benchmark figures measured for that storage.
+ * Demo decision: no recommendations, comparisons or change suggestions.
  */
 @Component({
   selector: 'app-storage-advisor-card',
@@ -18,7 +18,7 @@ import { loadable, loadInto, StatCard } from '../stat-card';
   styleUrl: './storage-advisor-card.scss',
 })
 export class StorageAdvisorCard {
-  /** Crește când utilizatorul apasă „Reîncarcă”. */
+  /** Changes when the user clicks the reload button. */
   readonly reload = input(0);
 
   private readonly api = inject(StatsApi);

@@ -17,28 +17,28 @@ import ro.filegrid.domain.Category;
 import ro.filegrid.ingest.DocumentEncryption;
 import ro.filegrid.policy.PolicyEngine;
 
-/** Starea celor 4 cerințe de business (R1–R4) față de pragurile din {@code requirements.yml}. */
+/** Status of the 4 business requirements (R1-R4) against the thresholds in {@code requirements.yml}. */
 @Service
 @Profile("db")
 public class RequirementsService {
 
-    /** Valorile măsurate; implementarea de producție citește FileGridMeta, testele dau valori fixe. */
+    /** Measured values; the production implementation reads FileGridMeta, tests supply fixed values. */
     public interface Measurements {
         long meterUnconfirmed();
 
-        /** p95 al latenței operațiilor pe avarii în fereastră; {@code samples = 0} și p95 {@code null} fără măsurători. */
+        /** p95 latency of outage operations in the window; {@code samples = 0} and a {@code null} p95 without measurements. */
         OutageLatency outageLatency(Duration window);
 
         long documentAccessDenied(Duration window);
 
-        /** Transferuri video (încărcări, bucăți, descărcări) în fereastră: {total, eșuate}. */
+        /** Video transfers (uploads, chunks, downloads) in the window: {total, failed}. */
         long[] videoTransfers(Duration window);
     }
 
     public record OutageLatency(Double p95Seconds, long samples) {
     }
 
-    /** Pragurile din {@code requirements.yml}. */
+    /** Thresholds from {@code requirements.yml}. */
     public record Thresholds(Duration window, long minSamples, long unconfirmedMax, double p95MaxSeconds,
                              long deniedMax, double failedMaxPercent) {
         public static Thresholds load() {
@@ -112,8 +112,8 @@ public class RequirementsService {
     }
 
     /**
-     * R2 și R4: cu mai puține măsurători decât {@code minSamples} datele sunt insuficiente și statusul rămâne {@code OK}
-     * (cu mesaj explicit); cu suficiente date, o depășire a pragului rămâne {@code AT_RISK}.
+     * R2 and R4: with fewer measurements than {@code minSamples} the data is insufficient and the status stays {@code OK}
+     * (with an explicit message); with enough data, exceeding the threshold means {@code AT_RISK}.
      */
     private Requirement outages(Duration w) {
         OutageLatency latency = measurements.outageLatency(w);

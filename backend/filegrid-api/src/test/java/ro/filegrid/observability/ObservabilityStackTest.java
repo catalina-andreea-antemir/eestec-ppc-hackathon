@@ -43,10 +43,10 @@ import ro.filegrid.security.Role;
 import ro.filegrid.security.TokenService;
 
 /**
- * C12 pe stack-ul real (SQL Server, MinIO, vsftpd; se sare curat fără el): după câteva operații, {@code
- * /actuator/prometheus} are seriile {@code filegrid_operation_seconds_bucket} cu etichetele corecte, în
- * {@code operation_metrics} apar rânduri cu scenariul din {@code X-Scenario}, benchmark-ul completează cele 12
- * combinații fără resturi în storage și {@code /stats/requirements} răspunde cu R1–R4. Datele de test se șterg.
+ * C12 on the real stack (SQL Server, MinIO, vsftpd; skipped cleanly without it): after a few operations,
+ * {@code /actuator/prometheus} has the {@code filegrid_operation_seconds_bucket} series with the right labels,
+ * {@code operation_metrics} gets rows with the {@code X-Scenario} value, the benchmark completes all 12
+ * combinations with nothing left in storage and {@code /stats/requirements} answers with R1-R4. Test data is deleted.
  */
 class ObservabilityStackTest {
 
@@ -124,7 +124,7 @@ class ObservabilityStackTest {
         String disp = tokens.issueAccessToken(DISP, Role.DISPATCH);
         String field = tokens.issueAccessToken(FIELD, Role.FIELD);
 
-        // --- operații cu X-Scenario: upload, download, verify --------------------------------------------------
+        // --- operations with X-Scenario: upload, download, verify ----------------------------------------------
         byte[] content = ("C12-" + RUN + "\n").repeat(2_000).getBytes(StandardCharsets.UTF_8);
         HttpResponse<byte[]> created = upload(base, admin, content);
         assertThat(created.statusCode()).as(new String(created.body(), StandardCharsets.UTF_8)).isEqualTo(201);
@@ -136,7 +136,7 @@ class ObservabilityStackTest {
         assertThat(noAuth.statusCode()).isEqualTo(401);
         assertThat(noAuth.headers().firstValue("X-Trace-Id")).isPresent();
 
-        // --- Prometheus: serii cu etichetele corecte ------------------------------------------------------------
+        // --- Prometheus: series with the right labels -----------------------------------------------------------
         String scrape = new String(get(base, "/actuator/prometheus", null).body(), StandardCharsets.UTF_8);
         for (String op : List.of("upload", "download", "verify")) {
             assertThat(scrape).as(op).containsPattern("filegrid_operation_seconds_bucket\\{[^}]*category=\"CONNECTION_DOC\""
@@ -145,7 +145,7 @@ class ObservabilityStackTest {
         assertThat(scrape).contains("filegrid_operation_seconds_count{", "filegrid_operation_seconds_sum{",
                 "filegrid_meter_unconfirmed ", "filegrid_opmetrics_dropped_total ", "filegrid_storage_up{storage=\"DB\"}");
 
-        // --- operation_metrics: rânduri cu scenariul din X-Scenario ---------------------------------------------
+        // --- operation_metrics: rows with the X-Scenario value --------------------------------------------------
         await().atMost(10, TimeUnit.SECONDS).untilAsserted(() -> assertThat(meta.queryForObject(
                 "SELECT COUNT(*) FROM dbo.operation_metrics WHERE scenario = N'it-c12' AND source = N'live' "
                         + "AND category = N'CONNECTION_DOC' AND ts >= CAST(? AS datetime2)", Integer.class, since))
@@ -163,7 +163,7 @@ class ObservabilityStackTest {
         assertThat(get(base, "/api/v1/stats/requirements", field).statusCode()).isEqualTo(403);
         assertThat(get(base, "/api/v1/stats/requirements", admin).statusCode()).isEqualTo(200);
 
-        // --- benchmark: 12 combinații, fără resturi în storage ---------------------------------------------------
+        // --- benchmark: 12 combinations, nothing left in storage -------------------------------------------------
         S3Client s3 = S3Client.builder().endpointOverride(URI.create(env.getOrDefault("S3_TEST_ENDPOINT", "http://127.0.0.1:9000")))
                 .region(software.amazon.awssdk.regions.Region.US_EAST_1).forcePathStyle(true)
                 .credentialsProvider(software.amazon.awssdk.auth.credentials.StaticCredentialsProvider.create(
@@ -253,7 +253,7 @@ class ObservabilityStackTest {
         return b;
     }
 
-    /** Variabilele de mediu, completate cu {@code .env} din rădăcina repo-ului (mediul are prioritate). */
+    /** Environment variables, completed from the repo-root {@code .env} (the environment wins). */
     private static Map<String, String> environment() {
         Map<String, String> values = new HashMap<>();
         for (Path dir = Path.of("").toAbsolutePath(); dir != null; dir = dir.getParent()) {
@@ -267,7 +267,7 @@ class ObservabilityStackTest {
                         }
                     }
                 } catch (IOException e) {
-                    // Fără .env lizibil rămân variabilele de mediu.
+                    // Without a readable .env, only the environment variables remain.
                 }
                 break;
             }

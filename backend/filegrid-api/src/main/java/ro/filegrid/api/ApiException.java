@@ -5,8 +5,8 @@ import java.util.Map;
 import org.springframework.http.HttpStatus;
 
 /**
- * O eroare care devine un răspuns {@link ApiError}; o aruncă controllerele și serviciile, iar
- * {@link ApiExceptionHandler} o transformă în JSON (cu {@code Retry-After} când e cazul).
+ * An error that becomes an {@link ApiError} response; thrown by controllers and services and turned into JSON
+ * by {@link ApiExceptionHandler} (with {@code Retry-After} when relevant).
  */
 public class ApiException extends RuntimeException {
 
@@ -30,7 +30,7 @@ public class ApiException extends RuntimeException {
 
     private final Map<String, String> headers = new java.util.LinkedHashMap<>();
 
-    /** Un header suplimentar al răspunsului de eroare (de exemplu {@code Content-Range} la 416). */
+    /** Extra header on the error response (e.g. {@code Content-Range} on 416). */
     public ApiException withHeader(String name, String value) {
         headers.put(name, value);
         return this;

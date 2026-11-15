@@ -1,19 +1,19 @@
 import { HttpErrorResponse } from '@angular/common/http';
 
-/** Formatul unic al erorilor din contract (docs/api/openapi.yaml, schema Error). */
+/** The contract's single error format (docs/api/openapi.yaml, schema Error). */
 export interface ApiError {
   status: number;
-  /** Cod stabil, de exemplu VALIDATION_ERROR, UNAUTHORIZED, CHUNK_OUT_OF_ORDER, STORAGE_UNAVAILABLE. */
+  /** Stable code, e.g. VALIDATION_ERROR, UNAUTHORIZED, CHUNK_OUT_OF_ORDER, STORAGE_UNAVAILABLE. */
   code: string;
-  /** Mesaj în română, fără date personale. */
+  /** Message in Romanian (shown as-is in the UI), never containing personal data. */
   message: string;
   traceId: string;
-  /** Doar la 429/503 și UPLOAD_BUSY; același cu header-ul Retry-After. */
+  /** Only on 429/503 and UPLOAD_BUSY; same value as the Retry-After header. */
   retryAfterSeconds?: number;
   details?: Record<string, unknown>;
 }
 
-/** Extrage ApiError din răspunsul HTTP, dacă serverul a trimis formatul din contract. */
+/** Extracts an ApiError from the HTTP response, if the server sent the contract format. */
 export function toApiError(error: unknown): ApiError | null {
   if (!(error instanceof HttpErrorResponse)) {
     return null;

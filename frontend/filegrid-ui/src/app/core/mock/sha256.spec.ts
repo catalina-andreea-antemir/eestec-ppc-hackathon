@@ -11,7 +11,7 @@ describe('Sha256 (mock)', () => {
       for (const size of split) {
         hash.update(data.subarray(offset, offset + size));
         offset += size;
-        // Starea se salvează și se reîncarcă între bucăți, ca în sessionStorage.
+        // The state is saved and reloaded between chunks, as in sessionStorage.
         hash = new Sha256(JSON.parse(JSON.stringify(hash.state())));
       }
       expect(hash.hex()).toBe(expected);

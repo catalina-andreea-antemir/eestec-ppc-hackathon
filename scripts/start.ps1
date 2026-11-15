@@ -1,9 +1,9 @@
 <#
-FileGrid PPC - pornirea intregului sistem cu o singura comanda (ADR-002). Din radacina repo-ului:
+FileGrid PPC - starts the whole system with a single command (ADR-002). From the repo root:
     .\scripts\start.ps1 [-ShowPasswords]
-1) verifica Docker Compose >= 2.20; 2) creeaza .env cu secrete aleatorii daca lipseste (si completeaza variabilele
-care lipsesc); 3) docker compose up -d --build; 4) asteapta health-ul api; 5) afiseaza adresa si utilizatorii de test.
-Merge in Windows PowerShell 5.1 si in PowerShell 7.
+1) checks Docker Compose >= 2.20; 2) creates .env with random secrets if missing (and fills in missing
+variables); 3) docker compose up -d --build; 4) waits for api health; 5) prints the URL and the test users.
+Works in Windows PowerShell 5.1 and PowerShell 7.
 #>
 [CmdletBinding()]
 param(
@@ -20,11 +20,11 @@ $envFile = Join-Path $repoRoot '.env'
 
 function Write-Info([string]$Message) { Write-Host "==> $Message" }
 function Stop-WithError([string]$Message) {
-    Write-Host "EROARE: $Message" -ForegroundColor Red
+    Write-Host "ERROR: $Message" -ForegroundColor Red
     exit 1
 }
 
-# Ruleaza o comanda nativa fara ca stderr-ul ei sa devina eroare PowerShell (5.1); intoarce codul de iesire.
+# Runs a native command without its stderr turning into a PowerShell error (5.1); returns the exit code.
 function Invoke-Native {
     param([string]$File, [string[]]$Arguments, [switch]$Quiet)
     $previous = $ErrorActionPreference
@@ -50,37 +50,37 @@ function Get-NativeOutput {
     }
 }
 
-# --- 1. Docker si Docker Compose --------------------------------------------------------------------------------
+# --- 1. Docker and Docker Compose -------------------------------------------------------------------------------
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
-    Stop-WithError 'nu gasesc comanda docker. Instaleaza Docker Desktop.'
+    Stop-WithError 'docker command not found. Install Docker Desktop.'
 }
 if ((Invoke-Native docker @('info') -Quiet) -ne 0) {
-    Stop-WithError 'Docker nu raspunde. Porneste Docker Desktop si incearca din nou.'
+    Stop-WithError 'Docker is not responding. Start Docker Desktop and try again.'
 }
 $composeVersion = Get-NativeOutput docker @('compose', 'version', '--short')
-if (-not $composeVersion) { Stop-WithError 'lipseste pluginul Docker Compose v2 (docker compose).' }
+if (-not $composeVersion) { Stop-WithError 'the Docker Compose v2 plugin (docker compose) is missing.' }
 $composeVersion = $composeVersion.TrimStart('v')
 if ($composeVersion -notmatch '^(\d+)\.(\d+)') {
-    Stop-WithError "nu pot citi versiunea Docker Compose ($composeVersion)."
+    Stop-WithError "cannot parse the Docker Compose version ($composeVersion)."
 }
 $major = [int]$Matches[1]; $minor = [int]$Matches[2]
 if ($major -lt 2 -or ($major -eq 2 -and $minor -lt 20)) {
-    Stop-WithError "Docker Compose $composeVersion este prea vechi; e nevoie de minim 2.20 (pentru include)."
+    Stop-WithError "Docker Compose $composeVersion is too old; 2.20 or newer is required (for include)."
 }
 Write-Info "Docker Compose $composeVersion"
 
-# --- 2. .env cu secrete aleatorii --------------------------------------------------------------------------------
+# --- 2. .env with random secrets ---------------------------------------------------------------------------------
 $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
 $alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
 
-# Parola alfanumerica cu cel putin o litera mare, una mica si o cifra (politica SQL Server, CHECK_POLICY = ON).
+# Alphanumeric password with at least one upper, one lower and one digit (SQL Server policy, CHECK_POLICY = ON).
 function New-RandomPassword([int]$Length = 24) {
     $bytes = New-Object byte[] 1
     while ($true) {
         $sb = New-Object System.Text.StringBuilder
         while ($sb.Length -lt $Length) {
             $rng.GetBytes($bytes)
-            # 248 = 4 x 62: respingem restul, ca distributia sa fie uniforma.
+            # 248 = 4 x 62: reject the remainder so the distribution stays uniform (no modulo bias).
             if ($bytes[0] -lt 248) { [void]$sb.Append($alphabet[$bytes[0] % 62]) }
         }
         $value = $sb.ToString()
@@ -93,7 +93,7 @@ function New-RandomBase64([int]$Count) {
     return [Convert]::ToBase64String($bytes)
 }
 
-# .env se scrie UTF-8 fara BOM si cu LF, ca sa fie citit identic de Docker Compose si de scripts/start.sh.
+# .env is written as UTF-8 without BOM and with LF, so Docker Compose and scripts/start.sh read it identically.
 $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 function Read-EnvLines {
     if (-not (Test-Path -LiteralPath $envFile)) { return @() }
@@ -113,20 +113,20 @@ function Get-EnvValue([string]$Name) {
 
 $createdEnv = $false
 if (-not (Test-Path -LiteralPath $envFile)) {
-    Write-EnvLines @("# Generat de scripts/start.* la $([DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')). NU se comite (e in .gitignore).")
+    Write-EnvLines @("# Generated by scripts/start.* at $([DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')). Do NOT commit (it is in .gitignore).")
     $createdEnv = $true
 }
 
 $script:added = New-Object System.Collections.Generic.List[string]
-# Adauga variabila daca lipseste sau e goala; valorile existente nu se schimba niciodata
-# (parolele SQL sunt deja in volumul mssql).
+# Adds the variable if missing or empty; existing values are never changed
+# (the SQL passwords are already baked into the mssql volume).
 function Set-EnvVarIfMissing([string]$Name, [string]$Value) {
     if ((Get-EnvValue $Name) -ne '') { return }
     $lines = @(Read-EnvLines | Where-Object { -not $_.StartsWith("$Name=") })
     Write-EnvLines ($lines + "$Name=$Value")
     $script:added.Add($Name)
 }
-# Variabilele optionale se scriu o singura data, cu valoarea implicita (pot ramane goale).
+# Optional variables are written once with their default value (they may stay empty).
 function Set-OptionalEnvVar([string]$Name, [string]$Value) {
     $lines = @(Read-EnvLines)
     if (@($lines | Where-Object { $_.StartsWith("$Name=") }).Count -gt 0) { return }
@@ -155,22 +155,22 @@ foreach ($user in $testUsers.Keys) {
     Set-EnvVarIfMissing ("FILEGRID_USER_{0}_PASSWORD" -f $user.ToUpperInvariant()) (New-RandomPassword 16)
 }
 
-if ($createdEnv) { Write-Info ".env creat cu valori aleatorii ($envFile)." }
-elseif ($script:added.Count -gt 0) { Write-Info (".env completat cu: " + ($script:added -join ' ')) }
-else { Write-Info '.env exista deja; il folosesc neschimbat.' }
+if ($createdEnv) { Write-Info ".env created with random values ($envFile)." }
+elseif ($script:added.Count -gt 0) { Write-Info (".env updated with: " + ($script:added -join ' ')) }
+else { Write-Info '.env already exists; using it unchanged.' }
 
-# --- 3. Pornire -------------------------------------------------------------------------------------------------
-Write-Info 'docker compose up -d --build (prima construire dureaza cateva minute)'
+# --- 3. Start ---------------------------------------------------------------------------------------------------
+Write-Info 'docker compose up -d --build (the first build takes a few minutes)'
 if ((Invoke-Native docker @('compose', 'up', '-d', '--build')) -ne 0) {
-    Write-Host "`nUltimele linii din mssql-init si minio-init:"
+    Write-Host "`nLast lines from mssql-init and minio-init:"
     [void](Invoke-Native docker @('compose', 'logs', '--no-color', '--tail', '30', 'mssql-init', 'minio-init'))
-    Stop-WithError 'docker compose up a esuat (detalii mai sus; docker compose logs <serviciu>).'
+    Stop-WithError 'docker compose up failed (details above; docker compose logs <service>).'
 }
 
-# --- 4. Asteptarea health-ului ---------------------------------------------------------------------------------
-# Healthcheck-ul containerului api foloseste GET /api/v1/health (UP cand api si FileGridMeta raspund); apoi se
-# verifica acelasi endpoint prin nginx, pe HTTPS, cum il vede interfata.
-Write-Info "astept health-ul api (maxim ${HealthTimeoutSeconds}s)"
+# --- 4. Wait for health -----------------------------------------------------------------------------------------
+# The api container healthcheck uses GET /api/v1/health (UP when api and FileGridMeta respond); then the same
+# endpoint is checked through nginx over HTTPS, the way the UI sees it.
+Write-Info "waiting for api health (up to ${HealthTimeoutSeconds}s)"
 $deadline = (Get-Date).AddSeconds($HealthTimeoutSeconds)
 while ($true) {
     $idsText = Get-NativeOutput docker @('compose', 'ps', '-q', 'api')
@@ -184,35 +184,35 @@ while ($true) {
     if ((Get-Date) -ge $deadline) {
         [void](Invoke-Native docker @('compose', 'ps', '-a'))
         [void](Invoke-Native docker @('compose', 'logs', '--no-color', '--tail', '40', 'api'))
-        Stop-WithError "api nu a devenit healthy in ${HealthTimeoutSeconds}s."
+        Stop-WithError "api did not become healthy within ${HealthTimeoutSeconds}s."
     }
     Start-Sleep -Seconds 3
 }
-Write-Info "api: $healthy/$($ids.Count) instante healthy"
+Write-Info "api: $healthy/$($ids.Count) instances healthy"
 
-# Verificarea prin nginx; curl.exe exista in Windows 10/11 (in PowerShell 5.1 `curl` e alias, deci .exe explicit).
+# Check through nginx; curl.exe ships with Windows 10/11 (in PowerShell 5.1 `curl` is an alias, hence the explicit .exe).
 $curl = Get-Command curl.exe -ErrorAction SilentlyContinue
 if ($curl) {
-    # nginx re-rezolva api la 5 s, deci primele cereri pot da 502/503 cateva secunde.
+    # nginx re-resolves api every 5 s, so the first requests may return 502/503 for a few seconds.
     $nginxDeadline = (Get-Date).AddSeconds(60)
     while ($true) {
         $code = Get-NativeOutput $curl.Source @('-ks', '--max-time', '5', '-o', 'NUL', '-w', '%{http_code}', 'https://localhost/api/v1/health')
         if ($code -eq '200') { break }
         if ((Get-Date) -ge $nginxDeadline) {
             [void](Invoke-Native docker @('compose', 'logs', '--no-color', '--tail', '20', 'nginx'))
-            Stop-WithError "GET https://localhost/api/v1/health -> $code (api e healthy, dar nginx nu il serveste)."
+            Stop-WithError "GET https://localhost/api/v1/health -> $code (api is healthy, but nginx is not serving it)."
         }
         Start-Sleep -Seconds 2
     }
     Write-Info 'GET https://localhost/api/v1/health -> 200'
 }
 
-# --- 5. Rezumat -------------------------------------------------------------------------------------------------
+# --- 5. Summary -------------------------------------------------------------------------------------------------
 Write-Host ''
-Write-Host 'FileGrid PPC ruleaza:  https://localhost   (certificat self-signed: accepta-l in browser)'
-Write-Host 'Grafana:               https://localhost/grafana/   (utilizator admin, parola GRAFANA_ADMIN_PASSWORD din .env)'
+Write-Host 'FileGrid PPC is running:  https://localhost   (self-signed certificate: accept it in the browser)'
+Write-Host 'Grafana:                  https://localhost/grafana/   (user admin, password GRAFANA_ADMIN_PASSWORD from .env)'
 Write-Host ''
-Write-Host 'Utilizatori de test (parolele sunt in .env):'
+Write-Host 'Test users (passwords are in .env):'
 foreach ($user in $testUsers.Keys) {
     if ($ShowPasswords) {
         $password = Get-EnvValue ("FILEGRID_USER_{0}_PASSWORD" -f $user.ToUpperInvariant())
@@ -222,4 +222,4 @@ foreach ($user in $testUsers.Keys) {
     }
 }
 Write-Host ''
-Write-Host 'Oprire: docker compose down    Resetare completa (sterge datele): docker compose down -v'
+Write-Host 'Stop: docker compose down    Full reset (deletes all data): docker compose down -v'

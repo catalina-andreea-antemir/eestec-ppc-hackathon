@@ -22,7 +22,7 @@ import ro.filegrid.TestSecrets;
 import ro.filegrid.security.Role;
 import ro.filegrid.security.TokenService;
 
-/** Matricea 4.4 la nivel HTTP: 401 fără token, 403 {@code FORBIDDEN} cu rol greșit (fără baza de date). */
+/** Matrix 4.4 at the HTTP level: 401 without a token, 403 {@code FORBIDDEN} with the wrong role (no database). */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class RolesApiTest {
 

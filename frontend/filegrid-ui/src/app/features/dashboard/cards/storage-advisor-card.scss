@@ -48,7 +48,7 @@ thead th {
   clip: rect(0 0 0 0);
 }
 
-/* Telefon: rămân categoria, stocarea, scorul, p95 și erorile; fără derulare orizontală. */
+/* Phone: category, storage, score, p95 and errors remain; no horizontal scrolling. */
 @media (max-width: 600px) {
   table {
     font-size: 0.8rem;

@@ -63,11 +63,11 @@ import ro.filegrid.upload.UploadService.Caller;
 import ro.filegrid.upload.UploadService.UploadSettings;
 
 /**
- * Upload în bucăți pe stack-ul real, pe fiecare storage (S3/MinIO, FTP, DB): 1,1 GB cu hash identic (suită rulată cu
- * {@code -Xmx256m}, vezi {@code argLine} din pom), reluare la jumătate pe altă instanță, două PUT simultane, storage
- * oprit în timpul upload-ului, abort și curățare. Serviciile sunt cele reale, legate direct (fără HTTP). Datele se
- * generează în streaming (nu se comit și nu ocupă memorie). Fără stack (parole, SQL Server, MinIO, FTP) testele se
- * <b>sar</b>.
+ * Chunked upload on the real stack, on every storage (S3/MinIO, FTP, DB): 1.1 GB with an identical hash (suite run
+ * with {@code -Xmx256m}, see {@code argLine} in the pom), resume midway on another instance, two concurrent PUTs,
+ * storage stopped during the upload, abort and cleanup. The services are the real ones, wired directly (no HTTP).
+ * Data is generated as a stream (never committed, never held in memory). Without the stack (passwords, SQL Server,
+ * MinIO, FTP) the tests are <b>skipped</b>.
  */
 class UploadStackTest {
 
@@ -145,9 +145,9 @@ class UploadStackTest {
                 "SELECT storage_type, CONVERT(NVARCHAR(36), upload_id) AS id, storage_upload_ref, chunk_size,"
                         + " total_size FROM dbo.upload_sessions WHERE created_by = :user", user)) {
             StorageAdapter storage = adapter((String) row.get("storage_type"));
-            // SQL Server întoarce GUID-ul cu litere mari; cheia din storage e UUID.toString() (litere mici).
+            // SQL Server returns the GUID in upper case; the storage key is UUID.toString() (lower case).
             String key = UUID.fromString((String) row.get("id")).toString();
-            // Sesiunile neterminate (multipart S3, bucăți FTP / DB) se șterg cu abort; obiectele finale cu delete.
+            // Unfinished sessions (S3 multipart, FTP / DB chunks) are deleted with abort; final objects with delete.
             try {
                 ((ChunkedWriter) storage).abort(new ChunkedUpload(key, (String) row.get("storage_upload_ref"),
                         ((Number) row.get("total_size")).longValue(), ((Number) row.get("chunk_size")).intValue()));
@@ -170,7 +170,7 @@ class UploadStackTest {
         jdbc.update("DELETE FROM dbo.upload_sessions WHERE created_by = :user", user);
     }
 
-    // --- 1,1 GB, hash identic, reluare la jumătate pe altă instanță --------------------------------------------
+    // --- 1.1 GB, identical hash, resume midway on another instance --------------------------------------------
 
     @ParameterizedTest
     @EnumSource(StorageType.class)
@@ -188,7 +188,7 @@ class UploadStackTest {
         for (int n = 1; n <= 35; n++) {
             first.put(id, n, video);
         }
-        // „Oprirea” upload-ului: clientul revine mai târziu, la o altă instanță (alt serviciu, aceleași baze).
+        // "Pausing" the upload: the client comes back later, to another instance (another service, same databases).
         Rig second = rig(type, 16 * MIB);
         UploadStatus resumed = second.service.get(id, CALLER);
         assertThat(resumed.status()).isEqualTo("IN_PROGRESS");
@@ -213,7 +213,7 @@ class UploadStackTest {
         assertThat(again.file().sha256()).isEqualTo(done.file().sha256());
     }
 
-    // --- protocolul: ordine, duplicat, lungime, incomplete, abort ----------------------------------------------
+    // --- protocol: ordering, duplicate, length, incomplete, abort ----------------------------------------------
 
     @ParameterizedTest
     @EnumSource(StorageType.class)
@@ -273,7 +273,7 @@ class UploadStackTest {
         assertThat(adapter(type.name()).exists(id.toString())).isFalse();
     }
 
-    // --- două PUT simultane pe aceeași bucată ------------------------------------------------------------------
+    // --- two concurrent PUTs on the same chunk -----------------------------------------------------------------
 
     @ParameterizedTest
     @EnumSource(StorageType.class)
@@ -302,7 +302,7 @@ class UploadStackTest {
         assertThat(other.put(id, 1, video).duplicate()).as("după ce lease-ul s-a eliberat").isTrue();
     }
 
-    // --- storage oprit în timpul upload-ului -------------------------------------------------------------------
+    // --- storage stopped during the upload ---------------------------------------------------------------------
 
     @ParameterizedTest
     @EnumSource(StorageType.class)
@@ -333,7 +333,7 @@ class UploadStackTest {
         assertThat(rig.service.complete(id, CALLER).file().sha256()).isEqualTo(video.sha256());
     }
 
-    // --- abandon după 10 minute și curățarea celor inactive peste 24 h; un singur job la un moment dat ---------
+    // --- abandon after 10 minutes and cleanup of sessions idle for 24 h; a single job at a time ---------------
 
     @ParameterizedTest
     @EnumSource(StorageType.class)
@@ -370,13 +370,13 @@ class UploadStackTest {
         assertThat(adapter(type.name()).exists(down.toString())).isFalse();
     }
 
-    // --- montaj ------------------------------------------------------------------------------------------------
+    // --- wiring ------------------------------------------------------------------------------------------------
 
     private Rig rig(StorageType primary, int chunkSize) throws IOException {
         return new Rig(primary, chunkSize);
     }
 
-    /** O „instanță api”: politică, selector, registry și servicii proprii, peste aceleași baze și storage-uri. */
+    /** One "api instance": its own policy, selector, registry and services, over the same databases and storage. */
     private final class Rig {
         final UploadService service;
         final StorageSelector selector;
@@ -411,7 +411,7 @@ class UploadStackTest {
         }
 
         void expireHealthCache() throws InterruptedException {
-            Thread.sleep(2100); // cache-ul de health al StorageSelector ține 2 s
+            Thread.sleep(2100); // StorageSelector caches health for 2 s
         }
     }
 
@@ -430,11 +430,11 @@ class UploadStackTest {
         }
     }
 
-    // --- ajutoare ----------------------------------------------------------------------------------------------
+    // --- helpers ----------------------------------------------------------------------------------------------
 
     /**
-     * Plasă de siguranță pentru obiectele DB mari (1,1 GB = sute de rânduri, ștergerea dintr-o tranzacție depășește
-     * timeout-ul adaptorului): șterge în loturi, direct în FileGridStorage, tot ce ține de cheia testului.
+     * Safety net for large DB objects (1.1 GB = hundreds of rows, deleting them in one transaction exceeds the adapter
+     * timeout): deletes everything tied to the test key, in batches, directly in FileGridStorage.
      */
     private static void purgeDb(String key) {
         var template = new NamedParameterJdbcTemplate(storageDb);
@@ -474,7 +474,7 @@ class UploadStackTest {
         return n != null && n == 1;
     }
 
-    /** Mută în trecut o coloană de timp a sesiunii (simulează inactivitatea / căderea îndelungată). */
+    /** Moves a session time column into the past (simulates inactivity / a long outage). */
     private static void age(UUID id, String column, int seconds) {
         jdbc.update("UPDATE dbo.upload_sessions SET " + column + " = DATEADD(SECOND, -:s, SYSUTCDATETIME())"
                 + " WHERE upload_id = CAST(:id AS UNIQUEIDENTIFIER)",
@@ -515,7 +515,7 @@ class UploadStackTest {
         return pool;
     }
 
-    /** Variabilele de mediu, completate cu {@code .env} din rădăcina repo-ului (mediul are prioritate). */
+    /** Environment variables, completed from the repo-root {@code .env} (the environment wins). */
     private static Map<String, String> environment() {
         Map<String, String> values = new HashMap<>();
         for (Path dir = Path.of("").toAbsolutePath(); dir != null; dir = dir.getParent()) {
@@ -529,7 +529,7 @@ class UploadStackTest {
                         }
                     }
                 } catch (IOException e) {
-                    // Fără .env lizibil rămân variabilele de mediu.
+                    // Without a readable .env, only the environment variables remain.
                 }
                 break;
             }
@@ -542,7 +542,7 @@ class UploadStackTest {
         return values;
     }
 
-    /** Conținut virtual determinist, citit în streaming (nu există fișiere și nu se ține nimic în memorie). */
+    /** Deterministic virtual content, streamed (no files exist and nothing is held in memory). */
     private static final class VirtualFile {
         private static final int PERIOD = 1 << 16;
         private final long size;
@@ -603,7 +603,7 @@ class UploadStackTest {
         }
     }
 
-    /** Corp care anunță prima citire și apoi așteaptă un semnal (menține lease-ul ocupat cât timp rulează al doilea PUT). */
+    /** A body that signals its first read and then waits for a signal (keeps the lease busy while the second PUT runs). */
     private static final class GatedStream extends InputStream {
         private final InputStream source;
         private final CountDownLatch started;
@@ -644,7 +644,7 @@ class UploadStackTest {
         }
     }
 
-    /** Un storage real care poate fi „oprit”: health down și orice operație → indisponibil. */
+    /** A real storage that can be "switched off": health down and every operation -> unavailable. */
     private static final class Switch implements StorageAdapter, ChunkedWriter {
         private final StorageAdapter target;
         volatile boolean up = true;

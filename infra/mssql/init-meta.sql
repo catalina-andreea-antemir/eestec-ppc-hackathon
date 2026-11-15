@@ -1,4 +1,4 @@
--- Flyway creează schema de metadate și tabela sa de istoric în dbo.
+-- Flyway creates the metadata schema and its history table in dbo.
 IF DB_ID(N'FileGridMeta') IS NULL
 BEGIN
     EXEC (N'CREATE DATABASE [FileGridMeta];');

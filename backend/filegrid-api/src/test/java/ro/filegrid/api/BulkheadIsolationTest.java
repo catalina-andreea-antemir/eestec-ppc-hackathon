@@ -56,8 +56,8 @@ import ro.filegrid.security.Role;
 import ro.filegrid.security.TokenService;
 
 /**
- * Izolarea per categorie (C9) pe HTTP real, în procesul de test: „storage-ul” OUTAGE_RECORD e ținut de o poartă
- * (cereri lente), iar METER_READING și descărcările CONNECTION_DOC merg normal. Fără storage real, deci fără resturi.
+ * Per-category isolation (C9) over real HTTP, in-process: the OUTAGE_RECORD "storage" is held by a gate (slow
+ * requests), while METER_READING and CONNECTION_DOC downloads run normally. No real storage, so nothing is left behind.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class BulkheadIsolationTest {
@@ -105,15 +105,15 @@ class BulkheadIsolationTest {
 
     @BeforeEach
     void stubs() throws Exception {
-        // Clientul Apache implicit are doar 5 conexiuni per rută; JDK HttpClient nu limitează conexiunile paralele.
+        // The default Apache client allows only 5 connections per route; the JDK HttpClient does not limit parallel connections.
         rest.getRestTemplate().setRequestFactory(new org.springframework.http.client.JdkClientHttpRequestFactory(
                 java.net.http.HttpClient.newBuilder().version(java.net.http.HttpClient.Version.HTTP_1_1).build()));
-        // METER_READING: ~5 ms de „storage”.
+        // METER_READING: ~5 ms of "storage".
         when(meters.ingest(any(), any(), any())).thenAnswer(inv -> {
             Thread.sleep(5);
             return new MeterReadingIngestionService.Result(UUID.randomUUID(), "RO-MUN-0004821", 1, "ab", false);
         });
-        // OUTAGE_RECORD: storage-ul ținut slab de poartă (cel mult 30 s).
+        // OUTAGE_RECORD: storage held by the gate (30 s at most).
         when(files.upload(any())).thenAnswer(inv -> {
             insideOutageStorage.incrementAndGet();
             gate.await(30, TimeUnit.SECONDS);
@@ -138,10 +138,10 @@ class BulkheadIsolationTest {
         int flood = limit * 10;
         double rejectedBefore = rejected(Category.OUTAGE_RECORD);
 
-        runMeterLoad(100); // încălzire
+        runMeterLoad(100); // warm-up
         long baselineP95 = p95(runMeterLoad(METER_REQUESTS));
 
-        // Vârful: 10x limita de cereri lente pe OUTAGE_RECORD.
+        // The spike: 10x the limit of slow requests on OUTAGE_RECORD.
         ExecutorService floodPool = Executors.newFixedThreadPool(flood);
         List<Future<ResponseEntity<Map<String, Object>>>> flooded = new ArrayList<>();
         for (int i = 0; i < flood; i++) {
@@ -151,7 +151,7 @@ class BulkheadIsolationTest {
                 && rejected(Category.OUTAGE_RECORD) - rejectedBefore == flood - limit, 20_000);
         assertThat(bulkheads.bulkhead(Category.OUTAGE_RECORD).inUse()).isEqualTo(limit);
 
-        // În timpul vârfului: contoarele și documentele merg normal, iar 429 apare doar pe categoria saturată.
+        // During the spike: meters and documents run normally, and 429 only appears on the saturated category.
         long peakP95 = p95(runMeterLoad(METER_REQUESTS));
         List<Integer> docStatuses = new ArrayList<>();
         for (int i = 0; i < 20; i++) {
@@ -189,7 +189,7 @@ class BulkheadIsolationTest {
 
         System.out.printf("C9 p95 METER_READING: singur = %d ms, în timpul vârfului (%d cereri OUTAGE_RECORD lente, "
                 + "%d x 429) = %d ms%n", baselineP95, flood, tooMany, peakP95);
-        // „Fără degradare vizibilă”: cel mult 3x baza, cu un prag absolut de 50 ms pentru zgomotul de planificare.
+        // "No visible degradation": at most 3x the baseline, with a 50 ms absolute floor for scheduling noise.
         assertThat(peakP95).isLessThanOrEqualTo(Math.max(baselineP95 * 3, baselineP95 + 50));
     }
 
@@ -202,18 +202,18 @@ class BulkheadIsolationTest {
             throw new IOException("client căzut în mijlocul stream-ului");
         }).when(content).send(any(), any(), any());
         int limit = policies.policy(Category.CONNECTION_DOC).maxConcurrentRequests();
-        for (int i = 0; i < limit * 3; i++) { // dacă permisele s-ar pierde, ar apărea 429 după `limit` cereri
+        for (int i = 0; i < limit * 3; i++) { // if permits leaked, 429s would appear after `limit` requests
             try {
                 download("/api/v1/downloads/" + links.create(DOC_ID, "x").token(), null);
             } catch (RuntimeException brokenStream) {
-                // clientul vede stream-ul întrerupt: tocmai cazul de testat
+                // the client sees the stream cut off: exactly the case under test
             }
         }
         awaitTrue(() -> bulkheads.bulkhead(Category.CONNECTION_DOC).inUse() == 0, 5_000);
         assertThat(rejected(Category.CONNECTION_DOC)).isZero();
     }
 
-    // --- utilitare ---------------------------------------------------------------------------------------------
+    // --- helpers -----------------------------------------------------------------------------------------------
 
     private double rejected(Category category) {
         return registry.get("filegrid.bulkhead.rejected").tag("category", category.name()).counter().count();

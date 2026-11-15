@@ -1,14 +1,14 @@
-# Suprascriere pentru dezvoltare (ADR-002), activata explicit, din radacina repo-ului:
+# Development override (ADR-002), enabled explicitly from the repo root:
 #   docker compose -f docker-compose.yml -f infra/docker/docker-compose.dev.yml up -d
-# Publica porturi DOAR pe 127.0.0.1 (nimic vizibil din retea):
-#   127.0.0.1:1433  SQL Server (SSMS / Azure Data Studio; login sa sau filegrid_*_app, parolele din .env)
+# Publishes ports ONLY on 127.0.0.1 (nothing reachable from the network):
+#   127.0.0.1:1433  SQL Server (SSMS / Azure Data Studio; login sa or filegrid_*_app, passwords in .env)
 #   127.0.0.1:9000  MinIO S3 API
-#   127.0.0.1:9001  consola MinIO (MINIO_ROOT_USER / MINIO_ROOT_PASSWORD din .env)
-#   127.0.0.1:21 si 127.0.0.1:21000-21049  FTP (control + porturi pasive; vsftpd anunta 127.0.0.1 in PASV, vezi FTP_PASV_ADDRESS)
+#   127.0.0.1:9001  MinIO console (MINIO_ROOT_USER / MINIO_ROOT_PASSWORD from .env)
+#   127.0.0.1:21 and 127.0.0.1:21000-21049  FTP (control + passive ports; vsftpd advertises 127.0.0.1 in PASV, see FTP_PASV_ADDRESS)
 #
-# Serviciile stau pe storage-net, care e interna, iar Docker nu publica porturi dintr-o retea interna; de aceea
-# serviciile de mai jos primesc si reteaua dev-net (bridge obisnuit), folosita doar pentru aceste porturi.
-# api nu publica porturi nici aici, ca `--scale api=3` sa ramana posibil.
+# Services live on storage-net, which is internal, and Docker does not publish ports from an internal network;
+# that is why the services below also join dev-net (a plain bridge), used only for these ports.
+# api publishes no ports even here, so `--scale api=3` keeps working.
 
 services:
   mssql:
@@ -28,7 +28,7 @@ services:
 
   ftp:
     environment:
-      # Numai in dev: adresa anuntata de vsftpd in raspunsul PASV, ca datele sa treaca prin porturile publicate.
+      # Dev only: address vsftpd advertises in the PASV reply, so data goes through the published ports.
       FTP_PASV_ADDRESS: 127.0.0.1
     ports:
       - "127.0.0.1:21:21"
