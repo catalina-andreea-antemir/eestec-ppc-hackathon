@@ -49,6 +49,24 @@ function Send-Write($T, [string]$Label) {
   return [pscustomobject]@{ Status = $r.Status; Id = $id; Storage = $storage; Sha = $sha; Ms = $r.Ms; R = $r }
 }
 
+# Ca un client real (UI-ul F4, simulatorul): la 503 cu Retry-After asteapta si reincearca, de cel mult $Max ori.
+# Contractul permite 503 + Retry-After cand o eroare de storage dureaza mai mult decat retry-ul intern C11 (~0,3 s);
+# cerinta PPC e ca transferul sa se termine fara interventie manuala, nu ca primul raspuns sa fie mereu 200.
+function Invoke-AsClient([scriptblock]$Call, [int]$Max = 4) {
+  $retries = 0
+  while ($true) {
+    $res = & $Call
+    $st = if ($res.PSObject.Properties.Name -contains 'R') { $res.R } else { $res }
+    $ra = $st.Headers['Retry-After']
+    if ($res.Status -ne 503 -or -not $ra -or $retries -ge $Max) { break }
+    $retries++
+    # Retry-After respectat integral (cat tine circuitul C11 deschis), plafonat la 15 s.
+    Start-Sleep -Seconds ([math]::Min([int]$ra, 15))
+  }
+  $res | Add-Member -NotePropertyName Retries -NotePropertyValue $retries -Force
+  return $res
+}
+
 function Restore-Normal {
   Write-Step 'reparare: toxiproxy fara toxice, api inapoi pe configuratia normala, profilul chaos oprit'
   Get-Job | Remove-Job -Force -ErrorAction SilentlyContinue   # jobul de erori intermitente, daca a ramas pornit
@@ -118,8 +136,9 @@ try {
     $i = 0
     while ($sw.Elapsed.TotalSeconds -lt $FlapSeconds) {
       $i++
-      [void]$readResults.Add((Get-Download $base.Id))
-      [void]$ws.Add((Send-Write $T "flap$i"))
+      $id = $base.Id; $tt = $T; $lbl = "flap$i"
+      [void]$readResults.Add((Invoke-AsClient { Get-Download $id }))
+      [void]$ws.Add((Invoke-AsClient { Send-Write $tt $lbl }))
       Start-Sleep -Milliseconds 150
     }
     Stop-Job $flap; Remove-Job $flap -Force
@@ -127,11 +146,13 @@ try {
     $nR = $readResults.Count; $nW = $ws.Count
     $okR = @($readResults | Where-Object { $_.Status -eq 200 -and $_.Sha256 -eq $base.Sha }).Count
     $codesR = ($readResults | Group-Object Status | ForEach-Object { "$($_.Count)x$($_.Name)" }) -join ', '
-    [void](Assert-Check 'erori scurte la citire ascunse de retry: descarcari 200 cu hash corect' ($okR -eq $nR) "$okR/$nR ($codesR)")
+    $retR = ($readResults | Measure-Object -Property Retries -Sum).Sum
+    $retW = ($ws | Measure-Object -Property Retries -Sum).Sum
+    [void](Assert-Check 'erori scurte la citire: descarcari 200 cu hash corect (retry C11 + Retry-After ca un client)' ($okR -eq $nR) "$okR/$nR ($codesR); reincercari dupa 503+Retry-After: $retR")
     $ok201 = @($ws | Where-Object { $_.Status -eq 201 }).Count
     $where = ($ws | Where-Object { $_.Status -eq 201 } | Group-Object Storage | ForEach-Object { "$($_.Count)x$($_.Name)" }) -join ', '
     $codesW = ($ws | Group-Object Status | ForEach-Object { "$($_.Count)x$($_.Name)" }) -join ', '
-    [void](Assert-Check 'erori scurte la scriere: utilizatorul primeste 201 (principal sau rezerva)' ($ok201 -eq $nW) "$ok201/$nW ($codesW); unde: $where")
+    [void](Assert-Check 'erori scurte la scriere: utilizatorul primeste 201 (principal sau rezerva)' ($ok201 -eq $nW) "$ok201/$nW ($codesW); unde: $where; reincercari dupa 503+Retry-After: $retW")
     $fallbackHits = @($ws | Where-Object { $_.Status -eq 201 -and $_.Storage -eq $T.Fallback })
     foreach ($w in $fallbackHits | Select-Object -First 1) { [void](Test-DownloadOk $w.Id $w.Sha "scriere mutata pe $($T.Fallback) in timpul erorilor") }
     Write-Info "health: $(Format-StorageState (Get-StorageState $T.Storage))"
