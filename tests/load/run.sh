@@ -14,8 +14,8 @@ ENV_FILE="$ROOT/.env"
 
 scenario="${1:-}"
 case "$scenario" in
-  smoke|meter-readings|mixed|peak|security) shift ;;
-  *) echo "Utilizare: $0 {smoke|meter-readings|mixed|peak|security} [--short] [--localhost] [--dashboard] [-- argumente k6]" >&2; exit 2 ;;
+  smoke|meter-readings|mixed|peak|security|storm|big-upload) shift ;;
+  *) echo "Utilizare: $0 {smoke|meter-readings|mixed|peak|security|storm|big-upload} [--short] [--localhost] [--dashboard] [-- argumente k6]" >&2; exit 2 ;;
 esac
 
 short=0; localhost=0; dashboard=0; k6args=()
@@ -65,7 +65,7 @@ if [ "$dashboard" = 1 ]; then
          -e "K6_WEB_DASHBOARD_EXPORT=results/$scenario-$(date +%Y-%m-%dT%H-%M-%S)-dashboard.html")
   echo "Dashboard live: http://localhost:5665 (deschide-l in browser cat ruleaza testul)"
 fi
-for n in K6_DEBUG_ERRORS RUN_ID PEAK_RATE MIXED_RATE METER_RATE DURATION; do
+for n in K6_DEBUG_ERRORS RUN_ID PEAK_RATE MIXED_RATE METER_RATE DURATION DUP_PCT STORM_FACTOR BIG_SIZE_MB; do
   [ -n "${!n:-}" ] && args+=(-e "$n")
 done
 args+=("$K6_IMAGE" run)

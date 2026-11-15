@@ -63,7 +63,9 @@ export function token(user) {
   return fresh;
 }
 
+// X-Scenario implicit pentru toate cererile autentificate (storm.js il seteaza per faza prin `env` de scenariu).
 export function auth(user, extra) {
+  if (__ENV.XSCEN) extra = Object.assign({ 'X-Scenario': __ENV.XSCEN }, extra || {});
   return Object.assign({ Authorization: `Bearer ${token(user)}` }, extra || {});
 }
 
@@ -305,14 +307,18 @@ export function downloadLink(user, id) {
   return { res: dl, ok };
 }
 
-// /stats/peak-vs-normal si /stats/storage-advisor depind de C12/O8 (Prometheus); 503 e asteptat pana atunci.
+// Forma raspunsului verificata dupa contract: toate au `interpretation`, mai putin Requirements (4 cerinte R1-R4).
+// /stats/peak-vs-normal si /stats/storage-advisor pot da 503 cand Prometheus / datele live nu sunt disponibile.
+const hasInterpretation = { label: 'are interpretation', fn: (r) => typeof r.json('interpretation') === 'string' };
 export const STATS = [
-  { path: '/stats/outage-zones', ok: [200] },
-  { path: '/stats/anomalies', ok: [200] },
-  // in contract, dar inca neimplementat in StatsController pe main (404 NOT_FOUND); se accepta pana apare.
-  { path: '/stats/requirements', ok: [200, 404] },
-  { path: '/stats/peak-vs-normal', ok: [200, 503] },
-  { path: '/stats/storage-advisor', ok: [200, 503] },
+  { path: '/stats/outage-zones', ok: [200], shape: hasInterpretation },
+  { path: '/stats/anomalies', ok: [200], shape: hasInterpretation },
+  { path: '/stats/requirements', ok: [200], shape: { label: '4 cerinte R1-R4 cu status', fn: (r) => {
+    const reqs = r.json('requirements');
+    return Array.isArray(reqs) && reqs.length === 4 && reqs.every((q) => q.status === 'OK' || q.status === 'AT_RISK');
+  } } },
+  { path: '/stats/peak-vs-normal', ok: [200, 503], shape: hasInterpretation },
+  { path: '/stats/storage-advisor', ok: [200, 503], shape: hasInterpretation },
 ];
 
 export function stats(user, s) {
@@ -321,7 +327,7 @@ export function stats(user, s) {
     responseCallback: expect(...s.ok),
   });
   track(res, s.ok, 'stats');
-  if (res.status === 200) check(res, { [`${s.path}: are interpretation`]: (r) => typeof r.json('interpretation') === 'string' });
+  if (res.status === 200) check(res, { [`${s.path}: ${s.shape.label}`]: s.shape.fn });
   return res;
 }
 

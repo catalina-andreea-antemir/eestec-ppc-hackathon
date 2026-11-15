@@ -15,6 +15,8 @@ le dă containerului doar prin nume de variabilă (nu apar în comenzi, loguri s
 .\tests\load\run.ps1 meter-readings -Short
 .\tests\load\run.ps1 mixed -Short
 .\tests\load\run.ps1 peak -Short
+.\tests\load\run.ps1 storm -Short
+.\tests\load\run.ps1 big-upload        # o singura data, la cerere: creeaza un fisier de 1,1 GB pe FTP
 ```
 
 ```bash
@@ -31,7 +33,8 @@ tests/load/run.sh peak --short
 - Fără `-Short` / `--short` rulează varianta lungă (1–2 minute de palier).
 - Argumentele de după `--` ajung la k6 (de exemplu `-- --vus 5`).
 - Variabile opționale: `METER_RATE` (loturi/s în `meter-readings`), `MIXED_RATE` (multiplicator în `mixed`),
-  `PEAK_RATE` (VU-uri în furtuna din `peak`), `DURATION`, `DUP_PCT`, `RUN_ID`, `K6_DEBUG_ERRORS=1` (afișează
+  `PEAK_RATE` (VU-uri în furtuna din `peak`), `STORM_FACTOR` (multiplicatorul avariilor în `storm`, implicit 10),
+  `BIG_SIZE_MB` (mărimea upload-ului mare, implicit 1100), `DURATION`, `DUP_PCT`, `RUN_ID`, `K6_DEBUG_ERRORS=1` (afișează
   fiecare răspuns neașteptat).
 - Implicit k6 rulează în rețeaua `filegrid_storage-net`, unde există și nginx, și api: utilizatorii trec prin nginx
   (`https://nginx/api/v1`, TLS self-signed, `insecureSkipTLSVerify`). La `peak`, citirile merg direct la
@@ -46,12 +49,40 @@ tests/load/run.sh peak --short
 | `security.js` | Matricea 4.4 (C10): fiecare rol încearcă operații nepermise → 403 `FORBIDDEN`; fără token / token invalid / parolă greșită / link semnat modificat → 401; ADMIN are acces (control pozitiv). | toate verificările trec, minim 20 de 403 |
 | `meter-readings.js` | Contor (METER_SERVICE): loturi de 48–287 citiri ca simulatorul, câte un contor per VU, timp sintetic; 10% duplicate intenționate (aceeași `Idempotency-Key` → 200). | p95 < 500 ms, p99 < 1500 ms, erori < 1% |
 | `mixed.js` | Încărcare mixtă: avarii (`POST /files`), video chunked (`/uploads/*`), documente criptate (upload + download + verify `deep`), căutare/download/Range/link semnat și `/stats/*` pentru dispecer, citiri în fundal. | p95 pe operație (căutare < 800 ms, upload < 1500 ms, chunk/complete < 3000 ms...), erori < 1%, 0 nepotriviri de hash |
+| `storm.js` | Planul echipei: faza `normal` (toate categoriile la rată normală), apoi faza `storm`, cu de 10 ori mai multe avarii (`POST /files` OUTAGE_RECORD, 2/s → 20/s), în timp ce căutarea, documentele, citirile și video-ul continuă la aceeași rată. `X-Scenario` = `normal`, apoi `storm`. | celelalte categorii își păstrează p95 (căutare < 800 ms, documente < 1500 ms, citiri < 500 ms, chunk < 3000 ms) și < 1% erori; avarii < 5% erori, 429 numărate separat |
+| `big-upload.js` | Upload de 1,1 GB prin `/uploads/*` (69 de bucăți de 16 MiB). Conținutul se generează bucată cu bucată, iar SHA-256 se calculează incremental (k6 nu ține fișierul întreg în memorie); la final, hash local = hash server, `/verify` și un `Range` pe ultimii 1024 de octeți. Rulează-l la cerere: contractul nu are `DELETE`, deci fișierul rămâne pe FTP (id-ul apare în log, linia `fisier <id>`). | toate verificările trec, p95 bucată < 15 s |
 | `peak.js` | Izolare pe categorie: sondele (căutare dispecer, avarii teren) rulează întâi singure (baseline), apoi în paralel cu o furtună de citiri (implicit 150 VU, peste limita de 50 a bulkhead-ului; la 429 respectă `Retry-After`). | p95 căutare < 800 ms și p95 avarii < 1500 ms în furtună; sondele fără erori și fără 429 |
 
 `429 CATEGORY_SATURATED` (bulkhead C9) nu e eroare: se numără separat în `filegrid_bulkhead_429`. Răspunsurile
 așteptate (de exemplu 429 la citiri, 403 în `security`) nu intră în `http_req_failed`. `/stats/peak-vs-normal` și
-`/stats/storage-advisor` pot răspunde 503 cât lipsesc C12/O8, iar `/stats/requirements` 404 cât nu e implementat;
-toate trei sunt acceptate.
+`/stats/storage-advisor` pot răspunde 503 când Prometheus sau datele live lipsesc (acceptat). Răspunsurile 200 se
+verifică după contract: `interpretation` la toate, iar la `/stats/requirements` cele 4 cerințe R1–R4 cu `status`.
+
+## Rulare pe 3 replici (C14) și ce se vede în Grafana
+
+```powershell
+docker compose up -d --scale api=3
+.\tests\load\run.ps1 storm -Short
+```
+
+nginx împarte cererile pe replici, iar Prometheus colectează fiecare replică separat (eticheta `instance`). În
+Grafana (`https://localhost/grafana`), pe intervalul „Last 15 minutes”, sau direct în Prometheus:
+
+```promql
+sum by (category) (rate(filegrid_operation_seconds_count[1m]))
+```
+
+- `storm`: în faza a doua crește doar OUTAGE_RECORD (de la ~2/s la ~17–20/s); CONNECTION_DOC, METER_READING și
+  INSPECTION_VIDEO rămân la aceeași rată, iar p95-ul lor nu se schimbă. Asta e „gata” din planul echipei.
+- `sum by (instance) (rate(filegrid_operation_seconds_count[1m]))` arată că încărcarea se împarte pe cele 3 replici.
+- `big-upload`: în `docker stats` memoria replicilor rămâne constantă în timpul upload-ului (streaming, fără
+  buffer de mărimea fișierului).
+- `peak`: `sum by (category) (filegrid_bulkhead_rejected_total)` crește doar pentru METER_READING.
+
+Rezultate așteptate pe stack-ul curent: `smoke`, `security`, `meter-readings`, `storm` și `big-upload` trec. `peak`
+pică intenționat pe pragul de căutare (lock-uri SQL pe `dbo.files` sub ingestia de citiri, problemă cunoscută de
+backend), iar `mixed` poate pica pe pragul `/stats/*` cât `/stats/anomalies` durează peste 2 s la volume mari de
+citiri. Pragurile nu se relaxează ca testele să treacă.
 
 ## Rezultate
 
