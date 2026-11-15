@@ -51,12 +51,14 @@ tests/load/run.sh peak --short
 | `mixed.js` | Încărcare mixtă: avarii (`POST /files`), video chunked (`/uploads/*`), documente criptate (upload + download + verify `deep`), căutare/download/Range/link semnat și `/stats/*` pentru dispecer, citiri în fundal. | p95 pe operație (căutare < 800 ms, upload < 1500 ms, chunk/complete < 3000 ms...), erori < 1%, 0 nepotriviri de hash |
 | `storm.js` | Planul echipei: faza `normal` (toate categoriile la rată normală), apoi faza `storm`, cu de 10 ori mai multe avarii (`POST /files` OUTAGE_RECORD, 2/s → 20/s), în timp ce căutarea, documentele, citirile și video-ul continuă la aceeași rată. `X-Scenario` = `normal`, apoi `storm`. | celelalte categorii își păstrează p95 (căutare < 800 ms, documente < 1500 ms, citiri < 500 ms, chunk < 3000 ms) și < 1% erori; avarii < 5% erori, 429 numărate separat |
 | `big-upload.js` | Upload de 1,1 GB prin `/uploads/*` (69 de bucăți de 16 MiB). Conținutul se generează bucată cu bucată, iar SHA-256 se calculează incremental (k6 nu ține fișierul întreg în memorie); la final, hash local = hash server, `/verify` și un `Range` pe ultimii 1024 de octeți. Rulează-l la cerere: contractul nu are `DELETE`, deci fișierul rămâne pe FTP (id-ul apare în log, linia `fisier <id>`). | toate verificările trec, p95 bucată < 15 s |
-| `peak.js` | Izolare pe categorie: sondele (căutare dispecer, avarii teren) rulează întâi singure (baseline), apoi în paralel cu o furtună de citiri (implicit 150 VU, peste limita de 50 a bulkhead-ului; la 429 respectă `Retry-After`). | p95 căutare < 800 ms și p95 avarii < 1500 ms în furtună; sondele fără erori și fără 429 |
+| `peak.js` | Izolare pe categorie: sondele (căutare dispecer, avarii teren) rulează întâi singure (baseline), apoi în paralel cu o furtună de citiri (implicit 150 VU, peste limita de 50 a bulkhead-ului; la 429 respectă `Retry-After`). | p95 căutare < 800 ms și p95 avarii < 1500 ms în ambele faze; sonde: < 1% erori neașteptate și 0 răspunsuri 429; citiri în furtună: p95 < 3000 ms și < 5% erori neașteptate |
 
 `429 CATEGORY_SATURATED` (bulkhead C9) nu e eroare: se numără separat în `filegrid_bulkhead_429`. Răspunsurile
-așteptate (de exemplu 429 la citiri, 403 în `security`) nu intră în `http_req_failed`. `/stats/peak-vs-normal` și
-`/stats/storage-advisor` pot răspunde 503 când Prometheus sau datele live lipsesc (acceptat). Răspunsurile 200 se
-verifică după contract: `interpretation` la toate, iar la `/stats/requirements` cele 4 cerințe R1–R4 cu `status`.
+așteptate (de exemplu 429 la citiri, 403 în `security`) nu intră în `http_req_failed`. k6 acceptă 200 și 503
+pentru `/stats/peak-vs-normal` și `/stats/storage-advisor`. Comparația răspunde 200 când există date suficiente
+pentru fiecare categorie în ambele scenarii (`normal` și `storm` implicit, în ultimele 24 h). Cu date insuficiente
+răspunde 503 `REQUEST_METRICS_UNAVAILABLE`. Advisorul poate răspunde 503 dacă măsurătorile sunt incomplete.
+La 200 se verifică `interpretation`, iar pentru `/stats/requirements` se verifică cele 4 cerințe R1–R4 cu `status`.
 
 ## Rulare pe 3 replici (C14) și ce se vede în Grafana
 
@@ -79,10 +81,13 @@ sum by (category) (rate(filegrid_operation_seconds_count[1m]))
   buffer de mărimea fișierului).
 - `peak`: `sum by (category) (filegrid_bulkhead_rejected_total)` crește doar pentru METER_READING.
 
-Rezultate așteptate pe stack-ul curent: `smoke`, `security`, `meter-readings`, `storm` și `big-upload` trec. `peak`
-pică intenționat pe pragul de căutare (lock-uri SQL pe `dbo.files` sub ingestia de citiri, problemă cunoscută de
-backend), iar `mixed` poate pica pe pragul `/stats/*` cât `/stats/anomalies` durează peste 2 s la volume mari de
-citiri. Pragurile nu se relaxează ca testele să treacă.
+Ultimul `smoke` pe stack-ul lui Ovidiu (15.11.2026) a trecut 72/72 verificări, cu 0 erori neașteptate.
+La validarea finală F8, `peak --short` a trecut pragurile absolute după activarea RCSI pe `FileGridMeta`.
+Verdictul relativ față de baseline poate rămâne `DEGRADAT`. Verifică starea RCSI pe bazele existente.
+La concurență extremă pot apărea în continuare deadlock-uri SQL Server. Vezi [limitările cunoscute](../../docs/LIMITARI-CUNOSCUTE.md).
+
+În `mixed`, pragul agregat pentru `/stats/*` rămâne p95 < 2 s. Latența la volume mari rămâne de verificat
+pe stack-ul țintă după optimizarea `/stats/anomalies`. Pragurile nu se relaxează ca testele să treacă.
 
 ## Rezultate
 
@@ -93,5 +98,6 @@ consolă) și `.json` (toate metricile k6). Rezumatul are:
 - latența totală și p95 pe operație (`http_req_duration{op:...}`);
 - `filegrid_unexpected`: rata răspunsurilor cu cod neașteptat (erorile reale);
 - numărul de 429 de la bulkhead, de 403 așteptate, de loturi duplicate și de nepotriviri de hash;
-- la `peak`: p95 baseline → furtună pentru căutare și avarii, cu verdict `IZOLAT` (cel mult 3× sau +200 ms) sau
-  `DEGRADAT`.
+- la `peak`: p95 baseline → furtună pentru căutare și avarii, cu verdict `IZOLAT` dacă p95 în furtună este
+  cel mult maximul dintre 3× baseline și baseline + 200 ms. Altfel apare `DEGRADAT`. Verdictul relativ apare
+  doar în rezumat. Rezultatul k6 este dat de pragurile din `thresholds`.

@@ -197,7 +197,7 @@ powershell -ExecutionPolicy Bypass -File scripts\generate-sample-data.ps1 -SkipL
 
 | Test | Cum se rulează | Detalii |
 |---|---|---|
-| Unit backend | `cd backend/filegrid-api` apoi `./mvnw test` (Windows: `.\mvnw.cmd test`); necesită JDK 21 | JUnit, inclusiv politica, adaptoarele de storage, securitatea |
+| Unit backend | `cd backend/filegrid-api` apoi `./mvnw test` (Windows: `.\mvnw.cmd test`); necesită JDK 21 | JUnit, inclusiv politica, adaptoarele de storage și securitatea. Pentru testele de integrare SQL și pe stack, vezi [limitările și condițiile de rulare](docs/LIMITARI-CUNOSCUTE.md). |
 | Unit frontend | `cd frontend/filegrid-ui`, `npm ci`, `npm test`; necesită Node.js | `ng test` |
 | Încărcare (k6) | `.\tests\load\run.ps1 smoke` / `tests/load/run.sh smoke`; scenarii `smoke`, `security`, `meter-readings`, `mixed`, `peak` | [tests/load/README.md](tests/load/README.md) — k6 rulează în Docker |
 | Haos | `.\tests\chaos\run-all.ps1` (sau un scenariu, ex. `.\tests\chaos\a-ftp-down.ps1`); profilul `chaos` pentru toxiproxy | [tests/chaos/README.md](tests/chaos/README.md) — FTP/MinIO căzute, FileGridStorage offline, rețea degradată, corupere, bulkhead, reluarea upload-ului |
@@ -230,7 +230,7 @@ Testele de haos și de încărcare lucrează pe stack-ul pornit și creează dat
 | Anomalii de consum, contoare tăcute | `GET /stats/anomalies` | UI **Statistici** | funcțional |
 | Zone cu cele mai multe avarii | `GET /stats/outage-zones` | UI **Statistici** | funcțional |
 | Recomandare de storage | `GET /stats/storage-advisor` | UI **Statistici** | răspunde `503` (`reason: STORAGE_MEASUREMENTS_INCOMPLETE`) până rulează benchmark-ul (`POST /admin/benchmark/run`) |
-| Zi normală vs. zi de vârf | `GET /stats/peak-vs-normal` | Grafana *FileGrid – Operații*, rândul „Zi normală vs. vârf” | **endpoint-ul răspunde deocamdată mereu `503`** (`reason: REQUEST_METRICS_UNAVAILABLE`) (lipsesc numărul de cereri și de respingeri per scenariu în `operation_metrics`); comparația se vede în Grafana și în k6 `peak` |
+| Zi normală vs. zi de vârf | `GET /stats/peak-vs-normal` | UI **Statistici**, Grafana *FileGrid – Operații*, rândul „Zi normală vs. vârf” | `200` cu metrici de operații și respingeri bulkhead pe categorie când datele pentru `normal` și `storm` sunt suficiente în ultimele 24 h. `tests/load/run.sh storm` generează date pentru ambele faze. Cu date insuficiente, `503` cu `details.reason: REQUEST_METRICS_UNAVAILABLE` și `details.missing`. |
 
 ### Cerințe nefuncționale
 
@@ -270,6 +270,6 @@ Testele de haos și de încărcare lucrează pe stack-ul pornit și creează dat
 - Arhitectură (servicii, rețele, porturi, limite): [docs/architecture/arhitectura.md](docs/architecture/arhitectura.md); fluxuri: [docs/architecture/fluxuri.md](docs/architecture/fluxuri.md)
 - Decizii (ADR): [docs/decisions/](docs/decisions/) — [ADR-001](docs/decisions/ADR-001-sql-server-punct-unic-de-cadere.md) SQL Server punct unic de cădere, [ADR-002](docs/decisions/ADR-002-pornire-o-singura-comanda.md) pornire cu o singură comandă, [ADR-003](docs/decisions/ADR-003-upload-in-bucati.md) upload în bucăți, [ADR-004](docs/decisions/ADR-004-descarcare-prin-link-semnat.md) link semnat
 - API: [docs/api/openapi.yaml](docs/api/openapi.yaml) (contractul complet, roluri, coduri de eroare, metrici 4.3); statistici: [docs/api/o7-analytics.md](docs/api/o7-analytics.md)
-- Storage și concurență în baza de date: [docs/storage/o3-db-concurrency.md](docs/storage/o3-db-concurrency.md)
+- Storage și concurență în baza de date: [docs/storage/o3-db-concurrency.md](docs/storage/o3-db-concurrency.md). RCSI se activează la crearea `FileGridMeta`. Pentru o bază existentă, verifică starea și urmează, dacă e nevoie, [procedura de mentenanță](docs/storage/filegridmeta-rcsi.md).
 - Setup Windows: [docs/setup/Windows-Local-Setup.md](docs/setup/Windows-Local-Setup.md)
 - Componente: [tests/load](tests/load/README.md), [tests/chaos](tests/chaos/README.md), [simulator](simulator/meter-simulator/README.md), [alerte](observability/alertmanager/README.md), [promtail](observability/promtail/README.md)
