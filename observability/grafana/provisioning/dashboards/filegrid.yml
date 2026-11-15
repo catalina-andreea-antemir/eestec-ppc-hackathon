@@ -1,6 +1,5 @@
 # Dashboard-urile FileGrid (F7): fisierele JSON din observability/grafana/dashboards, montate read-only in container.
-# Fara folderUid: folderul se cauta dupa titlu, ca sa fie acelasi cu cel creat de alerting/filegrid-alerte.yml
-# (provisioning-ul de alerte ruleaza primul).
+# Alertele 1-4 sunt reguli Prometheus + Alertmanager (O8, observability/prometheus/rules), nu alerte Grafana.
 apiVersion: 1
 
 providers:

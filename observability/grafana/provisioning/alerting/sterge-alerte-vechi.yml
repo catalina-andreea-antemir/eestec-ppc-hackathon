@@ -1,0 +1,13 @@
+# Alertele 1-4 sunt acum reguli Prometheus + Alertmanager (O8, observability/prometheus/rules).
+# Sterge din Grafana regulile vechi din F7, ramase in volumul grafana pe instalarile existente.
+apiVersion: 1
+
+deleteRules:
+  - orgId: 1
+    uid: filegrid-alerta-1-citiri
+  - orgId: 1
+    uid: filegrid-alerta-2-avarii-p95
+  - orgId: 1
+    uid: filegrid-alerta-3-video
+  - orgId: 1
+    uid: filegrid-alerta-4-documente
