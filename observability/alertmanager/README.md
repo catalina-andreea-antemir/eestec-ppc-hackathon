@@ -7,7 +7,7 @@ Receiverul acceptă notificări JSON Alertmanager v4 și confirmă cu HTTP 204. 
 ## Date necesare
 
 - **C12.** Alerta de avarii așteaptă histograma de operații. Alerta video așteaptă atât transferurile eșuate, deja contorizate parțial de C11, cât și seriile de operații reușite pentru `upload_complete` sau `download`. Alerta de citiri poate porni din metricile simulatorului; semnalul API pentru citiri fără confirmare așteaptă C12. Alerta documentelor folosește contorul C10.
-- **MinIO.** Scrape-ul autentificat rămâne separat. Endpointul `/minio/v2/metrics/cluster` cere un bearer token. Integrarea are nevoie de o identitate dedicată cu drept de citire a metricilor, de generarea și rotația tokenului prin provisioning-ul MinIO și de montarea lui read-only în Prometheus pentru `authorization.credentials_file`. Provisioning-ul se coordonează cu proprietara configurației MinIO.
+- **MinIO.** Prometheus colectează metricile printr-o identitate dedicată. [Pornire și rotație](../../infra/minio/README.md).
 
 ## Validare
 

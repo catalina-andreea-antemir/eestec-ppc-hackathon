@@ -188,6 +188,7 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      MINIO_PROMETHEUS_AUTH_TYPE: jwt
       # Tine runtime-ul Go sub mem_limit.
       GOMEMLIMIT: 400MiB
     volumes:
@@ -217,6 +218,26 @@ services:
       S3_SECRET_KEY: ${S3_SECRET_KEY}
     volumes:
       - ../minio:/config:ro
+    networks:
+      - storage-net
+    depends_on:
+      minio:
+        condition: service_healthy
+    mem_limit: 128m
+
+  # ---------------------------------------------------------------------------------------------------------------
+  # Provisioning separat pentru identitatea Prometheus, fara acces la bucketul aplicatiei.
+  minio-metrics-init:
+    image: chainguard/minio:latest@sha256:0f9fda72fbc6bd3560ea903aec2ceefa20f6ba82628d67656f37fb370c39ae9c
+    user: "0:0"
+    restart: "no"
+    entrypoint: ["bash", "/config/init-prometheus.sh"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    volumes:
+      - ../minio:/config:ro
+      - minio-metrics-auth:/metrics-auth
     networks:
       - storage-net
     depends_on:
@@ -261,8 +282,13 @@ services:
       - ../../observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ../../observability/prometheus/rules:/etc/prometheus/rules:ro
       - prometheus:/prometheus
+      - minio-metrics-auth:/etc/prometheus/minio-auth:ro
     networks:
       - storage-net
+    depends_on:
+      minio-metrics-init:
+        condition: service_completed_successfully
+        required: false
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:9090/-/ready"]
       interval: 10s
@@ -439,6 +465,7 @@ volumes:
   nginx-certs:
   grafana:
   prometheus:
+  minio-metrics-auth:
   alertmanager:
   loki:
   api-logs:
