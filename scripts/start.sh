@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # FileGrid PPC - pornirea intregului sistem cu o singura comanda (ADR-002). Din radacina repo-ului:
-#   ./scripts/start.sh
+#   ./scripts/start.sh [--show-passwords]
 # 1) verifica Docker Compose >= 2.20; 2) creeaza .env cu secrete aleatorii daca lipseste (si completeaza variabilele
 # care lipsesc); 3) docker compose up -d --build; 4) asteapta health-ul api; 5) afiseaza adresa si utilizatorii de test.
 set -euo pipefail
@@ -12,6 +12,14 @@ health_timeout=${FILEGRID_START_TIMEOUT:-600}
 
 info() { printf '==> %s\n' "$*"; }
 fail() { printf 'EROARE: %s\n' "$*" >&2; exit 1; }
+
+show_passwords=false
+if (($# > 0)); then
+    if (($# != 1)) || [[ "$1" != --show-passwords ]]; then
+        fail "Utilizare: $0 [--show-passwords]"
+    fi
+    show_passwords=true
+fi
 
 # --- 1. Docker si Docker Compose --------------------------------------------------------------------------------
 command -v docker >/dev/null 2>&1 || fail "nu gasesc comanda docker. Instaleaza Docker (Engine sau Desktop)."
@@ -141,7 +149,7 @@ if command -v curl >/dev/null 2>&1; then
     # nginx re-rezolva api la 5 s, deci primele cereri pot da 502/503 cateva secunde.
     nginx_deadline=$((SECONDS + 60))
     while :; do
-        code=$(curl -ks -o /dev/null -w '%{http_code}' https://localhost/api/v1/health || true)
+        code=$(curl -ks --max-time 5 -o /dev/null -w '%{http_code}' https://localhost/api/v1/health || true)
         [[ "$code" == 200 ]] && break
         if ((SECONDS >= nginx_deadline)); then
             docker compose logs --no-color --tail 20 nginx >&2 || true
@@ -162,7 +170,11 @@ Utilizatori de test (parolele sunt in .env):
 EOF
 for entry in "${test_users[@]}"; do
     user=${entry%%:*} role=${entry#*:}
-    var="FILEGRID_USER_$(printf '%s' "$user" | tr '[:lower:]' '[:upper:]')_PASSWORD"
-    printf '  %-10s %-14s %s\n' "$user" "$role" "$(env_value "$var")"
+    if $show_passwords; then
+        var="FILEGRID_USER_$(printf '%s' "$user" | tr '[:lower:]' '[:upper:]')_PASSWORD"
+        printf '  %-10s %-14s %s\n' "$user" "$role" "$(env_value "$var")"
+    else
+        printf '  %-10s %s\n' "$user" "$role"
+    fi
 done
 printf '\nOprire: docker compose down    Resetare completa (sterge datele): docker compose down -v\n'
