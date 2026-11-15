@@ -18,6 +18,7 @@ import org.springframework.stereotype.Repository;
 
 import ro.filegrid.domain.Category;
 import ro.filegrid.domain.StorageType;
+import ro.filegrid.observability.OperationMetrics;
 
 @Repository
 @Profile("db")
@@ -70,13 +71,33 @@ class StatsRepository {
     }
 
     List<OperationStats> peakVsNormal(String normal, String peak, Instant from, Instant to) {
+        return peakVsNormal(normal, from, to, peak, from, to);
+    }
+
+    /** O6 query 05 with one window per scenario; rows with operation {@code rejected} are excluded by the query. */
+    List<OperationStats> peakVsNormal(String normal, Instant normalFrom, Instant normalTo,
+                                      String peak, Instant peakFrom, Instant peakTo) {
         return query(AnalyticsSql.PEAK_VS_NORMAL, (row, n) -> new OperationStats(
                 Category.valueOf(row.getString("category")), row.getString("scenario"), row.getLong("operations"),
                 row.getDouble("operations_per_minute"), row.getObject("latency_p50_ms", Double.class),
                 row.getObject("latency_p95_ms", Double.class), row.getObject("latency_p99_ms", Double.class),
                 row.getBigDecimal("error_rate_percent"), row.getObject("p95_change_percent", Double.class)),
-                normal, peak, utc(to), utc(from), utc(to), utc(from));
+                normal, peak, utc(normalTo), utc(normalFrom), utc(peakTo), utc(peakFrom));
     }
+
+    /** First/last live row and bulkhead rejections per scenario and category, in {@code [from, to)}. */
+    List<ScenarioActivity> scenarioActivity(String normal, String peak, Instant from, Instant to) {
+        return query(SCENARIO_ACTIVITY, (row, n) -> new ScenarioActivity(row.getString("scenario"),
+                Category.valueOf(row.getString("category")), instant(row, "first_ts"), instant(row, "last_ts"),
+                row.getLong("rejected")), OperationMetrics.BULKHEAD_REJECTED, normal, peak, utc(from), utc(to));
+    }
+
+    private static final String SCENARIO_ACTIVITY = """
+            SELECT scenario, category, MIN(ts) AS first_ts, MAX(ts) AS last_ts,
+                   COUNT_BIG(CASE WHEN operation = ? THEN 1 END) AS rejected
+            FROM dbo.operation_metrics
+            WHERE source = N'live' AND scenario IN (?, ?) AND ts >= ? AND ts < ?
+            GROUP BY scenario, category""";
 
     List<StorageMeasurement> storageScores(Instant from, Instant to) {
         CostAssumption costs = AnalyticsSql.COSTS;
@@ -133,6 +154,9 @@ class StatsRepository {
     }
 
     record Outages(List<ZoneRank> ranking, List<ZoneHourOutages> byHour) {
+    }
+
+    record ScenarioActivity(String scenario, Category category, Instant firstTs, Instant lastTs, long rejected) {
     }
 
     record StorageMeasurement(StorageScore score, Long rank, long benchmarkSamples, long liveSamples) {

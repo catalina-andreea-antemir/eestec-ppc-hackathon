@@ -3,6 +3,7 @@ package ro.filegrid.resilience;
 import java.util.EnumMap;
 import java.util.Map;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 
@@ -10,13 +11,15 @@ import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import ro.filegrid.api.ApiException;
 import ro.filegrid.domain.Category;
+import ro.filegrid.observability.OperationMetrics;
 import ro.filegrid.policy.PolicyEngine;
 
 /**
  * Izolare per categorie (C9, planul 4.1): câte un {@link Bulkhead} pe categorie, dimensionat din
  * {@code maxConcurrentRequests} al politicii (per instanță, recitit fără restart). Saturația dă 429
- * {@code CATEGORY_SATURATED} cu {@code Retry-After}, doar pentru categoria saturată, și incrementează
- * {@code filegrid_bulkhead_rejected_total{category}}.
+ * {@code CATEGORY_SATURATED} cu {@code Retry-After}, doar pentru categoria saturată, incrementează
+ * {@code filegrid_bulkhead_rejected_total{category}} și scrie un rând {@code rejected} în {@code operation_metrics}
+ * (cu scenariul din {@code X-Scenario}), din care {@code /stats/peak-vs-normal} numără respingerile.
  */
 @Component
 public class CategoryBulkheads {
@@ -24,10 +27,20 @@ public class CategoryBulkheads {
     /** Secunde până la reîncercare; permisele se eliberează în ordinul secundelor. */
     static final int RETRY_AFTER_SECONDS = 1;
 
+    private final PolicyEngine policies;
+    private final OperationMetrics metrics;
     private final Map<Category, Bulkhead> bulkheads = new EnumMap<>(Category.class);
     private final Map<Category, Counter> rejected = new EnumMap<>(Category.class);
 
+    /** Fără rânduri în {@code operation_metrics} (teste unitare). */
     public CategoryBulkheads(PolicyEngine policies, MeterRegistry registry) {
+        this(policies, registry, OperationMetrics.noop());
+    }
+
+    @Autowired
+    public CategoryBulkheads(PolicyEngine policies, MeterRegistry registry, OperationMetrics metrics) {
+        this.policies = policies;
+        this.metrics = metrics;
         for (Category category : Category.values()) {
             bulkheads.put(category, new Bulkhead(() -> policies.policy(category).maxConcurrentRequests()));
             rejected.put(category, Counter.builder("filegrid.bulkhead.rejected").tag("category", category.name())
@@ -44,6 +57,7 @@ public class CategoryBulkheads {
         Bulkhead.Permit permit = bulkheads.get(category).tryAcquire();
         if (permit == null) {
             rejected.get(category).increment();
+            metrics.bulkheadRejected(category, policies.policy(category).primaryStorage());
             throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, "CATEGORY_SATURATED",
                     "Categoria " + category + " are deja numărul maxim de cereri în curs; reîncearcă imediat.",
                     RETRY_AFTER_SECONDS, Map.of("category", category.name()));

@@ -31,7 +31,8 @@ public class JdbcMeasurements implements RequirementsService.Measurements {
     public RequirementsService.OutageLatency outageLatency(Duration window) {
         var rows = jdbc.queryForList("SELECT DISTINCT PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY latency_ms) OVER () "
                 + "AS p95, COUNT_BIG(*) OVER () AS n FROM dbo.operation_metrics WHERE category = N'OUTAGE_RECORD' "
-                + "AND source = N'live' AND ts >= DATEADD(second, -?, SYSUTCDATETIME())", window.toSeconds());
+                + "AND source = N'live' AND operation <> N'" + OperationMetrics.BULKHEAD_REJECTED + "' "
+                + "AND ts >= DATEADD(second, -?, SYSUTCDATETIME())", window.toSeconds());
         if (rows.isEmpty()) {
             return new RequirementsService.OutageLatency(null, 0);
         }

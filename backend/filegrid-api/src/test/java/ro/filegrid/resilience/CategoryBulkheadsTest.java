@@ -19,6 +19,17 @@ import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import ro.filegrid.api.ApiException;
 import ro.filegrid.domain.Category;
 import ro.filegrid.policy.PolicyEngine;
+import ro.filegrid.api.RequestScenario;
+import ro.filegrid.observability.OperationMetrics;
+import ro.filegrid.observability.OperationRecorder;
+import ro.filegrid.storage.db.OperationMetric;
+import java.math.BigDecimal;
+import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
+import org.springframework.beans.factory.support.StaticListableBeanFactory;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 
 /** Bulkhead-urile pe categorii (C9): fail-fast, eliberare, redimensionare la reload, izolare, contor. */
 class CategoryBulkheadsTest {
@@ -69,6 +80,35 @@ class CategoryBulkheadsTest {
                 .isZero();
         held.forEach(Bulkhead.Permit::close);
         bulkheads.acquire(Category.CONNECTION_DOC).close();
+    }
+
+    @Test
+    void rejectionWritesOneRejectedRowWithPrimaryStorageAndScenario() {
+        List<OperationMetric> rows = new CopyOnWriteArrayList<>();
+        var recorder = new OperationRecorder(rows::addAll, meters, 100, 10, 20);
+        var provider = new StaticListableBeanFactory(Map.of("recorder", recorder))
+                .getBeanProvider(OperationRecorder.class);
+        var recording = new CategoryBulkheads(engine, meters, new OperationMetrics(meters, provider));
+        var request = new MockHttpServletRequest();
+        request.addHeader(RequestScenario.HEADER, "storm");
+        RequestScenario.read(request);
+        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
+        try {
+            int limit = engine.policy(Category.OUTAGE_RECORD).maxConcurrentRequests();
+            List<Bulkhead.Permit> held = new ArrayList<>();
+            for (int i = 0; i < limit; i++) {
+                held.add(recording.acquire(Category.OUTAGE_RECORD));
+            }
+            assertThatThrownBy(() -> recording.acquire(Category.OUTAGE_RECORD)).isInstanceOf(ApiException.class);
+            held.forEach(Bulkhead.Permit::close);
+            recording.acquire(Category.OUTAGE_RECORD).close(); // o cerere servită nu scrie rânduri aici
+        } finally {
+            RequestContextHolder.resetRequestAttributes();
+            recorder.shutdown();
+        }
+        assertThat(rows).containsExactly(new OperationMetric("OUTAGE_RECORD",
+                engine.policy(Category.OUTAGE_RECORD).primaryStorage().name(), OperationMetrics.BULKHEAD_REJECTED,
+                BigDecimal.ZERO, false, null, "live", "storm"));
     }
 
     @Test

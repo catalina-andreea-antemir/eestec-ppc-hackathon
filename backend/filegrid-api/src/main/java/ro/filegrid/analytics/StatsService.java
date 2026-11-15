@@ -2,11 +2,18 @@ package ro.filegrid.analytics;
 
 import static ro.filegrid.analytics.StatsResponses.*;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -18,6 +25,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.TransactionException;
 
+import ro.filegrid.analytics.StatsRepository.ScenarioActivity;
 import ro.filegrid.analytics.StatsRepository.StorageMeasurement;
 import ro.filegrid.api.ApiException;
 import ro.filegrid.domain.Category;
@@ -31,6 +39,8 @@ class StatsService {
     private static final String ANOMALY_RULE = "kWh > mediană + 3 × abatere standard eșantională, per contor";
     private static final Duration DAY = Duration.ofDays(1);
     private static final Duration MONTH = Duration.ofDays(30);
+    private static final Duration MIN_WINDOW = Duration.ofMinutes(1);
+    private static final Locale RO = Locale.forLanguageTag("ro-RO");
 
     private final ObjectProvider<StatsRepository> repositories;
     private final PolicyEngine policies;
@@ -41,15 +51,34 @@ class StatsService {
     }
 
     Anomalies anomalies(Instant now, Instant from, Instant to, int silentMinutes, int page, int size) {
-        return read(repository -> {
-            var anomalies = repository.anomalies(from, to, page, size);
-            var silentMeters = repository.silentMeters(to, silentMinutes);
-            var hours = repository.consumptionByHour(from, to);
+        // Cele trei interogări sunt independente; rulate în paralel, durata e a celei mai lente, nu suma lor.
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            var pageTask = executor.submit(() -> read(repository -> repository.anomalies(from, to, page, size)));
+            var silentTask = executor.submit(() -> read(repository -> repository.silentMeters(to, silentMinutes)));
+            var hoursTask = executor.submit(() -> read(repository -> repository.consumptionByHour(from, to)));
+            var anomalies = join(pageTask);
+            var silentMeters = join(silentTask);
+            var hours = join(hoursTask);
             String interpretation = ("În interval au fost detectate %d anomalii de consum, iar la sfârșitul "
                     + "intervalului %d contoare depășeau pragul de inactivitate de %d minute.")
                     .formatted(anomalies.totalItems(), silentMeters.size(), silentMinutes);
             return new Anomalies(now, from, to, ANOMALY_RULE, anomalies, silentMeters, hours, interpretation);
-        });
+        }
+    }
+
+    private static <T> T join(Future<T> task) {
+        try {
+            return task.get();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw unavailable("Statisticile din FileGridMeta sunt momentan indisponibile.",
+                    Map.of("reason", "METADATA_DB_UNAVAILABLE"));
+        } catch (ExecutionException e) {
+            if (e.getCause() instanceof RuntimeException runtime) {
+                throw runtime;
+            }
+            throw new IllegalStateException(e.getCause());
+        }
     }
 
     OutageZones outageZones(Instant now, Instant from, Instant to) {
@@ -65,17 +94,141 @@ class StatsService {
         return new OutageZones(now, from, to, total, outages.ranking(), outages.byHour(), interpretation);
     }
 
-    void peakVsNormal(Instant now, String normal, String peak) {
-        var comparison = read(repository -> repository.peakVsNormal(normal, peak, now.minus(DAY), now));
-        var unavailable = new ArrayList<>(List.of("requests", "throughputPerMinute", "rejected"));
-        if (comparison.stream().anyMatch(row -> row.operations() == 0)) {
-            unavailable.addAll(List.of("latencyP50Ms", "latencyP95Ms", "latencyP99Ms", "errorRatePercent"));
+    /**
+     * Fiecare scenariu se compară pe fereastra lui reală (primul–ultimul rând live din ultimele 24 h, minimum un
+     * minut), ca throughput-ul să fie pe durata rulării. {@code requests} sunt operațiile servite (fără respingeri),
+     * {@code rejected} sunt rândurile {@code rejected} scrise de bulkhead. Contractul cere numere în toate câmpurile,
+     * deci o categorie fără măsurători într-unul din scenarii dă 503 {@code REQUEST_METRICS_UNAVAILABLE}.
+     */
+    PeakVsNormal peakVsNormal(Instant now, String normal, String peak) {
+        Instant lookback = now.minus(DAY);
+        var activity = read(repository -> repository.scenarioActivity(normal, peak, lookback, now));
+        var normalWindow = window(normal, activity, lookback, now);
+        var peakWindow = window(peak, activity, lookback, now);
+        var rows = read(repository -> repository.peakVsNormal(normal, normalWindow.from(), normalWindow.to(),
+                peak, peakWindow.from(), peakWindow.to()));
+        return compare(now, normalWindow, peakWindow, rows, activity);
+    }
+
+    static ScenarioWindow window(String scenario, List<ScenarioActivity> activity, Instant from, Instant to) {
+        var rows = activity.stream().filter(row -> row.scenario().equals(scenario)).toList();
+        if (rows.isEmpty()) {
+            return new ScenarioWindow(scenario, from, to);
         }
-        if (comparison.stream().anyMatch(row -> row.scenario().equals(peak) && row.p95ChangePercent() == null)) {
-            unavailable.add("p95ChangePercent");
+        Instant first = rows.stream().map(ScenarioActivity::firstTs).min(Instant::compareTo).orElseThrow();
+        // Sfârșit exclusiv: ultimul rând plus o unitate datetime2(7), ca să fie inclus.
+        Instant end = rows.stream().map(ScenarioActivity::lastTs).max(Instant::compareTo).orElseThrow().plusNanos(100);
+        return new ScenarioWindow(scenario, first, end.isBefore(first.plus(MIN_WINDOW)) ? first.plus(MIN_WINDOW) : end);
+    }
+
+    static PeakVsNormal compare(Instant now, ScenarioWindow normal, ScenarioWindow peak, List<OperationStats> rows,
+                                List<ScenarioActivity> activity) {
+        var missing = new ArrayList<Map<String, Object>>();
+        var categories = new ArrayList<CategoryComparison>();
+        for (Category category : Category.values()) {
+            var normalRow = row(rows, category, normal.scenario());
+            var peakRow = row(rows, category, peak.scenario());
+            var normalGaps = gaps(normalRow, false);
+            var peakGaps = gaps(peakRow, true);
+            if (!normalGaps.isEmpty()) {
+                missing.add(Map.of("category", category.name(), "scenario", normal.scenario(), "fields", normalGaps));
+            }
+            if (!peakGaps.isEmpty()) {
+                missing.add(Map.of("category", category.name(), "scenario", peak.scenario(), "fields", peakGaps));
+            }
+            if (normalGaps.isEmpty() && peakGaps.isEmpty()) {
+                categories.add(new CategoryComparison(category,
+                        stats(normalRow, rejected(activity, category, normal.scenario())),
+                        stats(peakRow, rejected(activity, category, peak.scenario())),
+                        round(peakRow.p95ChangePercent())));
+            }
         }
-        throw unavailable("Comparația necesită numărul de cereri HTTP și de respingeri pe categorie și scenariu.",
-                Map.of("reason", "REQUEST_METRICS_UNAVAILABLE", "missingFields", unavailable));
+        if (!missing.isEmpty()) {
+            throw unavailable(("Comparația are nevoie de cereri măsurate în ambele scenarii (%s și %s) pentru fiecare "
+                    + "categorie, în ultimele 24 de ore; rulează tests/load/run.sh storm.")
+                    .formatted(normal.scenario(), peak.scenario()),
+                    Map.of("reason", "REQUEST_METRICS_UNAVAILABLE", "missing", missing));
+        }
+        return new PeakVsNormal(now, normal, peak, categories, interpret(normal.scenario(), peak.scenario(), categories));
+    }
+
+    static String interpret(String normal, String peak, List<CategoryComparison> categories) {
+        var text = new StringBuilder();
+        var leader = categories.stream().filter(c -> c.normal().requests() > 0)
+                .max(Comparator.comparingDouble(c -> (double) c.peak().requests() / c.normal().requests()))
+                .filter(c -> c.peak().requests() > c.normal().requests());
+        if (leader.isPresent()) {
+            var c = leader.get();
+            text.append(("În scenariul „%s” față de „%s”, %s a avut cea mai mare creștere a cererilor (de la %d la %d, "
+                    + "de %s ori), iar latența p95 a trecut de la %s ms la %s ms (%s%%).")
+                    .formatted(peak, normal, c.category(), c.normal().requests(), c.peak().requests(),
+                            number((double) c.peak().requests() / c.normal().requests()), number(c.normal().latencyP95Ms()),
+                            number(c.peak().latencyP95Ms()), signed(c.p95ChangePercent())));
+            categories.stream().filter(other -> other != c)
+                    .mapToDouble(other -> Math.abs(other.p95ChangePercent())).max()
+                    .ifPresent(max -> text.append(" La celelalte categorii p95 a variat cu cel mult %s%%."
+                            .formatted(number(max))));
+        } else {
+            text.append("În scenariul „%s” volumul de cereri nu a crescut față de „%s” în nicio categorie."
+                    .formatted(peak, normal));
+        }
+        long peakRejected = categories.stream().mapToLong(c -> c.peak().rejected()).sum();
+        long normalRejected = categories.stream().mapToLong(c -> c.normal().rejected()).sum();
+        if (peakRejected == 0 && normalRejected == 0) {
+            text.append(" Bulkhead-ul nu a respins nicio cerere.");
+        } else {
+            String byCategory = categories.stream().filter(c -> c.peak().rejected() > 0)
+                    .map(c -> c.category() + ": " + c.peak().rejected()).collect(Collectors.joining(", "));
+            text.append(" Bulkhead-ul a respins %d cereri în „%s”%s și %d în „%s”; respingerile nu intră în latențe."
+                    .formatted(peakRejected, peak, byCategory.isEmpty() ? "" : " (" + byCategory + ")",
+                            normalRejected, normal));
+        }
+        return text.toString();
+    }
+
+    private static OperationStats row(List<OperationStats> rows, Category category, String scenario) {
+        return rows.stream().filter(r -> r.category() == category && r.scenario().equals(scenario))
+                .findFirst().orElse(null);
+    }
+
+    private static List<String> gaps(OperationStats row, boolean peak) {
+        if (row == null || row.operations() == 0) {
+            var all = new ArrayList<>(List.of("latencyP50Ms", "latencyP95Ms", "latencyP99Ms", "errorRatePercent"));
+            if (peak) {
+                all.add("p95ChangePercent");
+            }
+            return all;
+        }
+        var gaps = new ArrayList<String>();
+        if (row.latencyP50Ms() == null) gaps.add("latencyP50Ms");
+        if (row.latencyP95Ms() == null) gaps.add("latencyP95Ms");
+        if (row.latencyP99Ms() == null) gaps.add("latencyP99Ms");
+        if (row.errorRatePercent() == null) gaps.add("errorRatePercent");
+        if (peak && row.p95ChangePercent() == null) gaps.add("p95ChangePercent");
+        return gaps;
+    }
+
+    private static long rejected(List<ScenarioActivity> activity, Category category, String scenario) {
+        return activity.stream().filter(a -> a.category() == category && a.scenario().equals(scenario))
+                .mapToLong(ScenarioActivity::rejected).sum();
+    }
+
+    private static ScenarioStats stats(OperationStats row, long rejected) {
+        return new ScenarioStats(row.operations(), round(row.operationsPerMinute()), round(row.latencyP50Ms()),
+                round(row.latencyP95Ms()), round(row.latencyP99Ms()), round(row.errorRatePercent().doubleValue()),
+                rejected);
+    }
+
+    private static double round(double value) {
+        return BigDecimal.valueOf(value).setScale(1, RoundingMode.HALF_UP).doubleValue();
+    }
+
+    private static String number(double value) {
+        return String.format(RO, "%.1f", value);
+    }
+
+    private static String signed(double value) {
+        return String.format(RO, "%+.1f", value);
     }
 
     StorageAdvisor storageAdvisor(Instant now) {

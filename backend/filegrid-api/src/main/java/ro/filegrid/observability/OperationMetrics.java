@@ -43,6 +43,8 @@ public class OperationMetrics {
     public static final String DOWNLOAD = "download";
     public static final String VERIFY = "verify";
     public static final String DELETE = "delete";
+    /** Operația rândurilor scrise la respingerile de bulkhead; statisticile de latență și erori o exclud. */
+    public static final String BULKHEAD_REJECTED = "rejected";
 
     public static final String OK = "ok";
     public static final String ERROR = "error";
@@ -87,6 +89,19 @@ public class OperationMetrics {
     public void integrityFailure(Category category, StorageType storage) {
         Counter.builder("filegrid.integrity.failures").description("Fișiere corupte detectate")
                 .tag("category", category.name()).tag("storage", storage.name()).register(registry).increment();
+    }
+
+    /**
+     * Rândul {@code operation_metrics} pentru o cerere respinsă de bulkhead ({@link #BULKHEAD_REJECTED}, ok=false,
+     * latență 0, storage-ul principal al categoriei). Contorul Micrometer îl incrementează {@code CategoryBulkheads};
+     * aici nu se înregistrează timer, ca latențele operațiilor reale să rămână neatinse.
+     */
+    public void bulkheadRejected(Category category, StorageType primaryStorage) {
+        OperationRecorder rec = recorder == null ? null : recorder.getIfAvailable();
+        if (rec != null) {
+            rec.record(new OperationMetric(category.name(), primaryStorage.name(), BULKHEAD_REJECTED, BigDecimal.ZERO,
+                    false, null, "live", currentScenario()));
+        }
     }
 
     public void duplicate(Category category) {
