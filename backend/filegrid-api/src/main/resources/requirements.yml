@@ -1,7 +1,8 @@
 # Pragurile celor 4 cerinte de business (planul 4.1), citite de GET /api/v1/stats/requirements.
 # Aceleasi valori alimenteaza alertele din Prometheus (Ovidiu); la schimbare se actualizeaza in ambele locuri.
 window: 5m                      # fereastra pentru R2, R3 si R4
-minSamples: 5                   # R2 si R4: sub atatea masuratori in fereastra, datele sunt insuficiente (status OK)
+minSamples: 1                   # R2 si R4: sub atatea masuratori in fereastra, datele sunt insuficiente (status OK);
+                                # 1 = o singura avarie / un singur video in fereastra ajunge ca cerinta sa fie evaluata
 readings:                       # R1
   unconfirmedMax: 0             # filegrid_meter_unconfirmed (randuri fara file_id mai vechi de 60 s)
 outages:                        # R2

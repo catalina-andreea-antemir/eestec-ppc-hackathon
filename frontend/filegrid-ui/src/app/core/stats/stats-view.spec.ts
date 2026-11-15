@@ -3,10 +3,8 @@ import { HttpErrorResponse, HttpHeaders } from '@angular/common/http';
 import { ALL_CATEGORIES } from '../files/files.models';
 import { OutageZones, Requirement, Requirements, StorageAdvisor, StorageScore, ZoneRank } from './stats.models';
 import {
-  buildAdvisorMatrix,
   changeLevel,
   comparisonRows,
-  costAssumptionLine,
   describeStatsError,
   describeStatsFailure,
   formatMinutes,
@@ -15,6 +13,8 @@ import {
   formatShare,
   hasOutageData,
   NO_VALUE,
+  policyInterpretation,
+  policyRows,
   UNAVAILABLE_REASONS,
   requirementsInterpretation,
   requirementTone,
@@ -49,55 +49,47 @@ function req(id: Requirement['id'], status: string, title = 'Titlu', message = '
 }
 
 describe('stats-view', () => {
-  describe('buildAdvisorMatrix', () => {
-    it('pune cele 12 celule în ordine fixă (categorie × FTP, S3, DB), fără goluri', () => {
-      const m = buildAdvisorMatrix(advisor());
-      expect(m.missingCells).toBe(0);
-      expect(m.rows.map((r) => r.category)).toEqual([...ALL_CATEGORIES]);
-      for (const row of m.rows) {
-        expect(row.cells.map((c) => c.storage)).toEqual(['FTP', 'S3', 'DB']);
-        expect(row.cells.every((c) => c.score !== null)).toBe(true);
-        expect(row.cells.map((c) => c.score!.storage)).toEqual(['FTP', 'S3', 'DB']);
-      }
+  describe('policyRows (doar stocarea din politică)', () => {
+    const rec = (category: StorageScore['category'], policy: StorageScore['storage'], recommended: StorageScore['storage']) => ({
+      category,
+      recommendedStorage: recommended,
+      currentPolicyStorage: policy,
+      matchesPolicy: policy === recommended,
+      rationale: 'S3 are cel mai bun scor.',
     });
 
-    it('evidențiază recomandarea serverului și storage-ul politicii actuale', () => {
-      const m = buildAdvisorMatrix(
+    it('arată storage-ul din politică chiar când recomandarea diferă, cu cifrele lui din benchmark', () => {
+      const rows = policyRows(advisor({ recommendations: [rec('METER_READING', 'DB', 'FTP')] }));
+      expect(rows.map((r) => r.category)).toEqual([...ALL_CATEGORIES]);
+      expect(rows[0].storage).toBe('DB');
+      expect(rows[0].measured).toMatchObject({ category: 'METER_READING', storage: 'DB', score: 50 });
+      expect(Object.keys(rows[0]).sort()).toEqual(['category', 'label', 'measured', 'storage']);
+    });
+
+    it('categorie fără răspuns de la server sau fără măsurători → null, nu altă stocare', () => {
+      const rows = policyRows(
         advisor({
-          recommendations: [
-            { category: 'INSPECTION_VIDEO', recommendedStorage: 'S3', currentPolicyStorage: 'FTP', matchesPolicy: false, rationale: 'r' },
-          ],
+          recommendations: [rec('METER_READING', 'S3', 'S3')],
+          matrix: fullMatrix().filter((c) => !(c.category === 'METER_READING' && c.storage === 'S3')),
         }),
       );
-      const video = m.rows.find((r) => r.category === 'INSPECTION_VIDEO')!;
-      expect(video.recommendedStorage).toBe('S3');
-      expect(video.cells.filter((c) => c.recommended).map((c) => c.storage)).toEqual(['S3']);
-      expect(video.cells.filter((c) => c.currentPolicy).map((c) => c.storage)).toEqual(['FTP']);
+      expect(rows[0]).toMatchObject({ storage: 'S3', measured: null });
+      expect(rows[1]).toMatchObject({ storage: null, measured: null });
     });
 
-    it('fără recomandare de la server alege scorul cel mai mare', () => {
-      const m = buildAdvisorMatrix(advisor());
-      expect(m.rows[0].recommendedStorage).toBe('FTP');
-      expect(m.rows[0].cells.filter((c) => c.recommended)).toHaveLength(1);
-    });
-
-    it('numără celulele lipsă, ca interfața să poată avertiza', () => {
-      const m = buildAdvisorMatrix(advisor({ matrix: fullMatrix().slice(1) }));
-      expect(m.missingCells).toBe(1);
-    });
-  });
-
-  it('costAssumptionLine păstrează unitatea și ordinea FTP, S3, DB', () => {
-    expect(costAssumptionLine({ DB: 3.2, unit: 'u', FTP: 1, S3: 1.4 })).toEqual({
-      unit: 'u',
-      values: [
-        { storage: 'FTP', cost: 1 },
-        { storage: 'S3', cost: 1.4 },
-        { storage: 'DB', cost: 3.2 },
-      ],
+    it('policyInterpretation: propoziție neutră, fără „recomand” sau „schimb”', () => {
+      const rows = policyRows(
+        advisor({ recommendations: [rec('METER_READING', 'DB', 'S3'), rec('INSPECTION_VIDEO', 'FTP', 'S3')] }),
+      );
+      const text = policyInterpretation(rows, { FTP: 'FTP', S3: 'S3', DB: 'Bază de date' })!;
+      expect(text).toBe(
+        'Politica actuală: Citiri contoare → Bază de date, Video-uri dronă → FTP; ' +
+          'cifrele sunt din benchmark-ul pe cele 12 combinații categorie × stocare.',
+      );
+      expect(text).not.toMatch(/recomand|schimb/i);
+      expect(policyInterpretation(policyRows(advisor()), { FTP: 'FTP', S3: 'S3', DB: 'Bază de date' })).toBeNull();
     });
   });
-
   it('changeLevel: sub 10% stabil, sub 50% moderat, altfel ridicat', () => {
     expect(changeLevel(4.3)).toBe('stable');
     expect(changeLevel(-12)).toBe('moderate');

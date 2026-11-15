@@ -1,52 +1,38 @@
 <app-stat-card
-  heading="Unde stocăm fiecare categorie"
-  question="Unde e mai bine să stea fiecare tip de fișier: FTP, S3 sau baza de date?"
+  heading="Unde se stochează fiecare categorie"
+  question="Pe ce stocare stă fiecare tip de fișier și cum s-a comportat acolo în benchmark?"
   [state]="result().state"
   [error]="errorOf()"
-  [interpretation]="data()?.interpretation ?? null"
+  [interpretation]="interpretation()"
 >
-  @if (matrix(); as m) {
+  @if (data(); as d) {
     <div class="scroll">
       <table>
-        <caption class="sr-only">Scorul 0–100 pentru fiecare categorie și tip de stocare; mai mare e mai bine.</caption>
+        <caption class="sr-only">Stocarea din politică pentru fiecare categorie și cifrele măsurate în benchmark pentru ea.</caption>
         <thead>
           <tr>
             <th scope="col">Categorie</th>
-            <th scope="col">FTP</th>
-            <th scope="col">S3</th>
-            <th scope="col">Bază de date</th>
+            <th scope="col">Stocare</th>
+            <th scope="col" class="num">Scor</th>
+            <th scope="col" class="num">p50</th>
+            <th scope="col" class="num">p95</th>
+            <th scope="col" class="num">Erori</th>
+            <th scope="col" class="num samples">Măsurători</th>
           </tr>
         </thead>
         <tbody>
-          @for (row of m.rows; track row.category) {
+          @for (row of rows(); track row.category) {
             <tr>
-              <th scope="row">
-                {{ row.label }}
-                @if (row.recommendation; as rec) {
-                  @if (!rec.matchesPolicy) {
-                    <span class="badge change">de schimbat: {{ storageLabels[rec.currentPolicyStorage] }} → {{ storageLabels[rec.recommendedStorage] }}</span>
-                  }
-                }
-              </th>
-              @for (cell of row.cells; track cell.storage) {
-                <td
-                  [class.recommended]="cell.recommended"
-                  [style.--tint]="(cell.score ? tint(cell.score.score) : 0) + '%'"
-                >
-                  @if (cell.score; as s) {
-                    <span class="score">{{ s.score | number: '1.0-0' }}</span>
-                    <span class="detail">p95 {{ s.latencyP95Ms | number: '1.0-0' }} ms</span>
-                    <span class="detail errors">erori {{ s.errorRatePercent | number: '1.0-1' }}%</span>
-                    @if (cell.recommended) {
-                      <span class="badge rec">★ recomandat</span>
-                    }
-                    @if (cell.currentPolicy) {
-                      <span class="badge policy">politica actuală</span>
-                    }
-                  } @else {
-                    <span class="detail">fără date</span>
-                  }
-                </td>
+              <th scope="row">{{ row.label }}</th>
+              <td class="storage">{{ row.storage ? storageLabels[row.storage] : '—' }}</td>
+              @if (row.measured; as m) {
+                <td class="num">{{ m.score | number: '1.0-0' }}</td>
+                <td class="num">{{ m.latencyP50Ms | number: '1.0-0' }} ms</td>
+                <td class="num">{{ m.latencyP95Ms | number: '1.0-0' }} ms</td>
+                <td class="num">{{ m.errorRatePercent | number: '1.0-1' }}%</td>
+                <td class="num samples">{{ m.samples | number }}</td>
+              } @else {
+                <td class="num muted" colspan="5">fără măsurători</td>
               }
             </tr>
           }
@@ -54,31 +40,13 @@
       </table>
     </div>
 
-    @if (m.missingCells > 0) {
-      <p class="warning">Serverul a trimis doar {{ 12 - m.missingCells }} din 12 celule; matricea nu e completă.</p>
-    }
-
-    <ul class="rationale">
-      @for (row of m.rows; track row.category) {
-        @if (row.recommendation; as rec) {
-          <li><strong>{{ row.label }} → {{ storageLabels[rec.recommendedStorage] }}:</strong> {{ rec.rationale }}</li>
-        }
+    <p class="note">
+      Scorul (0–100) combină latența, erorile și costul relativ al stocării. Bază:
+      {{ d.basis.benchmarkSamples ?? 0 | number }} măsurători din benchmark
+      @if (d.basis.benchmarkRunAt) {
+        ({{ d.basis.benchmarkRunAt | date: 'dd.MM.yyyy HH:mm' }})
       }
-    </ul>
-
-    @if (cost(); as c) {
-      <p class="note">
-        <strong>Ipoteza de cost</strong> — {{ c.unit }}: {{ costValues(c) }}. Scorul combină latența, erorile și acest cost relativ; costul e o presupunere din YAML, nu o factură.
-      </p>
-    }
-    @if (data(); as d) {
-      <p class="note">
-        Bază: {{ d.basis.benchmarkSamples ?? 0 | number }} măsurători din benchmark
-        @if (d.basis.benchmarkRunAt) {
-          ({{ d.basis.benchmarkRunAt | date: 'dd.MM.yyyy HH:mm' }})
-        }
-        și {{ d.basis.liveSamples ?? 0 | number }} din trafic live.
-      </p>
-    }
+      și {{ d.basis.liveSamples ?? 0 | number }} din trafic live.
+    </p>
   }
 </app-stat-card>

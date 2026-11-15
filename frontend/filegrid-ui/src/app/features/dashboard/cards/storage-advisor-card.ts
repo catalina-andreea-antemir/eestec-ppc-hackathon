@@ -4,10 +4,13 @@ import { Component, computed, DestroyRef, effect, inject, input, untracked } fro
 import { STORAGE_LABELS } from '../../../core/i18n/labels';
 import { StatsApi } from '../../../core/stats/stats-api';
 import { StorageAdvisor } from '../../../core/stats/stats.models';
-import { buildAdvisorMatrix, costAssumptionLine, CostLine, scoreTint } from '../../../core/stats/stats-view';
+import { policyInterpretation, policyRows } from '../../../core/stats/stats-view';
 import { loadable, loadInto, StatCard } from '../stat-card';
 
-/** Cartea 1: ce storage se potrivește fiecărei categorii (matrice 4 × 3 cu scor, din benchmark). */
+/**
+ * Cartea 1: unde se stochează fiecare categorie (storage-ul din politică) și cifrele măsurate în benchmark
+ * pentru acel storage. Decizie pentru demo: fără recomandări, comparații sau sugestii de schimbare.
+ */
 @Component({
   selector: 'app-storage-advisor-card',
   imports: [StatCard, DecimalPipe, DatePipe],
@@ -15,7 +18,7 @@ import { loadable, loadInto, StatCard } from '../stat-card';
   styleUrl: './storage-advisor-card.scss',
 })
 export class StorageAdvisorCard {
-  /** Se schimbă când utilizatorul apasă „Reîncarcă”. */
+  /** Crește când utilizatorul apasă „Reîncarcă”. */
   readonly reload = input(0);
 
   private readonly api = inject(StatsApi);
@@ -26,15 +29,12 @@ export class StorageAdvisorCard {
     const r = this.result();
     return r.state === 'ok' ? r.data : null;
   });
-  protected readonly matrix = computed(() => {
+  protected readonly rows = computed(() => {
     const d = this.data();
-    return d ? buildAdvisorMatrix(d) : null;
+    return d ? policyRows(d) : [];
   });
-  protected readonly cost = computed(() => {
-    const d = this.data();
-    return d ? costAssumptionLine(d.costAssumption) : null;
-  });
-  protected readonly tint = scoreTint;
+  /** Propoziție neutră din politică; interpretarea serverului (despre recomandare) nu se afișează. */
+  protected readonly interpretation = computed(() => (this.data() ? policyInterpretation(this.rows(), STORAGE_LABELS) : null));
   protected readonly storageLabels = STORAGE_LABELS;
 
   constructor() {
@@ -42,11 +42,6 @@ export class StorageAdvisorCard {
       this.reload();
       untracked(() => loadInto(this.result, this.api.storageAdvisor(), this.destroyRef));
     });
-  }
-
-  /** „FTP = 1,0, S3 = 1,4, DB = 3,2”. */
-  protected costValues(c: CostLine): string {
-    return c.values.map((v) => `${v.storage} = ${v.cost.toLocaleString('ro-RO', { minimumFractionDigits: 1 })}`).join(', ');
   }
 
   protected errorOf(): string {

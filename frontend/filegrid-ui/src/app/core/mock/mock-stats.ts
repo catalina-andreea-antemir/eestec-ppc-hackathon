@@ -86,9 +86,9 @@ const STORAGE_ADVISOR: StorageAdvisor = {
     { category: 'CONNECTION_DOC', recommendedStorage: 'DB', currentPolicyStorage: 'DB', matchesPolicy: true, rationale: 'Scor apropiat de S3, dar datele personale rămân într-un singur loc, cu acces controlat.' },
     { category: 'INSPECTION_VIDEO', recommendedStorage: 'S3', currentPolicyStorage: 'FTP', matchesPolicy: false, rationale: 'S3 transferă un video de 100 MB cu 24% mai rapid decât FTP; costul e doar cu 40% mai mare.' },
   ],
+  // Ca pe serverul real: interpretarea compară cu politica. Cartea o ignoră și compune o propoziție neutră (decizie demo).
   interpretation:
-    'Politica actuală este optimă pentru 3 din 4 categorii. Pentru video-uri de dronă, S3 ar fi cu 24% mai rapid decât FTP ' +
-    'la un cost cu 40% mai mare; recomandăm evaluarea schimbării în YAML, fără modificări de cod.',
+    'Pe baza măsurătorilor din ultimele 30 de zile, stocarea principală din politică coincide cu recomandarea în 3 din 4 categorii.',
 };
 
 const NORMAL_DAY: CategoryComparison[] = [
