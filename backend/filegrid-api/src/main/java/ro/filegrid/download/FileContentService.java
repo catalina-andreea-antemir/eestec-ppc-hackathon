@@ -3,6 +3,7 @@ package ro.filegrid.download;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Instant;
@@ -30,6 +31,7 @@ import ro.filegrid.ingest.DocumentEncryption;
 import ro.filegrid.ingest.FileRecord;
 import ro.filegrid.ingest.IngestErrors;
 import ro.filegrid.integrity.Sha256;
+import ro.filegrid.observability.OperationMetrics;
 import ro.filegrid.storage.ByteRange;
 import ro.filegrid.storage.StorageAdapterRegistry;
 import ro.filegrid.storage.StorageException;
@@ -56,13 +58,21 @@ public class FileContentService {
     private final StorageAdapterRegistry registry;
     private final FileAccess access;
     private final long preVerifyMaxBytes;
+    private final OperationMetrics metrics;
 
     @Autowired
-    public FileContentService(StorageAdapterRegistry registry, FileAccess access, DownloadProperties properties) {
-        this(registry, access, properties.preVerifyMaxSize().toBytes());
+    public FileContentService(StorageAdapterRegistry registry, FileAccess access, DownloadProperties properties,
+                              OperationMetrics metrics) {
+        this(registry, access, properties.preVerifyMaxSize().toBytes(), metrics);
     }
 
     public FileContentService(StorageAdapterRegistry registry, FileAccess access, long preVerifyMaxBytes) {
+        this(registry, access, preVerifyMaxBytes, OperationMetrics.noop());
+    }
+
+    public FileContentService(StorageAdapterRegistry registry, FileAccess access, long preVerifyMaxBytes,
+                              OperationMetrics metrics) {
+        this.metrics = metrics;
         this.registry = registry;
         this.access = access;
         this.preVerifyMaxBytes = preVerifyMaxBytes;
@@ -80,6 +90,11 @@ public class FileContentService {
      * streaming și verifică și {@code sha256Plain}; altfel verificarea e cea pe octeții stocați.
      */
     public VerifyResult verify(FileRecord file, boolean deep) {
+        return metrics.time(file.category(), file.storage(), OperationMetrics.VERIFY, file.size(),
+                () -> doVerify(file, deep));
+    }
+
+    private VerifyResult doVerify(FileRecord file, boolean deep) {
         byte[] actual = hashStored(file);
         if (!Arrays.equals(actual, file.sha256())) {
             throw corrupt(file, actual);
@@ -98,6 +113,20 @@ public class FileContentService {
 
     /** Trimite fișierul (sau intervalul cerut) pe {@code response}; erorile dinainte de primul octet ies ca {@link ApiException}. */
     public void send(FileRecord file, String rangeHeader, HttpServletResponse response) throws IOException {
+        try {
+            metrics.run(file.category(), file.storage(), OperationMetrics.DOWNLOAD, file.size(), () -> {
+                try {
+                    doSend(file, rangeHeader, response);
+                } catch (IOException e) {
+                    throw new UncheckedIOException(e);
+                }
+            });
+        } catch (UncheckedIOException e) {
+            throw e.getCause();
+        }
+    }
+
+    private void doSend(FileRecord file, String rangeHeader, HttpServletResponse response) throws IOException {
         boolean encrypted = file.encrypted(); // CONNECTION_DOC: fără Range (criptat în segmente), 200 complet
         Optional<RangeHeader.Resolved> range = encrypted ? Optional.empty() : RangeHeader.parse(rangeHeader, file.size());
         boolean small = file.size() <= preVerifyMaxBytes;
@@ -165,6 +194,7 @@ public class FileContentService {
             extra = false;
         }
         if (extra || !Arrays.equals(actual, file.sha256())) {
+            metrics.integrityFailure(file.category(), file.storage());
             log.error("Integritate încălcată la descărcare: fileId={}, storage={}, expectedSha256={}, actualSha256={};"
                     + " conexiunea se întrerupe", file.id(), file.storage(), Sha256.hex(file.sha256()),
                     Sha256.hex(actual));
@@ -180,6 +210,7 @@ public class FileContentService {
             }
             return n;
         } catch (DocumentEncryption.CorruptCiphertextException e) {
+            metrics.integrityFailure(file.category(), file.storage());
             log.error("Conținut criptat alterat: fileId={}, storage={}, trimiși {} octeți: {}", file.id(), file.storage(),
                     sent, e.getMessage());
             if (sent == 0) {
@@ -269,12 +300,14 @@ public class FileContentService {
     }
 
     private ApiException corruptContent(FileRecord file) {
+        metrics.integrityFailure(file.category(), file.storage());
         log.error("Conținut criptat alterat: fileId={}, storage={}", file.id(), file.storage());
         return new ApiException(HttpStatus.CONFLICT, "FILE_CORRUPT", "fișier corupt", null,
                 Map.of("fileId", file.id().toString(), "expectedSha256", Sha256.hex(file.sha256())));
     }
 
     private ApiException corrupt(FileRecord file, byte[] actual) {
+        metrics.integrityFailure(file.category(), file.storage());
         log.error("Fișier corupt: fileId={}, storage={}, expectedSha256={}, actualSha256={}", file.id(), file.storage(),
                 Sha256.hex(file.sha256()), Sha256.hex(actual));
         return new ApiException(HttpStatus.CONFLICT, "FILE_CORRUPT", "fișier corupt", null,

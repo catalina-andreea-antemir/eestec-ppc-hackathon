@@ -1,0 +1,12 @@
+# Pragurile celor 4 cerinte de business (planul 4.1), citite de GET /api/v1/stats/requirements.
+# Aceleasi valori alimenteaza alertele din Prometheus (Ovidiu); la schimbare se actualizeaza in ambele locuri.
+window: 5m                      # fereastra pentru R2, R3 si R4
+minSamples: 5                   # R2 si R4: sub atatea masuratori in fereastra, datele sunt insuficiente (status OK)
+readings:                       # R1
+  unconfirmedMax: 0             # filegrid_meter_unconfirmed (randuri fara file_id mai vechi de 60 s)
+outages:                        # R2
+  p95MaxSeconds: 2.0
+documents:                      # R3
+  deniedMax: 0                  # acces refuzat la CONNECTION_DOC in fereastra
+videos:                         # R4
+  failedMaxPercent: 5.0

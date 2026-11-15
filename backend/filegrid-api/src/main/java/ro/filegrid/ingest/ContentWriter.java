@@ -11,9 +11,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
-import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
-import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import ro.filegrid.observability.OperationMetrics;
 
 import ro.filegrid.domain.Category;
 import ro.filegrid.domain.StorageType;
@@ -37,17 +36,21 @@ public class ContentWriter {
     private final StorageSelector selector;
     private final StorageAdapterRegistry registry;
 
-    private final MeterRegistry meters;
+    private final OperationMetrics metrics;
 
     public ContentWriter(StorageSelector selector, StorageAdapterRegistry registry) {
-        this(selector, registry, new SimpleMeterRegistry());
+        this(selector, registry, OperationMetrics.noop());
+    }
+
+    public ContentWriter(StorageSelector selector, StorageAdapterRegistry registry, MeterRegistry meters) {
+        this(selector, registry, new OperationMetrics(meters, null));
     }
 
     @Autowired
-    public ContentWriter(StorageSelector selector, StorageAdapterRegistry registry, MeterRegistry meters) {
+    public ContentWriter(StorageSelector selector, StorageAdapterRegistry registry, OperationMetrics metrics) {
         this.selector = selector;
         this.registry = registry;
-        this.meters = meters;
+        this.metrics = metrics;
     }
 
     /**
@@ -64,7 +67,8 @@ public class ContentWriter {
                 InputStream content = encryption == null ? plain : encryption.encrypt(plain);
                 long length = encryption == null ? plainLength : encryption.encryptedLength(plainLength);
                 DigestInputStream stored = Sha256.digesting(content);
-                adapter.put(key, stored, length, contentType);
+                metrics.run(category, adapter.type(), OperationMetrics.UPLOAD, length,
+                        () -> adapter.put(key, stored, length, contentType));
                 byte[] storedHash = stored.getMessageDigest().digest();
                 byte[] plainHash = encryption == null ? null : plain.getMessageDigest().digest();
                 return new Stored(adapter.type(), key, storedHash, plainHash, length);
@@ -72,8 +76,6 @@ public class ContentWriter {
                 if (e instanceof StorageUnavailableException) {
                     selector.markDown(adapter.type());
                 }
-                Counter.builder("filegrid.transfers.failed").tag("category", category.name())
-                        .tag("storage", adapter.type().name()).register(meters).increment();
                 log.warn("Scrierea {} în storage-ul {} a eșuat: {}", category, adapter.type(), e.getMessage());
             } catch (IOException e) {
                 throw new UncheckedIOException("Nu pot citi conținutul primit", e);
@@ -84,9 +86,9 @@ public class ContentWriter {
     }
 
     /** Compensare: șterge obiectul scris dacă metadatele nu s-au putut salva. Nu aruncă. */
-    public void deleteQuietly(StorageType storage, String key) {
+    public void deleteQuietly(Category category, StorageType storage, String key) {
         try {
-            registry.adapter(storage).delete(key);
+            metrics.run(category, storage, OperationMetrics.DELETE, null, () -> registry.adapter(storage).delete(key));
         } catch (RuntimeException e) {
             log.error("Compensare eșuată: obiectul {} din {} a rămas fără metadate: {}", key, storage,
                     e.getMessage());

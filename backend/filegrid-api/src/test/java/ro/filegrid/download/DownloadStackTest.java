@@ -261,8 +261,8 @@ class DownloadStackTest {
             assertThat(json(200, "/api/v1/files?" + q + "&from=2020-01-02T12:00:00Z&to=2020-01-03T12:00:00Z")
                     .get("items")).hasSize(1);
             // % și _ din nume nu sunt metacaractere; q fără potrivire
-            assertThat(json(200, "/api/v1/files?q=" + tag + "-1_%25").get("items")).hasSize(1);
-            assertThat(json(200, "/api/v1/files?q=" + tag + "-%25-").get("items")).isEmpty();
+            assertThat(json(200, "/api/v1/files?category=OUTAGE_RECORD&q=" + tag + "-1_%25").get("items")).hasSize(1);
+            assertThat(json(200, "/api/v1/files?category=OUTAGE_RECORD&q=" + tag + "-%25-").get("items")).isEmpty();
             assertThat(json(200, "/api/v1/files?category=INSPECTION_VIDEO&q=" + tag).get("items")).isEmpty();
             JsonNode one = json(200, "/api/v1/files/" + ids.get(1));
             assertThat(one.get("originalName").asText()).startsWith("cautare-" + tag);

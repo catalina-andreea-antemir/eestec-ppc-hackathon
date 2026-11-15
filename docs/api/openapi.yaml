@@ -1385,10 +1385,17 @@ paths:
       operationId: getRequirements
       summary: Starea celor 4 cerințe de business (plăcuțe verzi/roșii)
       description: |
-        Praguri din `resources/requirements.yml`: (1) citiri: `filegrid_meter_unconfirmed = 0` și nicio citire
-        abandonată; (2) avarii: p95 sub 2 s pe ultimele 5 minute; (3) documente: criptarea activă și niciun acces
-        refuzat în ultimele 5 minute; (4) video: sub 5% transferuri eșuate. Aceleași praguri alimentează alertele.
-        `status`: `OK` (verde) sau `AT_RISK` (roșu, cerința e în pericol).
+        Praguri din `resources/requirements.yml`: (1) citiri: `filegrid_meter_unconfirmed = 0` (citirile abandonate
+        de simulator nu se văd din backend; le acoperă alerta 1 din Prometheus); (2) avarii: p95 sub 2 s pe ultimele
+        5 minute; (3) documente: criptarea activă și niciun acces refuzat în ultimele 5 minute; (4) video: sub 5%
+        transferuri eșuate pe ultimele 5 minute. `status`: `OK` (verde) sau `AT_RISK` (roșu, cerința e în pericol).
+
+        R2 și R4 se evaluează doar cu cel puțin `minSamples` măsurători în fereastră (implicit 5). `current.samples` este
+        numărul de măsurători, iar `current.sufficientData` spune dacă pragul minim e atins. Cu date insuficiente sau
+        fără nicio măsurătoare statusul rămâne `OK`, dar `message` spune explicit „Date insuficiente” sau că cerința
+        „nu a putut fi verificată”; clienții pot afișa atunci o stare neutră. Cu date suficiente, depășirea pragului
+        dă `AT_RISK`. Câmpurile `thresholds` și `current` sunt obiecte deschise: `windowMinutes` și `minSamples` sunt
+        câmpuri suplimentare.
       x-roles: [DISPATCH, ADMIN]
       responses:
         '200':
@@ -1407,16 +1414,16 @@ paths:
                     category: METER_READING
                     title: Nicio citire nu se pierde și nu se dublează
                     status: OK
-                    message: 0 citiri neconfirmate, 0 citiri abandonate.
-                    thresholds: {unconfirmedMax: 0, abandonedMax: 0}
-                    current: {unconfirmed: 0, abandoned: 0}
+                    message: Nicio citire neconfirmată peste 60 s.
+                    thresholds: {unconfirmedMax: 0}
+                    current: {unconfirmed: 0}
                   - id: R2
                     category: OUTAGE_RECORD
                     title: Avariile sunt disponibile imediat pentru dispecerat
                     status: AT_RISK
                     message: Latența p95 pentru avarii este 2,4 s în ultimele 5 minute (prag 2 s).
-                    thresholds: {p95MaxSeconds: 2.0, windowMinutes: 5}
-                    current: {p95Seconds: 2.4}
+                    thresholds: {p95MaxSeconds: 2.0, windowMinutes: 5, minSamples: 5}
+                    current: {p95Seconds: 2.4, samples: 18, sufficientData: true}
                   - id: R3
                     category: CONNECTION_DOC
                     title: Datele personale rămân protejate și verificabile la audit
@@ -1429,8 +1436,8 @@ paths:
                     title: Transferul rezistă pe conexiuni lente sau instabile
                     status: OK
                     message: 0 transferuri eșuate din 9 (0%), sub pragul de 5%.
-                    thresholds: {failedMaxPercent: 5.0}
-                    current: {failedPercent: 0.0, transfers: 9}
+                    thresholds: {failedMaxPercent: 5.0, windowMinutes: 5, minSamples: 5}
+                    current: {failedPercent: 0.0, transfers: 9, failed: 0, samples: 9, sufficientData: true}
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
