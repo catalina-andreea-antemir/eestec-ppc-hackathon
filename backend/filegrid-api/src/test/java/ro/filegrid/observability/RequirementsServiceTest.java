@@ -19,7 +19,12 @@ import ro.filegrid.policy.PolicyEngine;
 
 class RequirementsServiceTest {
 
-    private final RequirementsService.Thresholds thresholds = RequirementsService.Thresholds.load();
+    /** Pragurile reale din requirements.yml. */
+    private final RequirementsService.Thresholds loaded = RequirementsService.Thresholds.load();
+    /** Pentru logica lui minSamples testele folosesc explicit 5 măsurători (independent de valoarea din fișier). */
+    private final RequirementsService.Thresholds thresholds = new RequirementsService.Thresholds(
+            loaded.window(), 5, loaded.unconfirmedMax(), loaded.p95MaxSeconds(), loaded.deniedMax(),
+            loaded.failedMaxPercent());
 
     private static class Fake implements Measurements {
         long unconfirmed;
@@ -57,12 +62,32 @@ class RequirementsServiceTest {
 
     @Test
     void loadsThePlanThresholds() {
-        assertThat(thresholds.window()).isEqualTo(Duration.ofMinutes(5));
-        assertThat(thresholds.minSamples()).isEqualTo(5);
-        assertThat(thresholds.unconfirmedMax()).isZero();
-        assertThat(thresholds.p95MaxSeconds()).isEqualTo(2.0);
-        assertThat(thresholds.deniedMax()).isZero();
-        assertThat(thresholds.failedMaxPercent()).isEqualTo(5.0);
+        assertThat(loaded.window()).isEqualTo(Duration.ofMinutes(5));
+        assertThat(loaded.minSamples()).isEqualTo(1);
+        assertThat(loaded.unconfirmedMax()).isZero();
+        assertThat(loaded.p95MaxSeconds()).isEqualTo(2.0);
+        assertThat(loaded.deniedMax()).isZero();
+        assertThat(loaded.failedMaxPercent()).isEqualTo(5.0);
+    }
+
+    @Test
+    void withTheConfiguredMinimumOneUploadIsEnoughToEvaluate() {
+        Fake outage = new Fake();
+        outage.outage = new OutageLatency(0.05, 1);
+        Fake video = new Fake();
+        video.video = new long[] {1, 0};
+        var policies = mock(PolicyEngine.class);
+        var doc = mock(CategoryPolicy.class);
+        when(doc.encrypted()).thenReturn(true);
+        when(policies.policy(Category.CONNECTION_DOC)).thenReturn(doc);
+        Requirement r2 = new RequirementsService(outage, policies, mock(DocumentEncryption.class), loaded)
+                .evaluate().requirements().stream().filter(r -> r.id().equals("R2")).findFirst().orElseThrow();
+        Requirement r4 = new RequirementsService(video, policies, mock(DocumentEncryption.class), loaded)
+                .evaluate().requirements().stream().filter(r -> r.id().equals("R4")).findFirst().orElseThrow();
+        assertThat(r2.status()).isEqualTo("OK");
+        assertThat(r2.current()).containsEntry("sufficientData", true);
+        assertThat(r4.status()).isEqualTo("OK");
+        assertThat(r4.current()).containsEntry("sufficientData", true);
     }
 
     @Test

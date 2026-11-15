@@ -15,90 +15,43 @@ import {
   Requirements,
   SilentMeter,
   StorageAdvisor,
-  StorageRecommendation,
   StorageScore,
   StorageType,
   ZoneHourOutages,
   ZoneRank,
 } from './stats.models';
 
-// ---------- 1. Storage recommendation ----------
+// ---------- 1. Where each category is stored ----------
+// Team decision for the demo: each category shows ONLY the storage chosen by the policy (currentPolicyStorage),
+// with the benchmark figures measured for that storage. No comparisons between storages and no suggestions.
+// recommendedStorage / matchesPolicy / rationale and the server interpretation are ignored.
 
-export interface AdvisorCell {
-  storage: StorageType;
-  /** null only if the server did not send the cell (the contract always requires 12). */
-  score: StorageScore | null;
-  recommended: boolean;
-  /** The storage the YAML policy currently uses for this category. */
-  currentPolicy: boolean;
-}
-
-export interface AdvisorRow {
+export interface PolicyRow {
   category: Category;
   label: string;
-  cells: AdvisorCell[];
-  recommendation: StorageRecommendation | null;
-  /** Highlighted storage: the server's recommendation or, if missing, the one with the highest score. */
-  recommendedStorage: StorageType | null;
+  /** The policy storage; null if the server did not send the category. */
+  storage: StorageType | null;
+  /** Benchmark figures for exactly this storage; null if missing. */
+  measured: StorageScore | null;
 }
 
-export interface AdvisorMatrix {
-  rows: AdvisorRow[];
-  /** How many of the 12 cells are missing from the response (should be 0). */
-  missingCells: number;
-}
-
-/** Puts the matrix in a fixed order (4 categories x FTP/S3/DB), regardless of the response order. */
-export function buildAdvisorMatrix(advisor: StorageAdvisor): AdvisorMatrix {
-  let missingCells = 0;
-  const rows = ALL_CATEGORIES.map((category): AdvisorRow => {
-    const scores = ALL_STORAGES.map((s) => advisor.matrix.find((c) => c.category === category && c.storage === s) ?? null);
-    missingCells += scores.filter((s) => s === null).length;
-    const recommendation = advisor.recommendations.find((r) => r.category === category) ?? null;
-    const recommendedStorage = recommendation?.recommendedStorage ?? bestStorage(scores);
-    return {
-      category,
-      label: CATEGORY_LABELS[category],
-      recommendation,
-      recommendedStorage,
-      cells: ALL_STORAGES.map((storage, i) => ({
-        storage,
-        score: scores[i],
-        recommended: storage === recommendedStorage,
-        currentPolicy: storage === recommendation?.currentPolicyStorage,
-      })),
-    };
+/** The 4 categories in fixed order, each with its policy storage and its measurements. */
+export function policyRows(advisor: StorageAdvisor): PolicyRow[] {
+  return ALL_CATEGORIES.map((category) => {
+    const storage = advisor.recommendations.find((r) => r.category === category)?.currentPolicyStorage ?? null;
+    const measured = storage ? (advisor.matrix.find((c) => c.category === category && c.storage === storage) ?? null) : null;
+    return { category, label: CATEGORY_LABELS[category], storage, measured };
   });
-  return { rows, missingCells };
 }
 
-function bestStorage(scores: (StorageScore | null)[]): StorageType | null {
-  let best: StorageScore | null = null;
-  for (const s of scores) {
-    if (s && (!best || s.score > best.score)) {
-      best = s;
-    }
+/** Propoziția neutră a cărții: „Politica actuală: Citiri contoare → Bază de date, …; cifrele sunt din benchmark…”. */
+export function policyInterpretation(rows: PolicyRow[], storageLabels: Record<StorageType, string>): string | null {
+  const known = rows.filter((r) => r.storage !== null);
+  if (known.length === 0) {
+    return null;
   }
-  return best?.storage ?? null;
-}
-
-/** Cell colour intensity (0-100 -> 8-45%), so high scores stand out. */
-export function scoreTint(score: number): number {
-  const clamped = Math.max(0, Math.min(100, score));
-  return Math.round(8 + (clamped / 100) * 37);
-}
-
-export interface CostLine {
-  unit: string;
-  values: { storage: StorageType; cost: number }[];
-}
-
-/** Cost assumption from the YAML, in FTP, S3, DB order (numeric values only). */
-export function costAssumptionLine(cost: Record<string, unknown>): CostLine {
-  return {
-    unit: typeof cost['unit'] === 'string' ? cost['unit'] : 'cost relativ per GB',
-    values: ALL_STORAGES.filter((s) => typeof cost[s] === 'number').map((s) => ({ storage: s, cost: cost[s] as number })),
-  };
+  const list = known.map((r) => `${r.label} → ${storageLabels[r.storage!]}`).join(', ');
+  return `Politica actuală: ${list}; cifrele sunt din benchmark-ul pe cele 12 combinații categorie × stocare.`;
 }
 
 // ---------- 2. Normal day vs. peak ----------

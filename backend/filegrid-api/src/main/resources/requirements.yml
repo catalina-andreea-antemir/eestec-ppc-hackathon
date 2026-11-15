@@ -1,7 +1,8 @@
 # Thresholds of the 4 business requirements, served by GET /api/v1/stats/requirements.
 # The Prometheus alert rules use the same values; keep both in sync when changing them.
 window: 5m                      # window for R2, R3 and R4
-minSamples: 5                   # R2 and R4: fewer samples than this in the window means insufficient data (status OK)
+minSamples: 1                   # R2 and R4: fewer samples than this in the window means insufficient data (status OK);
+                                # 1 = a single outage / a single video in the window is enough to evaluate the requirement
 readings:                       # R1
   unconfirmedMax: 0             # filegrid_meter_unconfirmed (rows without file_id older than 60 s)
 outages:                        # R2

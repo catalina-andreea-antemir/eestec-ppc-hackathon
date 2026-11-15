@@ -13,7 +13,9 @@ import { makeSummary } from './lib/summary.js';
 const SHORT = !!__ENV.SHORT;
 const DUR = __ENV.DURATION || (SHORT ? '30s' : '2m');
 const K = Number(__ENV.MIXED_RATE || 1);
-const SCEN = 'k6-mixed';
+// Eticheta X-Scenario; `-e SCEN=peak` completeaza celelalte categorii pentru /stats/peak-vs-normal (scenariul peak),
+// pe langa citirile trimise de simulator cu SIM_PROFILE=peak.
+const SCEN = __ENV.SCEN || 'k6-mixed';
 
 function rate(name, perSec, vus) {
   return {

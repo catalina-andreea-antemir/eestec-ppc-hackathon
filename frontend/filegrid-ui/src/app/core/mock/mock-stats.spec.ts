@@ -3,7 +3,6 @@ import { firstValueFrom } from 'rxjs';
 
 import { Role } from '../auth/auth.models';
 import { OutageZones, PeakVsNormal, StorageAdvisor } from '../stats/stats.models';
-import { buildAdvisorMatrix } from '../stats/stats-view';
 import { describeStatsFailure, hasOutageData } from '../stats/stats-view';
 import { handleStatsRoutes, MockStatsMode } from './mock-stats';
 
@@ -30,7 +29,8 @@ describe('mock /stats/*', () => {
   it('matricea de storage are 12 celule, fără goluri', async () => {
     const advisor = await get<StorageAdvisor>('/stats/storage-advisor', 'DISPATCH');
     expect(advisor.matrix).toHaveLength(12);
-    expect(buildAdvisorMatrix(advisor).missingCells).toBe(0);
+    expect(new Set(advisor.matrix.map((c) => c.category + c.storage)).size).toBe(12);
+    expect(advisor.recommendations.find((r) => r.category === 'INSPECTION_VIDEO')).toMatchObject({ currentPolicyStorage: 'FTP', recommendedStorage: 'S3' });
     expect(advisor.interpretation).toBeTruthy();
   });
 

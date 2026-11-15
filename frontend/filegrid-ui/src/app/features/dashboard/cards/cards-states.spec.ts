@@ -92,6 +92,22 @@ describe('cărțile dashboard-ului în situațiile din O7', () => {
     expect(el.querySelector('.interpretation')?.textContent).not.toContain('Toate cele 4');
   });
 
+  it('storage: arată doar stocarea din politică, fără recomandări sau sugestii de schimbare', async () => {
+    const el = await render(StorageAdvisorCard, 'normal');
+    const text = el.textContent ?? '';
+    expect(text).not.toMatch(/recomand|schimb|★/i);
+    // Interpretarea serverului e înlocuită cu propoziția neutră despre politică.
+    expect(el.querySelector('.interpretation')?.textContent).toContain('Politica actuală: Citiri contoare → Bază de date');
+    const row = (label: string) =>
+      [...el.querySelectorAll('tbody tr')].find((r) => r.querySelector('th')?.textContent?.trim() === label)!;
+    // Video: în mock recomandarea e S3, dar politica e FTP → apare FTP, cu cifrele lui (scor 79, p95 9.800 ms).
+    const video = row('Video-uri dronă');
+    expect(video.querySelector('.storage')?.textContent?.trim()).toBe('FTP');
+    expect(video.textContent).toContain('79');
+    expect(video.textContent).not.toContain('S3');
+    expect(el.querySelectorAll('tbody tr')).toHaveLength(4);
+  });
+
   it('pe aceeași simulare, cartea de avarii merge în continuare', async () => {
     const el = await render(OutageZonesCard, 'metrics-missing');
     expect(el.querySelectorAll('.zone')).toHaveLength(3);
