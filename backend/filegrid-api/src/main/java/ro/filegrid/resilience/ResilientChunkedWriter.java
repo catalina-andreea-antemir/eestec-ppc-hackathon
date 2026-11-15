@@ -8,7 +8,7 @@ import ro.filegrid.storage.ChunkReceipt;
 import ro.filegrid.storage.ChunkedUpload;
 import ro.filegrid.storage.ChunkedWriter;
 
-/** {@link ChunkedWriter} înfășurat în circuit breaker; retry doar pentru finish / abort (idempotente, fără corp). */
+/** {@link ChunkedWriter} wrapped in a circuit breaker; retry only for finish / abort (idempotent, no body). */
 class ResilientChunkedWriter implements ChunkedWriter {
 
     private final ChunkedWriter delegate;

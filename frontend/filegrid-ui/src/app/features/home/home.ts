@@ -23,13 +23,13 @@ import { Topbar } from '../../shared/topbar/topbar';
 interface CategoryCount {
   category: Category;
   label: string;
-  /** null = nu s-a putut încărca numărul (serverul a răspuns cu eroare). */
+  /** null = the count could not be loaded (the server returned an error). */
   total: number | null;
 }
 
 /**
- * Pagina de start după login: salut, acțiunile permise rolului, căutare rapidă,
- * numărul de fișiere pe categorie și ultimele fișiere încărcate.
+ * Landing page after login: greeting, the actions allowed for the role, quick search,
+ * file counts per category and the most recently uploaded files.
  */
 @Component({
   selector: 'app-home',

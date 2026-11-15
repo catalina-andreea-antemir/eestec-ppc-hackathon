@@ -51,7 +51,7 @@ class StatsService {
     }
 
     Anomalies anomalies(Instant now, Instant from, Instant to, int silentMinutes, int page, int size) {
-        // Cele trei interogări sunt independente; rulate în paralel, durata e a celei mai lente, nu suma lor.
+        // The three queries are independent; run in parallel, latency is that of the slowest one rather than their sum.
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
             var pageTask = executor.submit(() -> read(repository -> repository.anomalies(from, to, page, size)));
             var silentTask = executor.submit(() -> read(repository -> repository.silentMeters(to, silentMinutes)));
@@ -95,10 +95,10 @@ class StatsService {
     }
 
     /**
-     * Fiecare scenariu se compară pe fereastra lui reală (primul–ultimul rând live din ultimele 24 h, minimum un
-     * minut), ca throughput-ul să fie pe durata rulării. {@code requests} sunt operațiile servite (fără respingeri),
-     * {@code rejected} sunt rândurile {@code rejected} scrise de bulkhead. Contractul cere numere în toate câmpurile,
-     * deci o categorie fără măsurători într-unul din scenarii dă 503 {@code REQUEST_METRICS_UNAVAILABLE}.
+     * Each scenario is compared over its real window (first-last live row in the last 24 h, at least one minute), so
+     * throughput reflects the run's duration. {@code requests} are served operations (rejections excluded),
+     * {@code rejected} are the {@code rejected} rows written by the bulkhead. The contract requires numbers in every
+     * field, so a category with no measurements in either scenario yields 503 {@code REQUEST_METRICS_UNAVAILABLE}.
      */
     PeakVsNormal peakVsNormal(Instant now, String normal, String peak) {
         Instant lookback = now.minus(DAY);
@@ -116,7 +116,7 @@ class StatsService {
             return new ScenarioWindow(scenario, from, to);
         }
         Instant first = rows.stream().map(ScenarioActivity::firstTs).min(Instant::compareTo).orElseThrow();
-        // Sfârșit exclusiv: ultimul rând plus o unitate datetime2(7), ca să fie inclus.
+        // Exclusive end: last row plus one datetime2(7) tick, so that row is included.
         Instant end = rows.stream().map(ScenarioActivity::lastTs).max(Instant::compareTo).orElseThrow().plusNanos(100);
         return new ScenarioWindow(scenario, first, end.isBefore(first.plus(MIN_WINDOW)) ? first.plus(MIN_WINDOW) : end);
     }
@@ -269,7 +269,7 @@ class StatsService {
             try {
                 return query.apply(repository);
             } catch (DataAccessException | TransactionException e) {
-                log.warn("Interogarea de statistici din FileGridMeta a eșuat.", e);
+                log.warn("Statistics query on FileGridMeta failed.", e);
             }
         }
         throw unavailable("Statisticile din FileGridMeta sunt momentan indisponibile.",

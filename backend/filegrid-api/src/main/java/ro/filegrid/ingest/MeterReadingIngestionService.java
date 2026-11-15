@@ -28,10 +28,10 @@ import ro.filegrid.storage.db.MeterReadingRepository;
 import ro.filegrid.storage.db.MeterReadingRepository.BeginResult;
 
 /**
- * Loturile de citiri, {@code POST /api/v1/meter-readings} (C7, fluxul din 4.1): deduplicare cu
- * {@link MeterReadingRepository#tryBegin} înainte de scrierea fișierului, apoi corpul brut ca fișier
- * {@code METER_READING} prin politică, rând în {@code files} și {@code attachFile} într-o tranzacție. La eșec:
- * {@code delete(attemptId)}, ștergerea obiectului din storage și 503 cu {@code Retry-After}.
+ * Reading batches, {@code POST /api/v1/meter-readings} (C7): deduplicate with {@link MeterReadingRepository#tryBegin}
+ * before writing the file, then store the raw body as a {@code METER_READING} file through the policy, insert the
+ * {@code files} row and {@code attachFile} in one transaction. On failure: {@code delete(attemptId)}, delete the
+ * storage object and return 503 with {@code Retry-After}.
  */
 @Service
 @Profile("db")
@@ -73,13 +73,13 @@ public class MeterReadingIngestionService {
         this.clock = clock;
     }
 
-    /** {@code body} e corpul brut, deja limitat la mărimea din politică și validat ca {@code batch}. */
+    /** {@code body} is the raw body, already capped at the policy size and validated as {@code batch}. */
     public Result ingest(byte[] body, MeterReadingBatch batch, String createdBy) {
         BeginResult begin;
         try {
             begin = readings.tryBegin(batch);
         } catch (DataAccessException | TransactionException e) {
-            log.warn("tryBegin a eșuat pentru un lot de {} citiri: {}", batch.readings().size(), e.getMessage());
+            log.warn("tryBegin failed for a batch of {} readings: {}", batch.readings().size(), e.getMessage());
             throw metadataUnavailable();
         }
         return switch (begin.status()) {
@@ -124,20 +124,20 @@ public class MeterReadingIngestionService {
                     if (attempt >= DEADLOCK_RETRIES || !isDeadlock(e)) {
                         throw e;
                     }
-                    log.info("Deadlock la salvarea metadatelor lotului (fișier {}), reîncercare {}/{}", fileId,
+                    log.info("Deadlock while saving batch metadata (file {}), retry {}/{}", fileId,
                             attempt + 1, DEADLOCK_RETRIES);
                     backoff(attempt);
                 }
             }
         } catch (RuntimeException e) {
-            log.warn("Metadatele lotului nu s-au salvat (fișier {}): {}", fileId, e.getMessage());
+            log.warn("Batch metadata was not saved (file {}): {}", fileId, e.getMessage());
             compensate(attemptId, stored);
             throw metadataUnavailable();
         }
         return new Result(fileId, batch.meterId(), expected, Sha256.hex(stored.sha256()), false);
     }
 
-    /** Deadlock SQL Server: excepțiile Spring de blocare sau cauza SQL cu codul 1205. */
+    /** SQL Server deadlock: Spring locking exceptions, or an SQL cause with error code 1205. */
     static boolean isDeadlock(Throwable e) {
         for (Throwable t = e; t != null; t = t.getCause() == t ? null : t.getCause()) {
             if (t instanceof CannotAcquireLockException || t instanceof DeadlockLoserDataAccessException
@@ -176,8 +176,8 @@ public class MeterReadingIngestionService {
         try {
             readings.delete(attemptId);
         } catch (RuntimeException e) {
-            // Rândurile rămase fără file_id se preiau după 60 s (4.1) și apar ca „citire neconfirmată”.
-            log.error("Compensare eșuată pentru încercarea {}: {}", attemptId, e.getMessage());
+            // Rows left without file_id are picked up after 60 s and show up as an "unconfirmed reading".
+            log.error("Compensation failed for attempt {}: {}", attemptId, e.getMessage());
         }
     }
 
@@ -189,7 +189,7 @@ public class MeterReadingIngestionService {
         return batch.meterId() + "_" + batch.readings().getFirst().ts() + ".json";
     }
 
-    /** Răspunsul {@code MeterReadingResult} din contract. */
+    /** The contract's {@code MeterReadingResult} response. */
     public record Result(UUID fileId, String meterId, int readingsCount, String sha256, boolean duplicate) {
     }
 }

@@ -22,7 +22,7 @@ import ro.filegrid.ingest.FileRecord;
 import ro.filegrid.download.FileQueryService;
 import ro.filegrid.ingest.IngestErrors;
 
-/** {@code GET /api/v1/files} (căutare cu paginare) și {@code GET /api/v1/files/{id}} (C8). */
+/** {@code GET /api/v1/files} (paged search) and {@code GET /api/v1/files/{id}} (C8). */
 @RestController
 public class FileReadController {
 
@@ -67,7 +67,7 @@ public class FileReadController {
         return FileMetadata.of(file);
     }
 
-    /** Un id care nu e UUID nu poate exista: 404, ca în contract (fără 400 la aceste rute). */
+    /** A non-UUID id cannot exist: 404, as in the contract (these routes never return 400). */
     static UUID fileId(String id) {
         try {
             return UUID.fromString(id);
@@ -105,7 +105,7 @@ public class FileReadController {
                 return parsed;
             }
         } catch (NumberFormatException e) {
-            // cade în eroarea de mai jos
+            // falls through to the error below
         }
         throw IngestErrors.validation(field, "Parametrul „" + field + "” trebuie să fie un întreg între " + min
                 + " și " + (max == Integer.MAX_VALUE ? "valoarea maximă" : max) + ".");

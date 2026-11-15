@@ -26,14 +26,14 @@ import ro.filegrid.storage.ChunkedUpload;
 import ro.filegrid.storage.StorageHealth;
 
 /**
- * Legătura testelor de integrare cu serverul FTP real din stack. Pornire: {@code ./scripts/start.sh}, apoi porturile de
- * dezvoltare ({@code docker compose -f docker-compose.yml -f infra/docker/docker-compose.dev.yml up -d}: FTP pe
- * {@code 127.0.0.1:21}, porturi pasive 21000-21049, cu {@code FTP_PASV_ADDRESS=127.0.0.1}).
+ * Glue between the integration tests and the stack's real FTP server. Start: {@code ./scripts/start.sh}, then the
+ * development ports ({@code docker compose -f docker-compose.yml -f infra/docker/docker-compose.dev.yml up -d}: FTP on
+ * {@code 127.0.0.1:21}, passive ports 21000-21049, with {@code FTP_PASV_ADDRESS=127.0.0.1}).
  *
- * <p>Credențialele sunt ale utilizatorului aplicației ({@code FTP_USER} / {@code FTP_PASSWORD}), din variabilele de
- * mediu sau din {@code .env} din rădăcina repo-ului (nu se afișează niciodată). Serverul: {@code FTP_TEST_HOST} (implicit
- * {@code 127.0.0.1}) și {@code FTP_TEST_PORT} (implicit 21). Dacă lipsesc credențialele sau serverul nu răspunde, testele
- * se <b>sar</b> (assumption), nu pică: {@code ./mvnw test} merge și fără stack.
+ * <p>Credentials belong to the app user ({@code FTP_USER} / {@code FTP_PASSWORD}), from environment variables or the
+ * repo-root {@code .env} (never printed). Server: {@code FTP_TEST_HOST} (default {@code 127.0.0.1}) and
+ * {@code FTP_TEST_PORT} (default 21). If credentials are missing or the server does not answer, the tests are
+ * <b>skipped</b> (assumption) instead of failing: {@code ./mvnw test} works without the stack.
  */
 final class FtpTestSupport {
 
@@ -42,7 +42,7 @@ final class FtpTestSupport {
     private FtpTestSupport() {
     }
 
-    /** Adaptorul conectat la serverul real, sau sare testele clasei dacă FTP nu e disponibil. */
+    /** Adapter connected to the real server, or skips the class's tests if FTP is not available. */
     static TrackingFtpAdapter connectOrSkip() {
         FtpProperties props = properties();
         Assumptions.assumeTrue(props != null,
@@ -54,7 +54,7 @@ final class FtpTestSupport {
         return adapter;
     }
 
-    /** Proprietățile din mediu / {@code .env}, sau {@code null} dacă lipsesc credențialele. */
+    /** Properties from the environment / {@code .env}, or {@code null} if credentials are missing. */
     static FtpProperties properties() {
         Map<String, String> env = environment();
         FtpProperties props = FtpProperties.of(env.getOrDefault("FTP_TEST_HOST", DEFAULT_HOST),
@@ -63,7 +63,7 @@ final class FtpTestSupport {
         return props.isConfigured() ? props : null;
     }
 
-    /** Variabilele de mediu, completate cu {@code .env} din rădăcina repo-ului (mediul are prioritate). */
+    /** Environment variables, completed from the repo-root {@code .env} (the environment wins). */
     static Map<String, String> environment() {
         Map<String, String> values = new HashMap<>();
         Path dotEnv = findDotEnv();
@@ -81,7 +81,7 @@ final class FtpTestSupport {
                     }
                 }
             } catch (IOException e) {
-                // Fără .env lizibil: rămân variabilele de mediu.
+                // Without a readable .env, only the environment variables remain.
             }
         }
         for (String name : List.of("FTP_TEST_HOST", "FTP_TEST_PORT", "FTP_USER", "FTP_PASSWORD")) {
@@ -103,8 +103,8 @@ final class FtpTestSupport {
     }
 
     /**
-     * Toate fișierele de sub rădăcina serverului FTP (căi complete), citite cu o conexiune separată de adaptor, ca testele
-     * să verifice ce a rămas pe server (bucăți parțiale, nume temporare).
+     * Every file under the FTP server root (full paths), listed over a connection separate from the adapter, so the tests
+     * can check what was left on the server (partial chunks, temp names).
      */
     static List<String> listAllFiles(FtpProperties props) throws IOException {
         FTPClient ftp = new FTPClient();
@@ -146,14 +146,14 @@ final class FtpTestSupport {
         }
     }
 
-    /** Fișierele rămase pe server care aparțin cheii (obiect, nume temporare, bucăți, manifest). */
+    /** Files left on the server that belong to the key (object, temp names, chunks, manifest). */
     static List<String> filesOf(FtpProperties props, String key) throws IOException {
         return listAllFiles(props).stream().filter(p -> p.contains(key)).toList();
     }
 
     /**
-     * {@link FtpAdapter} care ține minte cheile create de teste (ca să le șteargă la final) și poate tăia conexiunea de
-     * date în timpul unei scrieri (vezi {@link #cutNextDataConnectionAfter(long)}).
+     * {@link FtpAdapter} that remembers the keys created by tests (to delete them at the end) and can cut the data
+     * connection during a write (see {@link #cutNextDataConnectionAfter(long)}).
      */
     static final class TrackingFtpAdapter extends FtpAdapter {
 
@@ -180,7 +180,7 @@ final class FtpTestSupport {
             return super.open(key, totalSize, chunkSize);
         }
 
-        /** Prima conexiune care scrie mai mult de {@code bytes} octeți e tăiată brusc (ca o rețea căzută). */
+        /** The first connection that writes more than {@code bytes} bytes is cut abruptly (like a network failure). */
         void cutNextDataConnectionAfter(long bytes) {
             cutAfterBytes = bytes;
             cutArmed.set(true);
@@ -226,7 +226,7 @@ final class FtpTestSupport {
             return client;
         }
 
-        /** Socket care, odată armat, se închide după un număr de octeți scriși. */
+        /** A socket that, once armed, closes itself after a number of bytes written. */
         private final class CuttingSocket extends Socket {
 
             @Override
@@ -263,7 +263,7 @@ final class FtpTestSupport {
             }
         }
 
-        /** Șterge obiectele și bucățile create de teste. */
+        /** Deletes the objects and chunks created by tests. */
         void cleanup() {
             for (String key : keys) {
                 try {

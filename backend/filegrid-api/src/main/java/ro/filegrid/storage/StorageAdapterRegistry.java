@@ -18,9 +18,9 @@ import ro.filegrid.domain.StorageType;
 import ro.filegrid.resilience.StorageGuard;
 
 /**
- * Găsește adaptorul și writer-ul pentru un {@link StorageType}, din beanurile Spring {@link StorageAdapter} și
- * {@link ChunkedWriter}. Două beanuri pentru același storage opresc pornirea; un storage fără implementare încă (de
- * exemplu înainte de O3) se semnalează abia la folosire, cu {@link StorageUnavailableException}.
+ * Finds the adapter and writer for a {@link StorageType} among the Spring {@link StorageAdapter} and
+ * {@link ChunkedWriter} beans. Two beans for the same storage stop startup; a storage without an implementation is
+ * only reported when used, with {@link StorageUnavailableException}.
  */
 @Component
 public class StorageAdapterRegistry {
@@ -39,11 +39,11 @@ public class StorageAdapterRegistry {
     public StorageAdapterRegistry(List<StorageAdapter> adapters, List<ChunkedWriter> writers) {
         this.adapters = index(adapters, StorageAdapter::type, "StorageAdapter");
         this.writers = index(writers, ChunkedWriter::type, "ChunkedWriter");
-        log.info("Storage-uri disponibile: adaptoare {}, upload în bucăți {}", this.adapters.keySet(),
+        log.info("Available storage: adapters {}, chunked upload {}", this.adapters.keySet(),
                 this.writers.keySet());
     }
 
-    /** @throws StorageUnavailableException dacă nu există încă o implementare pentru acest storage */
+    /** @throws StorageUnavailableException if there is no implementation for this storage */
     public StorageAdapter adapter(StorageType type) {
         return find(type).orElseThrow(() ->
                 new StorageUnavailableException(type, "Nu există adaptor pentru storage-ul " + type));
@@ -53,7 +53,7 @@ public class StorageAdapterRegistry {
         return Optional.ofNullable(adapters.get(type));
     }
 
-    /** @throws StorageUnavailableException dacă storage-ul nu are încă upload în bucăți */
+    /** @throws StorageUnavailableException if the storage has no chunked upload support */
     public ChunkedWriter chunkedWriter(StorageType type) {
         ChunkedWriter writer = writers.get(type);
         if (writer == null) {
@@ -62,7 +62,7 @@ public class StorageAdapterRegistry {
         return writer;
     }
 
-    /** Storage-urile care au adaptor. */
+    /** Storage backends that have an adapter. */
     public Set<StorageType> availableTypes() {
         return Collections.unmodifiableSet(adapters.keySet());
     }

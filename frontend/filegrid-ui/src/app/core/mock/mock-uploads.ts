@@ -28,13 +28,13 @@ import { getMockSettings } from './mock-settings';
 import { Sha256, sha256Hex, Sha256State } from './sha256';
 
 /**
- * Mock pentru POST /files și fluxul /uploads, după contract (docs/api/openapi.yaml).
+ * Mock for POST /files and the /uploads flow, per the contract (docs/api/openapi.yaml).
  *
- * - Sesiunile de upload se păstrează în sessionStorage, ca reluarea după refresh să meargă și pe mock.
- * - Hash-ul final al video-ului e SHA-256 real al fișierului (calculat incremental, bucată cu bucată).
- * - Rețeaua e simulată: progresul vine cu viteza din setări, iar când browserul e offline
- *   (DevTools → Network → Offline) cererile eșuează ca o rețea căzută (status 0).
- * - Erori ocazionale (503, 429, 409 UPLOAD_BUSY, rețea, răspuns pierdut), cu probabilitatea din setări.
+ * - Upload sessions are kept in sessionStorage, so resuming after a refresh also works on the mock.
+ * - The video's final hash is the file's real SHA-256 (computed incrementally, chunk by chunk).
+ * - The network is simulated: progress follows the configured speed, and when the browser is offline
+ *   (DevTools -> Network -> Offline) requests fail like a dropped network (status 0).
+ * - Occasional errors (503, 429, 409 UPLOAD_BUSY, network, lost response), with the configured probability.
  */
 export interface MockUser {
   sub: string;
@@ -60,12 +60,12 @@ interface MockSession {
   result?: FileMetadata;
 }
 
-/** Sesiuni cu o cerere în curs (lease); doar în memorie, ca un refresh să nu lase lease-ul blocat. */
+/** Sessions with a request in flight (lease); memory only, so a refresh cannot leave the lease stuck. */
 const busy = new Set<string>();
 
 /**
- * Bucățile primite (Blob-uri din File.slice: referințe, nu copii), ca video-ul să se poată descărca
- * și verifica din pagina Căutare. Doar în memorie: după un refresh conținutul se pierde.
+ * Received chunks (Blobs from File.slice: references, not copies), so the video can be downloaded
+ * and verified from the Search page. Memory only: the content is lost after a refresh.
  */
 const chunkBlobs = new Map<string, Blob[]>();
 
@@ -151,7 +151,7 @@ function uploadFile(req: HttpRequest<FormData>, user: MockUser): Observable<Http
             originalName: file.name,
             contentType: file.type || 'application/octet-stream',
             size: file.size,
-            // La documente, mock-ul nu cifrează de fapt: sha256 imită hash-ul bytes-ilor cifrați.
+            // For documents the mock does not actually encrypt: sha256 mimics the hash of the encrypted bytes.
             sha256: encrypted ? await sha256Hex(new TextEncoder().encode(`aes-gcm:${plain}`)) : plain,
             sha256Plain: encrypted ? plain : null,
             storage: STORAGE[category],
@@ -161,7 +161,7 @@ function uploadFile(req: HttpRequest<FormData>, user: MockUser): Observable<Http
             createdBy: user.sub,
             ...(outage ? { outage } : {}),
           };
-          // Ca fișierul să apară în căutare (F5); conținutul rămâne doar o referință la File, nu o copie.
+          // So the file shows up in search (F5); the content stays a reference to the File, not a copy.
           registerMockFile(metadata, file);
           return metadata;
         })(),
@@ -214,7 +214,7 @@ function putChunk(req: HttpRequest<Blob>, stored: MockSession, n: number): Obser
   if (!(body instanceof Blob) || !Number.isInteger(n) || n < 1 || n > s.totalChunks) {
     return apiError(400, 'VALIDATION_ERROR', `Bucata trebuie să fie între 1 și ${s.totalChunks}, cu corp binar.`);
   }
-  // Bucată deja primită: confirmare idempotentă.
+  // Chunk already received: idempotent confirmation.
   if (n < s.nextChunk) {
     const ack: ChunkAck = { n, size: chunkLength(s, n), sha256: stored.chunkHashes[n - 1], nextChunk: s.nextChunk, duplicate: true };
     return respond(200, ack);
@@ -244,7 +244,7 @@ function putChunk(req: HttpRequest<Blob>, stored: MockSession, n: number): Obser
       from(
         (async () => {
           const bytes = new Uint8Array(await body.arrayBuffer());
-          // Starea se recitește: între timp sesiunea putea fi anulată.
+          // Re-read the state: the session may have been cancelled meanwhile.
           const current = load(s.uploadId);
           if (!current || current.session.status !== 'IN_PROGRESS' || current.session.nextChunk !== n) {
             throw httpError(409, 'UPLOAD_NOT_ACTIVE', 'Sesiunea s-a schimbat în timpul scrierii.');
@@ -260,7 +260,7 @@ function putChunk(req: HttpRequest<Blob>, stored: MockSession, n: number): Obser
           current.session.lastActivityAt = nowIso();
           save(current);
           if (fault === 'lost-response') {
-            // Serverul a scris bucata, dar răspunsul s-a pierdut: retrimiterea primește duplicate: true.
+            // The server wrote the chunk but the response was lost: the resend gets duplicate: true.
             throw networkError();
           }
           const ack: ChunkAck = { n, size: bytes.length, sha256: chunkHash, nextChunk: n + 1, duplicate: false };
@@ -305,7 +305,7 @@ function complete(stored: MockSession, user: MockUser): Observable<HttpEvent<unk
   s.status = 'COMPLETED';
   s.lastActivityAt = nowIso();
   save(stored);
-  // Conținutul există doar dacă toate bucățile au fost primite în această încărcare a paginii.
+  // Content only exists if every chunk was received during this page load.
   const blobs = chunkBlobs.get(s.uploadId) ?? [];
   const complete = blobs.length === s.totalChunks && blobs.every(Boolean);
   registerMockFile(stored.result, complete ? new Blob(blobs, { type: 'video/mp4' }) : null);
@@ -343,9 +343,9 @@ function withSession(
   return handler(stored);
 }
 
-// ---------- rețea simulată și erori ----------
+// ---------- simulated network and errors ----------
 
-/** Progresul trimiterii corpului, cu viteza din setări; eșuează dacă browserul trece offline. */
+/** Progress of sending the body, at the configured speed; fails if the browser goes offline. */
 function simulateTransfer(totalBytes: number): Observable<HttpEvent<never>> {
   if (!navigator.onLine) {
     return offline();
@@ -452,7 +452,7 @@ function offline(): Observable<never> {
   return timer(LATENCY_MS).pipe(switchMap(() => throwError(networkError)));
 }
 
-// ---------- stare păstrată în sessionStorage ----------
+// ---------- state kept in sessionStorage ----------
 
 function loadAll(): Record<string, MockSession> {
   try {
@@ -472,6 +472,6 @@ function save(stored: MockSession): void {
   try {
     sessionStorage.setItem(SESSIONS_KEY, JSON.stringify(all));
   } catch {
-    /* ignorat */
+    /* ignored */
   }
 }

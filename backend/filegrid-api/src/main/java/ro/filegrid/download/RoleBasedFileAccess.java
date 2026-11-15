@@ -25,8 +25,8 @@ import ro.filegrid.security.AuditLog;
 import ro.filegrid.security.Role;
 
 /**
- * Matricea rolurilor 4.4, auditul documentelor de racordare și decriptarea (C10). Auditul și metrica
- * {@code filegrid_doc_access_total{result="ok|denied|error"}} se aplică doar categoriei {@code CONNECTION_DOC}.
+ * Role matrix 4.4, connection document audit and decryption (C10). The audit and the
+ * {@code filegrid_doc_access_total{result="ok|denied|error"}} metric only apply to {@code CONNECTION_DOC}.
  */
 @Component
 public class RoleBasedFileAccess implements FileAccess {
@@ -34,9 +34,9 @@ public class RoleBasedFileAccess implements FileAccess {
     private static final Logger log = LoggerFactory.getLogger(RoleBasedFileAccess.class);
     private static final Set<Category> ALL = Set.of(Category.values());
 
-    /** „Poate încărca”. */
+    /** "Can upload". */
     static final Map<Role, Set<Category>> UPLOAD = new EnumMap<>(Role.class);
-    /** „Poate căuta și descărca”. */
+    /** "Can search and download". */
     static final Map<Role, Set<Category>> READ = new EnumMap<>(Role.class);
 
     static {
@@ -83,7 +83,7 @@ public class RoleBasedFileAccess implements FileAccess {
             try {
                 append(user == null ? "anonymous" : user.getName(), action + "_DENIED", fileId);
             } catch (RuntimeException e) {
-                log.error("Refuzul la documente nu s-a putut scrie în audit: {}", e.getMessage());
+                log.error("Document access denial could not be written to the audit log: {}", e.getMessage());
             }
         }
         throw new ApiException(HttpStatus.FORBIDDEN, "FORBIDDEN", "Rolul tău nu are acces la această categorie.");
@@ -106,7 +106,7 @@ public class RoleBasedFileAccess implements FileAccess {
             append(actor, action, file.id());
         } catch (RuntimeException e) {
             error.increment();
-            log.error("Auditul {} pentru fișierul {} nu s-a putut scrie; accesul se refuză: {}", action, file.id(),
+            log.error("Audit {} for file {} could not be written; denying access: {}", action, file.id(),
                     e.getMessage());
             throw IngestErrors.storageUnavailable("Jurnalul de audit este indisponibil; accesul la documente se refuză.");
         }
@@ -133,7 +133,7 @@ public class RoleBasedFileAccess implements FileAccess {
         try {
             return file.withOriginalName(encryption.decryptName(file.originalName()));
         } catch (java.io.IOException e) {
-            log.error("Numele fișierului {} nu se poate decripta: {}", file.id(), e.getMessage());
+            log.error("Name of file {} cannot be decrypted: {}", file.id(), e.getMessage());
             return file.withOriginalName("fisier");
         }
     }
@@ -156,7 +156,7 @@ public class RoleBasedFileAccess implements FileAccess {
                 try {
                     return Role.valueOf(name.substring(5));
                 } catch (IllegalArgumentException e) {
-                    // autoritate necunoscută: se ignoră
+                    // unknown authority: ignored
                 }
             }
         }

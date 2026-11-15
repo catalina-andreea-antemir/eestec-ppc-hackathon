@@ -7,9 +7,9 @@ import java.security.MessageDigest;
 import ro.filegrid.integrity.Sha256;
 
 /**
- * Corpul unei bucăți, citit în streaming: calculează SHA-256 și numără octeții fără să-i țină în memorie, reține dacă
- * sursa (clientul) a eșuat sau s-a terminat prea devreme (ca eroarea să fie 400, nu „storage căzut”) și apelează
- * periodic {@code progress} (reînnoirea lease-ului).
+ * A chunk body read as a stream: computes SHA-256 and counts bytes without holding them in memory, records whether
+ * the source (client) failed or ended too early (so the error is a 400, not "storage down") and periodically calls
+ * {@code progress} (lease renewal).
  */
 final class BodyStream extends FilterInputStream {
 
@@ -65,7 +65,7 @@ final class BodyStream extends FilterInputStream {
         return false;
     }
 
-    /** Corpul a căzut sau s-a terminat înainte de mărimea așteptată. */
+    /** The body failed or ended before the expected size. */
     boolean sourceFailed() {
         return sourceFailed;
     }
@@ -74,7 +74,7 @@ final class BodyStream extends FilterInputStream {
         return read;
     }
 
-    /** {@code true} dacă mai sunt octeți după cei așteptați (bucată prea mare). */
+    /** {@code true} if more bytes follow the expected ones (chunk too large). */
     boolean hasExtra() throws IOException {
         return in.read() >= 0;
     }

@@ -7,18 +7,18 @@ import { DownloadLink, FileMetadata, FilePage, SearchFilters, VerifyResult } fro
 import { toApiParams } from './search-query';
 
 /**
- * Apelurile HTTP pentru căutare, detalii, verificare și link de descărcare (contractul: /files/*).
- * Token-ul și reînnoirea lui le pune authInterceptor.
+ * HTTP calls for search, details, verification and download links (contract: /files/*).
+ * authInterceptor adds the token and handles its refresh.
  *
- * Atenție: fișierul în sine NU se descarcă prin HttpClient (l-ar încărca tot în memorie);
- * vezi FileDownloader, care deschide link-ul semnat în browser.
+ * Note: the file itself is NOT downloaded through HttpClient (that would load it entirely into memory);
+ * see FileDownloader, which opens the signed link in the browser.
  */
 @Injectable({ providedIn: 'root' })
 export class FilesApi {
   private readonly http = inject(HttpClient);
   private readonly base = environment.apiBaseUrl;
 
-  /** GET /files cu filtre și paginare. Fără categorie, serverul restrânge la categoriile rolului. */
+  /** GET /files with filters and paging. Without a category, the server restricts to the role's categories. */
   search(filters: SearchFilters): Observable<FilePage> {
     return this.http.get<FilePage>(`${this.base}/files`, { params: toApiParams(filters) });
   }
@@ -29,16 +29,16 @@ export class FilesApi {
   }
 
   /**
-   * GET /files/{id}/verify: serverul recitește fișierul din storage și recalculează SHA-256.
-   * 200 = OK; 409 cu code FILE_CORRUPT = hash nepotrivit (hash-urile sunt în details).
-   * `deep` are efect doar la CONNECTION_DOC (decriptează și verifică și sha256Plain).
+   * GET /files/{id}/verify: the server re-reads the file from storage and recomputes SHA-256.
+   * 200 = OK; 409 with code FILE_CORRUPT = hash mismatch (hashes are in details).
+   * `deep` only applies to CONNECTION_DOC (also decrypts and checks sha256Plain).
    */
   verify(id: string, deep = false): Observable<VerifyResult> {
     const params: Record<string, string> = deep ? { deep: 'true' } : {};
     return this.http.get<VerifyResult>(`${this.fileUrl(id)}/verify`, { params });
   }
 
-  /** POST /files/{id}/download-link: URL semnat, valabil 15 minute. */
+  /** POST /files/{id}/download-link: signed URL, valid for 15 minutes. */
   createDownloadLink(id: string): Observable<DownloadLink> {
     return this.http.post<DownloadLink>(`${this.fileUrl(id)}/download-link`, null);
   }

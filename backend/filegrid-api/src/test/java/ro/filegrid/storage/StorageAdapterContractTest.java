@@ -16,20 +16,19 @@ import java.util.Random;
 import org.junit.jupiter.api.Test;
 
 /**
- * Testul de contract pentru {@link StorageAdapter} și {@link ChunkedWriter}: fiecare implementare (S3, FTP, DB) îl
- * extinde și dă adaptorul ei (de exemplu {@code DbStorageAdapterContractTest} cu un SQL Server pornit). Verifică
- * regulile din Javadoc-ul interfețelor: rescriere, interval, ștergere idempotentă, bucăți retrimise, finish
- * idempotent, abort.
+ * Contract test for {@link StorageAdapter} and {@link ChunkedWriter}: every implementation (S3, FTP, DB) extends it
+ * and supplies its adapter (e.g. {@code DbStorageAdapterContractTest} against a running SQL Server). It checks the
+ * rules from the interfaces' Javadoc: overwrite, range, idempotent delete, resent chunks, idempotent finish, abort.
  */
 public abstract class StorageAdapterContractTest {
 
-    /** Adaptorul testat. */
+    /** The adapter under test. */
     protected abstract StorageAdapter adapter();
 
-    /** Writer-ul testat (de obicei același obiect cu {@link #adapter()}). */
+    /** The writer under test (usually the same object as {@link #adapter()}). */
     protected abstract ChunkedWriter chunkedWriter();
 
-    /** Mărimea bucății în testele de upload în bucăți; minim 5 MiB, ca la S3. */
+    /** Chunk size for the chunked upload tests; at least 5 MiB, as on S3. */
     protected int chunkSize() {
         return 5 * 1024 * 1024;
     }
@@ -141,7 +140,7 @@ public abstract class StorageAdapterContractTest {
         List<ChunkReceipt> receipts = new ArrayList<>();
 
         receipts.add(append(upload, 1, data));
-        // Prima trimitere a bucății 2 are alt conținut (de exemplu a căzut conexiunea); a doua e cea corectă.
+        // The first send of chunk 2 has different content (e.g. the connection dropped); the second one is correct.
         append(upload, 2, randomBytes(data.length, 8));
         receipts.add(append(upload, 2, data));
         chunkedWriter().finish(upload, receipts);
@@ -172,7 +171,7 @@ public abstract class StorageAdapterContractTest {
         assertThatCode(() -> chunkedWriter().abort(upload)).doesNotThrowAnyException();
     }
 
-    // --- utilitare -------------------------------------------------------------------------------------------
+    // --- helpers ---------------------------------------------------------------------------------------------
 
     protected ChunkedUpload open(long totalSize) {
         String key = StorageKeys.newKey();

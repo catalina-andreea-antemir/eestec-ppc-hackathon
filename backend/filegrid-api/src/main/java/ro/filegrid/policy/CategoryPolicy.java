@@ -7,27 +7,27 @@ import ro.filegrid.domain.Category;
 import ro.filegrid.domain.StorageType;
 
 /**
- * Politica unei categorii (planul v4 4.2), citită din {@code policies/*.yml} de {@link PolicyEngine}. Valorile se
- * validează la construcție, deci o politică existentă este mereu validă.
+ * A category's policy (4.2), read from {@code policies/*.yml} by {@link PolicyEngine}. Values are validated in the
+ * constructor, so an existing policy is always valid.
  *
- * @param category              categoria
- * @param primaryStorage        storage-ul principal
- * @param fallbackStorage       storage-ul de rezervă, mereu diferit de cel principal (C11)
- * @param maxSizeBytes          mărimea maximă a unui fișier, în octeți (peste ea: 413)
- * @param encrypted             criptare AES-GCM înainte de storage (C10)
- * @param chunkSizeBytes        mărimea bucății pentru upload în bucăți, între {@link #MIN_CHUNK_SIZE} și
- *                              {@link #MAX_CHUNK_SIZE}; {@code null} dacă categoria nu are upload în bucăți
- * @param maxConcurrentRequests cereri paralele per instanță (bulkhead, C9)
+ * @param category              the category
+ * @param primaryStorage        primary storage
+ * @param fallbackStorage       fallback storage, always different from the primary (C11)
+ * @param maxSizeBytes          maximum file size in bytes (above it: 413)
+ * @param encrypted             AES-GCM encryption before storage (C10)
+ * @param chunkSizeBytes        chunk size for chunked uploads, between {@link #MIN_CHUNK_SIZE} and
+ *                              {@link #MAX_CHUNK_SIZE}; {@code null} if the category has no chunked upload
+ * @param maxConcurrentRequests concurrent requests per instance (bulkhead, C9)
  */
 public record CategoryPolicy(Category category, StorageType primaryStorage, StorageType fallbackStorage,
                              long maxSizeBytes, boolean encrypted, Integer chunkSizeBytes,
                              int maxConcurrentRequests) {
 
-    /** 5 MiB: partea minimă la multipart S3 / MinIO (în afară de ultima). */
+    /** 5 MiB: minimum S3 / MinIO multipart part size (except the last part). */
     public static final int MIN_CHUNK_SIZE = 5 * 1024 * 1024;
-    /** 64 MiB: limita din contract (o bucată încape în {@code client_max_body_size 100m}). */
+    /** 64 MiB: the contract limit (a chunk fits within nginx {@code client_max_body_size 100m}). */
     public static final int MAX_CHUNK_SIZE = 64 * 1024 * 1024;
-    /** Plafon de bun-simț pentru bulkhead (suma pe categorii rămâne sub {@code server.tomcat.threads.max}, C9). */
+    /** Sanity cap for the bulkhead (the sum across categories stays below {@code server.tomcat.threads.max}, C9). */
     public static final int MAX_CONCURRENT_REQUESTS = 1000;
 
     public CategoryPolicy {
@@ -51,7 +51,7 @@ public record CategoryPolicy(Category category, StorageType primaryStorage, Stor
         }
     }
 
-    /** Mărimea bucății, dacă categoria are upload în bucăți. */
+    /** The chunk size, if the category supports chunked uploads. */
     public OptionalInt chunkSize() {
         return chunkSizeBytes == null ? OptionalInt.empty() : OptionalInt.of(chunkSizeBytes);
     }

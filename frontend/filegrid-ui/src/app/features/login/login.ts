@@ -63,6 +63,6 @@ function loginErrorMessage(err: unknown): string {
   if (status === 0) {
     return 'Serverul nu răspunde. Verifică dacă sistemul e pornit.';
   }
-  // Alte erori: mesajul în română din contract (câmpul `message`), dacă există.
+  // Other errors: the contract's Romanian message (the `message` field), if present.
   return toApiError(err)?.message ?? 'A apărut o eroare. Încearcă din nou.';
 }

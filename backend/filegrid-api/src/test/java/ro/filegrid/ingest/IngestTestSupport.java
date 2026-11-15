@@ -16,7 +16,7 @@ import ro.filegrid.storage.InMemoryStorageAdapter;
 import ro.filegrid.storage.StorageAdapterRegistry;
 import ro.filegrid.storage.StorageUnavailableException;
 
-/** Storage-uri în memorie, politica implicită din classpath și o tranzacție simulată. */
+/** In-memory storage backends, the default classpath policy and a simulated transaction. */
 final class IngestTestSupport {
 
     final CountingAdapter s3 = new CountingAdapter(StorageType.S3);
@@ -28,7 +28,7 @@ final class IngestTestSupport {
     final ContentWriter writer = new ContentWriter(selector, registry);
     final TransactionTemplate transaction = new TransactionTemplate(mock(PlatformTransactionManager.class));
 
-    /** Numără scrierile și ștergerile; {@code failPuts} simulează o scriere căzută cu health „up”. */
+    /** Counts writes and deletes; {@code failPuts} simulates a failed write while health is "up". */
     static final class CountingAdapter extends InMemoryStorageAdapter {
         final AtomicInteger puts = new AtomicInteger();
         final AtomicInteger deletes = new AtomicInteger();

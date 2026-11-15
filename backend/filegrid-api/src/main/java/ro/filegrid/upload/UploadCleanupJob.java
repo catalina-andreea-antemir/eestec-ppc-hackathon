@@ -12,10 +12,10 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.annotation.Scheduled;
 
 /**
- * Curăță sesiunile de upload abandonate (inactive peste 24 h sau cu storage căzut peste 10 minute; abort în storage).
- * Rulează periodic pe fiecare instanță {@code api}, dar o singură execuție la un moment dat: lock-ul aplicației
- * {@code sp_getapplock} din SQL Server (legat de conexiune, deci se eliberează singur dacă instanța moare) joacă rolul
- * lease-ului din DB, fără tabelă nouă.
+ * Cleans up abandoned upload sessions (idle for more than 24 h, or with storage down for more than 10 minutes;
+ * abort in storage). Runs periodically on every {@code api} instance but only one execution at a time: the SQL Server
+ * application lock {@code sp_getapplock} (bound to the connection, so it is released if the instance dies) acts as
+ * the DB lease, without a new table.
  */
 @Configuration
 @EnableScheduling
@@ -39,11 +39,11 @@ public class UploadCleanupJob {
         try {
             runExclusively();
         } catch (RuntimeException e) {
-            log.warn("Curățarea upload-urilor a eșuat: {}", e.getMessage());
+            log.warn("Upload cleanup failed: {}", e.getMessage());
         }
     }
 
-    /** @return câte sesiuni a abandonat, sau {@code -1} dacă altă instanță rulează deja jobul */
+    /** @return how many sessions it abandoned, or {@code -1} if another instance is already running the job */
     int runExclusively() {
         return jdbc.execute((ConnectionCallback<Integer>) con -> {
             if (!lock(con, true)) {
@@ -52,7 +52,7 @@ public class UploadCleanupJob {
             try {
                 int done = uploads.cleanup();
                 if (done > 0) {
-                    log.info("Curățare upload-uri: {} sesiuni abandonate", done);
+                    log.info("Upload cleanup: {} sessions abandoned", done);
                 }
                 return done;
             } finally {

@@ -1,6 +1,6 @@
 #!/bin/sh
-# Ruleaza la fiecare pornire (docker-entrypoint.d al imaginii nginx). Genereaza certificatul self-signed o singura
-# data, in volumul nginx-certs; nu se comite nimic. Pentru un certificat nou: docker compose down -v (sau stergi volumul).
+# Runs on every start (nginx image docker-entrypoint.d). Generates the self-signed certificate once, into the
+# nginx-certs volume; nothing is committed. For a new certificate: docker compose down -v (or delete the volume).
 set -eu
 
 cert_dir=/etc/nginx/certs
@@ -11,7 +11,7 @@ if [ -s "$crt" ] && [ -s "$key" ]; then
     exit 0
 fi
 
-echo "10-self-signed-cert: generez certificatul self-signed pentru localhost"
+echo "10-self-signed-cert: generating the self-signed certificate for localhost"
 umask 077
 openssl req -x509 -newkey rsa:2048 -nodes -sha256 -days 825 \
     -subj "/CN=localhost/O=FileGrid PPC" \

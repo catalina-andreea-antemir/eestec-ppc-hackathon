@@ -18,8 +18,8 @@ import {
 import { Topbar } from '../../shared/topbar/topbar';
 
 /**
- * Pagina Upload (F4): alegi categoria permisă rolului, fișierul și, la avarii, zona,
- * momentul și stația. Video-urile merg în bucăți, cu reluare; vezi UploadManager.
+ * Upload page (F4): pick a category allowed for the role, the file and, for outages, the zone,
+ * timestamp and station. Videos go in chunks, with resume; see UploadManager.
  */
 @Component({
   selector: 'app-upload',
@@ -37,7 +37,7 @@ export class Upload implements OnInit {
   protected readonly formatBytes = formatBytes;
   protected readonly useMocks = environment.useMocks;
 
-  /** Doar categoriile permise rolului (matricea 4.4; ADMIN le vede pe toate). */
+  /** Only the categories allowed for the role (matrix 4.4; ADMIN sees all of them). */
   protected readonly categories = computed(() => {
     this.auth.user();
     return MANUAL_CATEGORIES.filter((c) => this.auth.hasRole(...CATEGORY_RULES[c].roles));
@@ -72,7 +72,7 @@ export class Upload implements OnInit {
       : null,
   );
 
-  /** Un video nou ar înlocui upload-ul neterminat; întâi trebuie continuat sau abandonat. */
+  /** A new video would replace the unfinished upload; it has to be continued or abandoned first. */
   protected readonly blockedByPending = computed(() => this.category() === 'INSPECTION_VIDEO' && !!this.pending());
 
   protected readonly canSubmit = computed(
@@ -102,7 +102,7 @@ export class Upload implements OnInit {
   protected readonly mockSettings = signal<MockSettings>(getMockSettings());
 
   constructor() {
-    // Prima categorie permisă e selectată implicit.
+    // The first allowed category is selected by default.
     effect(() => {
       const allowed = this.categories();
       const current = this.category();
@@ -127,7 +127,7 @@ export class Upload implements OnInit {
     this.submitted.set(false);
   }
 
-  /** Re-selectarea fișierului după refresh: UploadManager verifică numele și mărimea, apoi reia. */
+  /** Re-selecting the file after a refresh: UploadManager checks name and size, then resumes. */
   protected onResumeFileChange(event: Event): void {
     const input = event.target as HTMLInputElement;
     const file = input.files?.[0];
@@ -188,13 +188,13 @@ export class Upload implements OnInit {
   }
 }
 
-/** Valoarea pentru <input type="datetime-local"> (ora locală, fără secunde). */
+/** Value for <input type="datetime-local"> (local time, no seconds). */
 function toLocalInput(date: Date): string {
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
-/** Ora locală din formular → ISO-8601 UTC, ca în contract (2026-11-14T09:32:00Z). */
+/** Local time from the form -> ISO-8601 UTC, as in the contract (2026-11-14T09:32:00Z). */
 function toIsoUtc(local: string): string {
   return new Date(local).toISOString().replace(/\.\d{3}Z$/, 'Z');
 }

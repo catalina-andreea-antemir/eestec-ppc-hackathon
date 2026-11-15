@@ -5,9 +5,9 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Mărimi din YAML-ul de politică: un număr întreg de octeți sau un număr urmat de unitate. Unitățile sunt binare
- * (KB = KiB = 1024 de octeți, MB = MiB, GB = GiB), ca în planul v4 („chunk 16 MiB, minim 5 MiB”) și în contract
- * ({@code maxBytes: 20971520} pentru 20 MB).
+ * Sizes in the policy YAML: a whole number of bytes or a number followed by a unit. Units are binary
+ * (KB = KiB = 1024 bytes, MB = MiB, GB = GiB), matching the plan ("16 MiB chunk, 5 MiB minimum") and the contract
+ * ({@code maxBytes: 20971520} for 20 MB).
  */
 final class DataSizes {
 

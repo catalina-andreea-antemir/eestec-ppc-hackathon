@@ -40,9 +40,9 @@ import ro.filegrid.storage.StorageException;
 import ro.filegrid.storage.StorageUnavailableException;
 
 /**
- * Upload în bucăți cu reluare (C7, ADR-003, planul v4 4.1). Toată starea e în FileGridMeta ({@code upload_sessions},
- * {@code upload_chunks}); orice instanță poate continua un upload. Bucățile se scriu sub un lease per upload obținut cu
- * {@code UPDATE} atomic; strict secvențial; ultima bucată retrimisă se confirmă idempotent.
+ * Resumable chunked upload (C7, ADR-003). All state lives in FileGridMeta ({@code upload_sessions},
+ * {@code upload_chunks}); any instance can continue an upload. Chunks are written under a per-upload lease taken
+ * with an atomic {@code UPDATE}; strictly sequential; the last chunk, if resent, is confirmed idempotently.
  */
 @Service
 @Profile("db")
@@ -95,11 +95,11 @@ public class UploadService {
         this.clock = clock;
     }
 
-    /** Cine face cererea: numele din token și dacă e ADMIN. */
+    /** Who is calling: the token's username and whether it is ADMIN. */
     public record Caller(String name, boolean admin) {
     }
 
-    /** Rezultatul lui {@code complete}: fișierul și dacă tocmai a fost creat (201) sau exista deja (200). */
+    /** Result of {@code complete}: the file and whether it was just created (201) or already existed (200). */
     public record Completed(FileRecord file, boolean created) {
     }
 
@@ -125,7 +125,7 @@ public class UploadService {
                 ref = writer.open(key, totalSize, chunkSize);
             } catch (StorageException e) {
                 selector.markDown(candidate.type());
-                log.warn("Nu pot deschide upload în {}: {}", candidate.type(), e.getMessage(), e);
+                log.warn("Cannot open an upload on {}: {}", candidate.type(), e.getMessage(), e);
                 continue;
             }
             UploadSession session = new UploadSession(id, category, candidate.type(), ref, fileName,
@@ -143,17 +143,17 @@ public class UploadService {
                 + " (principal sau de rezervă) nu este disponibil; reîncearcă.");
     }
 
-    // --- stare -----------------------------------------------------------------------------------------------
+    // --- status ----------------------------------------------------------------------------------------------
 
     public UploadStatus get(UUID id, Caller caller) {
         UploadSession session = authorized(id, caller);
         return UploadStatus.of(session, receivedBytes(session));
     }
 
-    // --- bucăți ----------------------------------------------------------------------------------------------
+    // --- chunks ----------------------------------------------------------------------------------------------
 
     /**
-     * Scrie bucata {@code n} din {@code body} (închis de apelant). {@code contentLength} e {@code -1} dacă nu se știe.
+     * Writes chunk {@code n} from {@code body} (closed by the caller). {@code contentLength} is {@code -1} if unknown.
      */
     public ChunkAck putChunk(UUID id, int n, Caller caller, InputStream body, long contentLength) {
         UploadSession session = authorized(id, caller);
@@ -270,8 +270,8 @@ public class UploadService {
                     sessions.finish(record.id(), UploadSession.COMPLETED);
                 });
             } catch (DataAccessException e) {
-                // Sesiunea rămâne PENDING și obiectul în storage: un nou complete reia de la finish (idempotent).
-                log.error("Metadatele upload-ului {} nu s-au salvat: {}", id, e.getMessage());
+                // The session stays PENDING and the object stays in storage: a new complete resumes from finish (idempotent).
+                log.error("Metadata for upload {} was not saved: {}", id, e.getMessage());
                 throw IngestErrors.storageUnavailable("Baza de metadate este indisponibilă; reîncearcă complete.");
             }
             return new Completed(record, true);
@@ -287,7 +287,7 @@ public class UploadService {
         return new Completed(file, false);
     }
 
-    /** SHA-256 al obiectului final, citit din storage în streaming (fără să-l țină în memorie). */
+    /** SHA-256 of the final object, streamed from storage (never held in memory). */
     private byte[] hashStored(UploadSession session, String owner) {
         StorageAdapter adapter = registry.adapter(session.storage());
         long lastRenew = System.nanoTime();
@@ -316,7 +316,7 @@ public class UploadService {
         }
     }
 
-    // --- abort și curățare -----------------------------------------------------------------------------------
+    // --- abort and cleanup -----------------------------------------------------------------------------------
 
     public UploadStatus abort(UUID id, Caller caller) {
         UploadSession session = authorized(id, caller);
@@ -337,9 +337,9 @@ public class UploadService {
     }
 
     /**
-     * Abandonează sesiunile inactive peste TTL sau cu storage căzut peste TTL-ul de cădere (job programat).
+     * Abandons sessions idle beyond the TTL or with storage down beyond the outage TTL (scheduled job).
      *
-     * @return câte sesiuni au fost abandonate
+     * @return how many sessions were abandoned
      */
     public int cleanup() {
         int done = 0;
@@ -356,7 +356,7 @@ public class UploadService {
                     done++;
                 }
             } catch (RuntimeException e) {
-                log.warn("Curățarea sesiunii {} a eșuat: {}", id, e.getMessage());
+                log.warn("Cleanup of session {} failed: {}", id, e.getMessage());
             } finally {
                 releaseQuietly(id, owner);
             }
@@ -364,22 +364,22 @@ public class UploadService {
         return done;
     }
 
-    /** Abort în storage (cel mult o încercare; la eșec rămân resturi, logate) și starea finală în DB. */
+    /** Abort in storage (at most one attempt; on failure leftovers remain and are logged) and final state in the DB. */
     private void abandon(UploadSession session, String status) {
         try {
             metrics.run(session.category(), session.storage(), OperationMetrics.DELETE, null,
                     () -> writer(session).abort(session.toChunkedUpload()));
         } catch (RuntimeException e) {
-            log.warn("Abort-ul upload-ului {} în {} a eșuat; pot rămâne resturi: {}", session.id(),
+            log.warn("Abort of upload {} on {} failed; leftovers may remain: {}", session.id(),
                     session.storage(), e.getMessage());
         }
         sessions.finish(session.id(), status);
-        log.info("Upload {} ({}) închis cu starea {}", session.id(), session.storage(), status);
+        log.info("Upload {} ({}) closed with status {}", session.id(), session.storage(), status);
     }
 
-    // --- ajutoare --------------------------------------------------------------------------------------------
+    // --- helpers ---------------------------------------------------------------------------------------------
 
-    /** Categoria sesiunii din rând (după verificarea proprietarului); folosită de bulkhead (C9) înainte de munca grea. */
+    /** The session's category from its row (after the owner check); used by the bulkhead (C9) before the heavy work. */
     public Category categoryOf(UUID id, Caller caller) {
         return authorized(id, caller).category();
     }
@@ -427,15 +427,15 @@ public class UploadService {
         }
     }
 
-    /** 503 + Retry-After; sesiunea rămâne legată de storage, iar momentul primei căderi se reține pentru abandon. */
+    /** 503 + Retry-After; the session stays bound to its storage and the first outage time is recorded for abandonment. */
     private ApiException storageFailure(UploadSession session, StorageException e) {
-        log.warn("Storage-ul {} al upload-ului {} nu a răspuns: {}", session.storage(), session.id(), e.getMessage());
+        log.warn("Storage {} of upload {} did not respond: {}", session.storage(), session.id(), e.getMessage());
         if (e instanceof StorageUnavailableException) {
             selector.markDown(session.storage());
             try {
                 sessions.markStorageUnavailable(session.id());
             } catch (DataAccessException ignored) {
-                // Fără momentul căderii sesiunea doar se abandonează mai târziu (după 24 h).
+                // Without an outage timestamp the session is only abandoned later (after 24 h).
             }
         }
         return IngestErrors.storageUnavailable("Storage-ul " + session.storage()
@@ -454,7 +454,7 @@ public class UploadService {
         try {
             writer.abort(upload);
         } catch (RuntimeException e) {
-            log.warn("Abort după eșecul metadatelor: {}", e.getMessage());
+            log.warn("Abort after metadata failure: {}", e.getMessage());
         }
     }
 
@@ -462,7 +462,7 @@ public class UploadService {
         try {
             sessions.releaseLease(id, owner);
         } catch (RuntimeException e) {
-            log.warn("Nu pot elibera lease-ul upload-ului {} (expiră singur): {}", id, e.getMessage());
+            log.warn("Cannot release the lease of upload {} (it expires on its own): {}", id, e.getMessage());
         }
     }
 
@@ -470,7 +470,7 @@ public class UploadService {
         try {
             sessions.renewLease(id, owner, leaseSeconds());
         } catch (RuntimeException e) {
-            log.warn("Nu pot prelungi lease-ul upload-ului {}: {}", id, e.getMessage());
+            log.warn("Cannot extend the lease of upload {}: {}", id, e.getMessage());
         }
     }
 
@@ -502,7 +502,7 @@ public class UploadService {
         return "application/octet-stream";
     }
 
-    /** Duratele (lease, inactivitate, cădere de storage); implicit 2 min, 24 h, 10 min. */
+    /** Durations (lease, idle, storage outage); defaults 2 min, 24 h, 10 min. */
     public record UploadSettings(Duration leaseTtl, Duration inactiveTtl, Duration storageDownTtl) {
     }
 }

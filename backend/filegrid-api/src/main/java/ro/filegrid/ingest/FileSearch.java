@@ -7,13 +7,13 @@ import java.util.List;
 import ro.filegrid.domain.Category;
 
 /**
- * Criteriile {@code GET /files}. {@code categories} sunt cele permise rolului (gol = niciuna); {@code category} e
- * filtrul cerut (poate lipsi); {@code from} e inclusiv, {@code to} exclusiv, după {@code createdAt}.
+ * {@code GET /files} criteria. {@code categories} are those the role may see (empty = none); {@code category} is the
+ * requested filter (optional); {@code from} is inclusive and {@code to} exclusive, on {@code createdAt}.
  */
 public record FileSearch(Collection<Category> categories, Category category, String q, Instant from, Instant to,
                          int page, int size) {
 
-    /** O pagină de rezultate și totalul care se potrivește. */
+    /** One page of results plus the total number of matches. */
     public record Result(List<FileRecord> items, long total) {
     }
 }

@@ -1,14 +1,14 @@
-// Biblioteca comuna pentru testele k6 FileGrid (F8). Contract: docs/api/openapi.yaml.
-// Parolele vin doar din variabile de mediu (run.ps1 / run.sh le citesc din .env); nu se scriu nicaieri.
+// Shared library for the FileGrid k6 tests (F8). Contract: docs/api/openapi.yaml.
+// Passwords come only from environment variables (run.ps1 / run.sh read them from .env); they are never written anywhere.
 import http from 'k6/http';
 import { check, sleep } from 'k6';
 import crypto from 'k6/crypto';
 import { Counter, Rate, Trend } from 'k6/metrics';
 
 export const BASE_URL = (__ENV.BASE_URL || 'https://nginx/api/v1').replace(/\/$/, '');
-// Citirile de contor pot merge direct la api pe storage-net (ca meter-simulator), fara nginx: METER_BASE_URL.
+// Meter readings may go straight to api on storage-net (like meter-simulator), bypassing nginx: METER_BASE_URL.
 export const METER_URL = (__ENV.METER_BASE_URL || BASE_URL).replace(/\/$/, '');
-// Identificator al rularii: intra in meterId si in numele fisierelor, ca datele k6 sa nu se amestece cu cele reale.
+// Run id: part of meterId and file names, so k6 data never mixes with real data.
 export const RUN_ID = __ENV.RUN_ID || Date.now().toString(36);
 
 export const USERS = {
@@ -22,23 +22,23 @@ export const USERS = {
 export const ZONES = ['Muntenia', 'Banat', 'Dobrogea'];
 const ZONE_CODES = { Muntenia: 'MUN', Banat: 'BAN', Dobrogea: 'DOB' };
 
-// --- Metrici proprii --------------------------------------------------------------------------------------------
-// unexpected: 1 cand codul HTTP nu e in lista asteptata pentru operatie (eroare reala), 0 altfel.
+// --- Custom metrics -----------------------------------------------------------------------------------------------
+// unexpected: 1 when the HTTP status is not in the operation's expected list (a real error), 0 otherwise.
 export const unexpected = new Rate('filegrid_unexpected');
-// 429 CATEGORY_SATURATED de la bulkhead (C9): numarate separat, nu sunt erori.
+// 429 CATEGORY_SATURATED from the bulkhead (C9): counted separately, not errors.
 export const saturated = new Counter('filegrid_bulkhead_429');
-// 403 primite intentionat in verificarile de securitate (C10).
+// 403s received on purpose by the security checks (C10).
 export const forbiddenOk = new Counter('filegrid_forbidden_403');
 export const meterDuplicates = new Counter('filegrid_meter_duplicates');
 export const integrityFail = new Counter('filegrid_integrity_mismatch');
 export const opDuration = new Trend('filegrid_op_ms', true);
 
-// --- Token-uri -----------------------------------------------------------------------------------------------------
-const tokens = {}; // cache per VU: { user: { token, at } }
+// --- Tokens ----------------------------------------------------------------------------------------------------------
+const tokens = {}; // per-VU cache: { user: { token, at } }
 
 export function password(user) {
   const v = __ENV[USERS[user].env];
-  if (!v) throw new Error(`Lipseste variabila ${USERS[user].env} (rulati prin run.ps1 / run.sh).`);
+  if (!v) throw new Error(`Missing variable ${USERS[user].env} (run through run.ps1 / run.sh).`);
   return v;
 }
 
@@ -53,30 +53,30 @@ export function login(user) {
   return res.json('accessToken');
 }
 
-// Token valabil 15 min; il reinnoim prin login dupa 10 min.
+// Tokens are valid for 15 min; we re-login after 10 min.
 export function token(user) {
   const t = tokens[user];
   if (t && Date.now() - t.at < 10 * 60 * 1000) return t.token;
   const fresh = login(user);
   if (fresh) tokens[user] = { token: fresh, at: Date.now() };
-  else sleep(1); // login esuat (ex. 502/503): nu bombardam /auth/login in bucla
+  else sleep(1); // login failed (e.g. 502/503): do not hammer /auth/login in a loop
   return fresh;
 }
 
-// X-Scenario implicit pentru toate cererile autentificate (storm.js il seteaza per faza prin `env` de scenariu).
+// Default X-Scenario for every authenticated request (storm.js sets it per phase through the scenario `env`).
 export function auth(user, extra) {
   if (__ENV.XSCEN) extra = Object.assign({ 'X-Scenario': __ENV.XSCEN }, extra || {});
   return Object.assign({ Authorization: `Bearer ${token(user)}` }, extra || {});
 }
 
-// --- Evidenta rezultatelor ------------------------------------------------------------------------------------------
-// expected: codurile considerate reusita. 429 se numara separat oricand apare (daca e in lista).
+// --- Result tracking ------------------------------------------------------------------------------------------------
+// expected: status codes that count as success. A 429 is counted separately whenever it shows up (if listed).
 export function track(res, expected, op, category) {
   const ok = expected.indexOf(res.status) >= 0;
   unexpected.add(!ok, { op });
   if (res.status === 429) {
     let code = '';
-    try { code = res.json('code'); } catch (_) { /* corp ne-JSON */ }
+    try { code = res.json('code'); } catch (_) { /* non-JSON body */ }
     saturated.add(1, { op, category: category || '', code: code || '' });
   }
   opDuration.add(res.timings.duration, { op });
@@ -86,14 +86,14 @@ export function track(res, expected, op, category) {
   return ok;
 }
 
-// Raspunsurile asteptate nu se numara in http_req_failed (ex. 429 la bulkhead, 403 in testele de securitate).
+// Expected responses are not counted in http_req_failed (e.g. 429 from the bulkhead, 403 in the security tests).
 export function expect(...codes) {
   return http.expectedStatuses(...codes);
 }
 
-// --- Date de test, generate in memorie -------------------------------------------------------------------------------
+// --- Test data, generated in memory ----------------------------------------------------------------------------------
 let seq = 0;
-// Sufix unic per VU (merge si in setup(), unde __ITER nu exista).
+// Unique per-VU suffix (also works in setup(), where __ITER does not exist).
 export function uniq() { seq++; return `${__VU}-${seq}-${Math.random().toString(36).slice(2, 7)}`; }
 export function rnd(n) { return Math.floor(Math.random() * n); }
 export function pick(arr) { return arr[rnd(arr.length)]; }
@@ -119,11 +119,11 @@ export function csv(size) {
 export function sha256hex(data) { return crypto.sha256(data, 'hex'); }
 
 export function meterId(prefix, zone, n) {
-  // max 64 caractere (contract); ex.: k6-lt3q9a-MUN-0000042
+  // max 64 chars (contract); e.g. k6-lt3q9a-MUN-0000042
   return `k6-${prefix}-${ZONE_CODES[zone]}-${String(n).padStart(7, '0')}`;
 }
 
-// Un lot de citiri ca simulatorul: n citiri la 15 minute, incepand cu startMs.
+// A reading batch like the simulator's: n readings 15 minutes apart, starting at startMs.
 export function meterBatch(id, zone, startMs, n) {
   const readings = [];
   for (let i = 0; i < n; i++) {
@@ -133,7 +133,7 @@ export function meterBatch(id, zone, startMs, n) {
   return { body, key: `${id}_${readings[0].ts}`, count: n };
 }
 
-// --- Operatii API -----------------------------------------------------------------------------------------------------
+// --- API operations ---------------------------------------------------------------------------------------------------
 const JSON_H = { 'Content-Type': 'application/json' };
 
 export function ingest(user, batch, scenario, expected) {
@@ -147,7 +147,7 @@ export function ingest(user, batch, scenario, expected) {
   return res;
 }
 
-// Ca simulatorul: la 429/503 asteapta Retry-After (secunde) inainte de urmatoarea trimitere.
+// Like the simulator: on 429/503 wait for Retry-After (seconds) before the next send.
 export function honorRetryAfter(res, max) {
   if (res.status !== 429 && res.status !== 503) return;
   const s = Number(res.headers['Retry-After'] || 1);
@@ -172,9 +172,9 @@ export function uploadOutage(user, scenario, size) {
   const ok = track(res, [201, 429], 'outage_upload', 'OUTAGE_RECORD');
   if (res.status === 201) {
     check(res, {
-      'avarie: sha256 corect': (r) => r.json('sha256') === sha256hex(content),
-      'avarie: storage S3 (4.2)': (r) => r.json('storage') === 'S3',
-      'avarie: CONFIRMED': (r) => r.json('status') === 'CONFIRMED',
+      'outage: correct sha256': (r) => r.json('sha256') === sha256hex(content),
+      'outage: storage S3 (4.2)': (r) => r.json('storage') === 'S3',
+      'outage: CONFIRMED': (r) => r.json('status') === 'CONFIRMED',
     });
   }
   return { res, ok, name, content };
@@ -194,7 +194,7 @@ export function uploadDoc(user, scenario, size) {
   const ok = track(res, [201, 429], 'doc_upload', 'CONNECTION_DOC');
   if (res.status === 201) {
     check(res, {
-      'document: criptat': (r) => r.json('encrypted') === true,
+      'document: encrypted': (r) => r.json('encrypted') === true,
       'document: sha256Plain = original': (r) => r.json('sha256Plain') === sha256hex(data),
       'document: storage DB (4.2)': (r) => r.json('storage') === 'DB',
     });
@@ -202,7 +202,7 @@ export function uploadDoc(user, scenario, size) {
   return { res, ok, name, data };
 }
 
-// Upload in bucati (video mic). chunkSize vine din politica (16 MiB), deci un fisier mic are o singura bucata.
+// Chunked upload (small video). chunkSize comes from the policy (16 MiB), so a small file is a single chunk.
 export function uploadVideo(user, scenario, size) {
   const name = `k6-${RUN_ID}-inspectie-${uniq()}.mp4`;
   const total = size || 256 * 1024;
@@ -224,9 +224,9 @@ export function uploadVideo(user, scenario, size) {
       responseCallback: expect(200, 429),
     });
     if (!track(put, [200], 'video_chunk', 'INSPECTION_VIDEO')) return { res: put, ok: false };
-    check(put, { 'video: sha bucata corect': (r) => r.json('sha256') === sha256hex(part) });
+    check(put, { 'video: correct chunk sha': (r) => r.json('sha256') === sha256hex(part) });
   }
-  // retrimiterea ultimei bucati trebuie sa fie idempotenta (200, duplicate: true)
+  // resending the last chunk must be idempotent (200, duplicate: true)
   const lastN = n - 1;
   const lastPart = data.slice((lastN - 1) * chunkSize, total);
   const dup = http.put(`${BASE_URL}/uploads/${s.uploadId}/chunks/${lastN}`, lastPart, {
@@ -234,7 +234,7 @@ export function uploadVideo(user, scenario, size) {
     tags: { op: 'video_chunk', name: 'PUT /uploads/{id}/chunks/{n}' },
   });
   track(dup, [200], 'video_chunk', 'INSPECTION_VIDEO');
-  check(dup, { 'video: bucata retrimisa e duplicat': (r) => r.status === 200 && r.json('duplicate') === true });
+  check(dup, { 'video: resent chunk is a duplicate': (r) => r.status === 200 && r.json('duplicate') === true });
 
   const done = http.post(`${BASE_URL}/uploads/${s.uploadId}/complete`, null, {
     headers: auth(user),
@@ -244,7 +244,7 @@ export function uploadVideo(user, scenario, size) {
   const ok = track(done, [200, 201], 'video_complete', 'INSPECTION_VIDEO');
   if (ok) {
     check(done, {
-      'video: sha256 final corect': (r) => r.json('sha256') === sha256hex(data),
+      'video: correct final sha256': (r) => r.json('sha256') === sha256hex(data),
       'video: storage FTP (4.2)': (r) => r.json('storage') === 'FTP',
     });
   }
@@ -262,7 +262,7 @@ export function search(user, params, expected) {
   return res;
 }
 
-// Descarcare directa; verifica X-Content-SHA256 fata de bytes-ii primiti.
+// Direct download; checks X-Content-SHA256 against the received bytes.
 export function download(user, id, range) {
   const headers = auth(user);
   if (range) headers.Range = range;
@@ -275,7 +275,7 @@ export function download(user, id, range) {
   if (res.status === 200) {
     const good = res.headers['X-Content-Sha256'] === sha256hex(res.body);
     if (!good) integrityFail.add(1);
-    check(res, { 'download: X-Content-SHA256 = hash corp': () => good });
+    check(res, { 'download: X-Content-SHA256 = body hash': () => good });
   }
   return { res, ok };
 }
@@ -297,23 +297,23 @@ export function downloadLink(user, id) {
   });
   track(res, [200], 'download_link');
   if (res.status !== 200) return { res, ok: false };
-  const url = res.json('url'); // cale relativa /api/v1/downloads/{token}
+  const url = res.json('url'); // relative path /api/v1/downloads/{token}
   const origin = BASE_URL.replace(/\/api\/v1$/, '');
   const dl = http.get(`${origin}${url}`, {
     responseType: 'binary', tags: { op: 'download_token', name: 'GET /downloads/{token}' },
   });
   const ok = track(dl, [200], 'download_token');
-  if (ok) check(dl, { 'link semnat: X-Content-SHA256 = hash corp': (r) => r.headers['X-Content-Sha256'] === sha256hex(r.body) });
+  if (ok) check(dl, { 'signed link: X-Content-SHA256 = body hash': (r) => r.headers['X-Content-Sha256'] === sha256hex(r.body) });
   return { res: dl, ok };
 }
 
-// Forma raspunsului verificata dupa contract: toate au `interpretation`, mai putin Requirements (4 cerinte R1-R4).
-// /stats/peak-vs-normal si /stats/storage-advisor pot da 503 cand Prometheus / datele live nu sunt disponibile.
-const hasInterpretation = { label: 'are interpretation', fn: (r) => typeof r.json('interpretation') === 'string' };
+// Response shape checked against the contract: all have `interpretation`, except Requirements (4 requirements R1-R4).
+// /stats/peak-vs-normal and /stats/storage-advisor may return 503 when Prometheus / live data is unavailable.
+const hasInterpretation = { label: 'has interpretation', fn: (r) => typeof r.json('interpretation') === 'string' };
 export const STATS = [
   { path: '/stats/outage-zones', ok: [200], shape: hasInterpretation },
   { path: '/stats/anomalies', ok: [200], shape: hasInterpretation },
-  { path: '/stats/requirements', ok: [200], shape: { label: '4 cerinte R1-R4 cu status', fn: (r) => {
+  { path: '/stats/requirements', ok: [200], shape: { label: '4 requirements R1-R4 with status', fn: (r) => {
     const reqs = r.json('requirements');
     return Array.isArray(reqs) && reqs.length === 4 && reqs.every((q) => q.status === 'OK' || q.status === 'AT_RISK');
   } } },

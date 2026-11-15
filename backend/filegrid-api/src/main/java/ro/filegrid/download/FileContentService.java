@@ -38,15 +38,15 @@ import ro.filegrid.storage.StorageException;
 import ro.filegrid.storage.StorageObjectNotFoundException;
 
 /**
- * Conținutul fișierelor (C8): {@code /verify} și descărcarea în streaming, cu {@code Range}, din storage-ul din rândul
- * {@code files}. Nimic nu se ține întreg în memorie (buffer fix de {@value #BUFFER} octeți) și stream-ul din storage se
- * închide mereu, inclusiv când clientul renunță.
+ * File content (C8): {@code /verify} and streamed download with {@code Range}, from the storage named in the
+ * {@code files} row. Nothing is held whole in memory (fixed {@value #BUFFER}-byte buffer) and the storage stream is
+ * always closed, including when the client goes away.
  *
- * <p>Hash-ul: sub {@code preVerifyMaxSize} fișierul se citește întreg și se verifică ÎNAINTE de trimitere (nepotrivire:
- * 409 {@code FILE_CORRUPT}, fără corp). Peste prag, {@code X-Content-SHA256} pleacă în header, hash-ul se calculează în
- * timpul trimiterii, iar ultimul bloc se ține înapoi până se verifică: la nepotrivire corpul nu se încheie, conexiunea
- * se întrerupe (clientul vede un răspuns incomplet) și incidentul se loghează. Un {@code Range} peste prag nu poate fi
- * verificat în timpul trimiterii (hash-ul acoperă tot fișierul): rămâne {@code /verify}.
+ * <p>Hashing: below {@code preVerifyMaxSize} the file is read in full and verified BEFORE sending (mismatch:
+ * 409 {@code FILE_CORRUPT}, no body). Above the threshold {@code X-Content-SHA256} goes out as a header, the hash is
+ * computed while sending and the last block is held back until it is verified: on a mismatch the body is never
+ * completed, the connection is cut (the client sees a truncated response) and the incident is logged. A {@code Range}
+ * above the threshold cannot be verified while sending (the hash covers the whole file): use {@code /verify}.
  */
 @Service
 @Profile("db")
@@ -86,8 +86,8 @@ public class FileContentService {
     }
 
     /**
-     * {@code GET /files/{id}/verify}: recalculează SHA-256 din storage, în streaming. {@code deep} (doar documentele criptate) decriptează în
-     * streaming și verifică și {@code sha256Plain}; altfel verificarea e cea pe octeții stocați.
+     * {@code GET /files/{id}/verify}: recomputes SHA-256 from storage, streamed. {@code deep} (encrypted documents only)
+     * also decrypts while streaming and checks {@code sha256Plain}; otherwise the stored bytes are verified.
      */
     public VerifyResult verify(FileRecord file, boolean deep) {
         return metrics.time(file.category(), file.storage(), OperationMetrics.VERIFY, file.size(),
@@ -111,7 +111,7 @@ public class FileContentService {
                 null, null, Instant.now().truncatedTo(ChronoUnit.SECONDS));
     }
 
-    /** Trimite fișierul (sau intervalul cerut) pe {@code response}; erorile dinainte de primul octet ies ca {@link ApiException}. */
+    /** Sends the file (or the requested range) on {@code response}; errors before the first byte surface as {@link ApiException}. */
     public void send(FileRecord file, String rangeHeader, HttpServletResponse response) throws IOException {
         try {
             metrics.run(file.category(), file.storage(), OperationMetrics.DOWNLOAD, file.size(), () -> {
@@ -127,7 +127,7 @@ public class FileContentService {
     }
 
     private void doSend(FileRecord file, String rangeHeader, HttpServletResponse response) throws IOException {
-        boolean encrypted = file.encrypted(); // CONNECTION_DOC: fără Range (criptat în segmente), 200 complet
+        boolean encrypted = file.encrypted(); // CONNECTION_DOC: no Range (encrypted in segments), full 200
         Optional<RangeHeader.Resolved> range = encrypted ? Optional.empty() : RangeHeader.parse(rangeHeader, file.size());
         boolean small = file.size() <= preVerifyMaxBytes;
         if (small) {
@@ -143,11 +143,11 @@ public class FileContentService {
         try (InputStream in = encrypted ? access.decrypt(file, stored) : stored) {
             byte[] buffer = new byte[BUFFER];
             MessageDigest digest = verifyWhileSending ? Sha256.newDigest() : null;
-            // Primul bloc se citește înainte de header-e: o eroare de storage dă încă un 503 curat.
+            // Read the first block before writing headers, so a storage error can still become a clean 503.
             int n = read(file, in, buffer, length, 0);
             if (digest != null) {
                 digest.update(buffer, 0, n);
-                if (n == length) { // fișier cât un bloc: se poate încă răspunde cu 409
+                if (n == length) { // single-block file: a 409 is still possible
                     byte[] actual = digest.digest();
                     if (!Arrays.equals(actual, file.sha256()) || in.read() != -1) {
                         throw corrupt(file, actual);
@@ -167,7 +167,7 @@ public class FileContentService {
                 try {
                     out.write(buffer, 0, n);
                 } catch (IOException clientGone) {
-                    log.debug("Clientul a renunțat la descărcarea {} după {} octeți", file.id(), sent);
+                    log.debug("Client abandoned download {} after {} bytes", file.id(), sent);
                     return;
                 }
                 sent += n;
@@ -179,12 +179,12 @@ public class FileContentService {
             try {
                 out.flush();
             } catch (IOException clientGone) {
-                log.debug("Clientul a renunțat la descărcarea {} la final", file.id());
+                log.debug("Client abandoned download {} at the end", file.id());
             }
         }
     }
 
-    /** Ultimul bloc e încă ținut înapoi: dacă hash-ul nu se potrivește, corpul nu se încheie. */
+    /** The last block is still held back: if the hash does not match, the body is never completed. */
     private void checkWhileSending(FileRecord file, MessageDigest digest, InputStream in) {
         byte[] actual = digest.digest();
         boolean extra;
@@ -195,8 +195,8 @@ public class FileContentService {
         }
         if (extra || !Arrays.equals(actual, file.sha256())) {
             metrics.integrityFailure(file.category(), file.storage());
-            log.error("Integritate încălcată la descărcare: fileId={}, storage={}, expectedSha256={}, actualSha256={};"
-                    + " conexiunea se întrerupe", file.id(), file.storage(), Sha256.hex(file.sha256()),
+            log.error("Integrity violation during download: fileId={}, storage={}, expectedSha256={}, actualSha256={};"
+                    + " cutting the connection", file.id(), file.storage(), Sha256.hex(file.sha256()),
                     Sha256.hex(actual));
             throw new TransferAborted("Fișier corupt: " + file.id());
         }
@@ -211,7 +211,7 @@ public class FileContentService {
             return n;
         } catch (DocumentEncryption.CorruptCiphertextException e) {
             metrics.integrityFailure(file.category(), file.storage());
-            log.error("Conținut criptat alterat: fileId={}, storage={}, trimiși {} octeți: {}", file.id(), file.storage(),
+            log.error("Tampered encrypted content: fileId={}, storage={}, sent {} bytes: {}", file.id(), file.storage(),
                     sent, e.getMessage());
             if (sent == 0) {
                 throw corruptContent(file);
@@ -223,7 +223,7 @@ public class FileContentService {
     }
 
     private RuntimeException truncated(FileRecord file, long sent, long length, IOException cause) {
-        log.error("Citire din storage întreruptă: fileId={}, storage={}, trimiși {} din {} octeți", file.id(),
+        log.error("Storage read interrupted: fileId={}, storage={}, sent {} of {} bytes", file.id(),
                 file.storage(), sent, length, cause);
         if (sent == 0) {
             return IngestErrors.storageUnavailable("Storage-ul " + file.storage() + " nu poate citi fișierul acum.");
@@ -258,10 +258,10 @@ public class FileContentService {
         try {
             return registry.adapter(file.storage()).get(file.storageKey(), range);
         } catch (StorageObjectNotFoundException e) {
-            log.error("Obiect lipsă în storage: fileId={}, storage={}", file.id(), file.storage());
+            log.error("Object missing from storage: fileId={}, storage={}", file.id(), file.storage());
             throw new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", "Conținutul fișierului nu mai există în storage.");
         } catch (StorageException e) {
-            log.warn("Storage-ul {} nu a putut deschide fișierul {}: {}", file.storage(), file.id(), e.getMessage());
+            log.warn("Storage {} could not open file {}: {}", file.storage(), file.id(), e.getMessage());
             throw IngestErrors.storageUnavailable("Storage-ul " + file.storage() + " nu este disponibil acum.");
         }
     }
@@ -275,13 +275,13 @@ public class FileContentService {
                 digest.update(buffer, 0, n);
             }
         } catch (IOException e) {
-            log.warn("Citirea fișierului {} din {} a eșuat: {}", file.id(), file.storage(), e.getMessage());
+            log.warn("Reading file {} from {} failed: {}", file.id(), file.storage(), e.getMessage());
             throw IngestErrors.storageUnavailable("Storage-ul " + file.storage() + " nu poate citi fișierul acum.");
         }
         return digest.digest();
     }
 
-    /** Decriptează din storage în streaming și întoarce SHA-256 pe conținutul în clar; segment alterat → 409. */
+    /** Decrypts from storage while streaming and returns SHA-256 of the plaintext; a tampered segment -> 409. */
     private byte[] hashDecrypted(FileRecord file) {
         MessageDigest digest = Sha256.newDigest();
         try (InputStream in = access.decrypt(file, open(file, ByteRange.full()))) {
@@ -293,7 +293,7 @@ public class FileContentService {
         } catch (DocumentEncryption.CorruptCiphertextException e) {
             throw corruptContent(file);
         } catch (IOException e) {
-            log.warn("Citirea fișierului {} din {} a eșuat: {}", file.id(), file.storage(), e.getMessage());
+            log.warn("Reading file {} from {} failed: {}", file.id(), file.storage(), e.getMessage());
             throw IngestErrors.storageUnavailable("Storage-ul " + file.storage() + " nu poate citi fișierul acum.");
         }
         return digest.digest();
@@ -301,21 +301,21 @@ public class FileContentService {
 
     private ApiException corruptContent(FileRecord file) {
         metrics.integrityFailure(file.category(), file.storage());
-        log.error("Conținut criptat alterat: fileId={}, storage={}", file.id(), file.storage());
+        log.error("Tampered encrypted content: fileId={}, storage={}", file.id(), file.storage());
         return new ApiException(HttpStatus.CONFLICT, "FILE_CORRUPT", "fișier corupt", null,
                 Map.of("fileId", file.id().toString(), "expectedSha256", Sha256.hex(file.sha256())));
     }
 
     private ApiException corrupt(FileRecord file, byte[] actual) {
         metrics.integrityFailure(file.category(), file.storage());
-        log.error("Fișier corupt: fileId={}, storage={}, expectedSha256={}, actualSha256={}", file.id(), file.storage(),
+        log.error("Corrupt file: fileId={}, storage={}, expectedSha256={}, actualSha256={}", file.id(), file.storage(),
                 Sha256.hex(file.sha256()), Sha256.hex(actual));
         return new ApiException(HttpStatus.CONFLICT, "FILE_CORRUPT", "fișier corupt", null,
                 Map.of("fileId", file.id().toString(), "expectedSha256", Sha256.hex(file.sha256()),
                         "actualSha256", Sha256.hex(actual)));
     }
 
-    /** Transferul s-a stricat după ce răspunsul a început: nu se mai poate trimite un JSON, conexiunea se întrerupe. */
+    /** The transfer broke after the response started: no JSON can be sent anymore, so the connection is cut. */
     static final class TransferAborted extends RuntimeException {
         TransferAborted(String message) {
             super(message);

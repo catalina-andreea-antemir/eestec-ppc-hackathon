@@ -5,9 +5,9 @@ import { Role } from './auth.models';
 import { AuthService } from './auth.service';
 
 /**
- * Lasă să treacă doar rolurile date (ADMIN trece mereu, ca în AuthService.hasRole).
- * Se pune după authGuard: cine nu e autentificat ajunge la /login, cine n-are rolul ajunge la Acasă.
- * Interfața doar ascunde pagina; regula adevărată o aplică serverul (403).
+ * Lets only the given roles through (ADMIN always passes, as in AuthService.hasRole).
+ * Goes after authGuard: unauthenticated users end up at /login, users without the role at Home.
+ * The UI only hides the page; the real rule is enforced by the server (403).
  */
 export function roleGuard(...roles: Role[]): CanActivateFn {
   return () => {

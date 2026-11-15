@@ -1,7 +1,7 @@
-// F9 f) Bulkhead (C9): varf de citiri de contor peste limita METER_READING (50 cereri paralele per instanta) in timp
-// ce teren incarca avarii si dispecerul cauta. Asteptat: 429 CATEGORY_SATURATED doar la METER_READING; avariile
-// primesc 201 si cautarile 200. Refoloseste biblioteca F8 (tests/load/lib/common.js). Rulat de f-bulkhead.ps1.
-//   STORM_VUS (implicit 150), STORM_SEC (implicit 30)
+// F9 f) Bulkhead (C9): meter reading spike above the METER_READING limit (50 concurrent requests per instance) while
+// the field user uploads outages and the dispatcher searches. Expected: 429 CATEGORY_SATURATED only on METER_READING;
+// outages get 201 and searches 200. Reuses the F8 library (tests/load/lib/common.js). Run by f-bulkhead.ps1.
+//   STORM_VUS (default 150), STORM_SEC (default 30)
 import http from 'k6/http';
 import { check, sleep } from 'k6';
 import { Counter, Rate } from 'k6/metrics';
@@ -38,13 +38,13 @@ export const options = {
     },
   },
   thresholds: {
-    chaos_meter_429: ['count>0'], // categoria METER_READING chiar e saturata
-    chaos_meter_429_wrong_code: ['count==0'], // 429-urile au code CATEGORY_SATURATED
-    chaos_outage_201: ['rate==1'], // fiecare avarie trece
-    chaos_outage_429: ['count==0'], // nicio respingere pe OUTAGE_RECORD
+    chaos_meter_429: ['count>0'], // METER_READING really is saturated
+    chaos_meter_429_wrong_code: ['count==0'], // every 429 carries code CATEGORY_SATURATED
+    chaos_outage_201: ['rate==1'], // every outage goes through
+    chaos_outage_429: ['count==0'], // no rejections on OUTAGE_RECORD
     chaos_search_200: ['rate==1'],
     chaos_search_429: ['count==0'],
-    // doar ca k6 sa calculeze p95 per operatie pentru rezumat (fara prag real)
+    // only so k6 computes per-operation p95 for the summary (not a real threshold)
     'http_req_duration{op:meter_ingest}': ['p(95)>=0'],
     'http_req_duration{op:outage_upload}': ['p(95)>=0'],
     'http_req_duration{op:search}': ['p(95)>=0'],
@@ -66,10 +66,10 @@ export function meterStorm() {
   if (res.status === 201) { meter201.add(1); day++; }
   else if (res.status === 429) {
     meter429.add(1);
-    let code = ''; try { code = res.json('code'); } catch (_) { /* corp ne-JSON */ }
+    let code = ''; try { code = res.json('code'); } catch (_) { /* non-JSON body */ }
     if (code !== 'CATEGORY_SATURATED' || !res.headers['Retry-After']) meter429WrongCode.add(1);
   } else if (res.status !== 200) meterOther.add(1);
-  // pauza scurta la 429 (nu Retry-After-ul intreg): furtuna tine bulkhead-ul plin fara sa sufoce masina de test
+  // short pause on 429 (not the full Retry-After): keeps the bulkhead full without choking the test machine
   if (res.status === 429) sleep(0.05);
 }
 
@@ -81,8 +81,8 @@ export function outage() {
   }, { headers: auth('teren', { 'X-Scenario': 'chaos' }), tags: { op: 'outage_upload' }, responseCallback: http.expectedStatuses(201) });
   outageOk.add(res.status === 201);
   if (res.status === 429) outage429.add(1);
-  if (res.status !== 201) console.warn(`avarie -> ${res.status} ${String(res.body).slice(0, 200)}`);
-  check(res, { 'avarie in timpul varfului -> 201': (r) => r.status === 201 });
+  if (res.status !== 201) console.warn(`outage -> ${res.status} ${String(res.body).slice(0, 200)}`);
+  check(res, { 'outage during the spike -> 201': (r) => r.status === 201 });
 }
 
 export function searchProbe() {
@@ -91,7 +91,7 @@ export function searchProbe() {
   });
   searchOk.add(res.status === 200);
   if (res.status === 429) search429.add(1);
-  check(res, { 'cautare in timpul varfului -> 200': (r) => r.status === 200 });
+  check(res, { 'search during the spike -> 200': (r) => r.status === 200 });
 }
 
 function val(data, name, field) {

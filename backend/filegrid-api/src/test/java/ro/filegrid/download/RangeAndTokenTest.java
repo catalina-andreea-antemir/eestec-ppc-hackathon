@@ -15,7 +15,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import ro.filegrid.api.ApiException;
 import ro.filegrid.storage.ByteRange;
 
-/** Range din header și link-ul semnat (semnătură, expirare, modificare). */
+/** Range header and signed link (signature, expiry, tampering). */
 class RangeAndTokenTest {
 
     private static final String SECRET = Base64.getEncoder().encodeToString(new byte[48]);
@@ -121,7 +121,7 @@ class RangeAndTokenTest {
         String otherFile = Base64.getUrlEncoder().withoutPadding().encodeToString(
                 ("{\"f\":\"" + UUID.randomUUID() + "\",\"u\":\"x\",\"e\":" + clock.now.plusSeconds(900).getEpochSecond()
                         + "}").getBytes());
-        // Penultimul caracter: toți cei 6 biți sunt semnificativi (ultimul are biți de umplere și poate decoda identic).
+        // Second-to-last character: all 6 bits are significant (the last one has padding bits and may decode identically).
         String head = token.substring(0, token.length() - 2);
         String flipped = head + (token.charAt(token.length() - 2) == 'A' ? 'B' : 'A') + token.charAt(token.length() - 1);
 

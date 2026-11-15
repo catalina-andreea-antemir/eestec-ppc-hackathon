@@ -18,9 +18,9 @@ import ro.filegrid.policy.CategoryPolicy;
 import ro.filegrid.policy.PolicyEngine;
 
 /**
- * Upload-ul de fișiere mici, {@code POST /api/v1/files} (C7): verifică mărimea din politică, scrie în storage
- * (hash în streaming), abia apoi înregistrează {@code files} (CONFIRMED) și {@code outage_records} într-o
- * tranzacție. Dacă metadatele eșuează, obiectul din storage se șterge (compensare) și răspunsul e 503.
+ * Small file upload, {@code POST /api/v1/files} (C7): checks the policy size, writes to storage (streaming hash),
+ * and only then records {@code files} (CONFIRMED) and {@code outage_records} in one transaction. If the metadata
+ * write fails, the storage object is deleted (compensation) and the response is 503.
  */
 @Service
 @Profile("db")
@@ -58,7 +58,7 @@ public class FileIngestionService {
         }
         ContentWriter.Stored stored = writer.write(upload.category(), upload.size(), upload.contentType(),
                 upload.source(), policy.encrypted() ? encryption : null);
-        // Numele original al documentelor se păstrează doar criptat (nu apare nici în loguri).
+        // Document names are only ever stored encrypted (they do not appear in logs either).
         String storedName = policy.encrypted() ? encryption.encryptName(upload.originalName()) : upload.originalName();
         FileRecord record = new FileRecord(UUID.randomUUID(), upload.category(), storedName,
                 upload.contentType(), upload.size(), stored.sha256(), stored.sha256Plain(), stored.storage(),
@@ -66,7 +66,7 @@ public class FileIngestionService {
         try {
             transaction.executeWithoutResult(status -> files.insert(record));
         } catch (RuntimeException e) {
-            log.error("Metadatele fișierului {} nu s-au salvat; șterg obiectul din {}: {}", record.id(),
+            log.error("Metadata for file {} was not saved; deleting the object from {}: {}", record.id(),
                     stored.storage(), e.getMessage());
             writer.deleteQuietly(upload.category(), stored.storage(), stored.key());
             throw IngestErrors.storageUnavailable("Baza de metadate este indisponibilă; fișierul nu a fost salvat.");
@@ -78,7 +78,7 @@ public class FileIngestionService {
         return clock.instant().truncatedTo(ChronoUnit.MICROS);
     }
 
-    /** O cerere de upload validată de controller. */
+    /** An upload request already validated by the controller. */
     public record Upload(Category category, String originalName, String contentType, long size,
                          ContentWriter.Source source, FileRecord.OutageInfo outage, String createdBy) {
     }

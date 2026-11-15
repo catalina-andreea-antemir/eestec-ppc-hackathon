@@ -24,17 +24,17 @@ import ro.filegrid.domain.Category;
 import ro.filegrid.domain.StorageType;
 
 /**
- * Politica per categorie (planul v4 4.2), citită din {@code policies/*.yml} și <b>recitită fără restart</b>.
+ * Per-category policy (4.2), read from {@code policies/*.yml} and <b>hot-reloaded without a restart</b>.
  *
  * <ul>
- *   <li>Locația: {@code filegrid.policies.location} (variabila {@code FILEGRID_POLICY_DIR}); implicit
- *       {@code classpath:/policies/}. În Docker directorul se montează, deci o schimbare în YAML ajunge în container.</li>
- *   <li>Recitirea: la cel mult {@code filegrid.policies.reload-interval} (implicit 2 s) după ultima verificare, prima
- *       cerere care întreabă de politică recitește fișierele și compară un SHA-256 al conținutului (nu data
- *       modificării, care pe volumele montate din Windows nu e de încredere). În plus, {@link PolicyWatcher}
- *       verifică în fundal la același interval, ca schimbarea să apară în log imediat.</li>
- *   <li>Un YAML invalid la pornire oprește aplicația; un YAML invalid la recitire se loghează (ERROR) și se păstrează
- *       ultima politică validă, ca o greșeală de editare să nu oprească sistemul.</li>
+ *   <li>Location: {@code filegrid.policies.location} ({@code FILEGRID_POLICY_DIR}); defaults to
+ *       {@code classpath:/policies/}. In Docker the directory is mounted, so a YAML edit reaches the container.</li>
+ *   <li>Reload: at most {@code filegrid.policies.reload-interval} (default 2 s) after the last check, the first request
+ *       asking for a policy re-reads the files and compares a SHA-256 of their content (not the modification time,
+ *       which is unreliable on volumes mounted from Windows). {@link PolicyWatcher} also checks in the background at
+ *       the same interval, so a change shows up in the log right away.</li>
+ *   <li>An invalid YAML at startup stops the app; an invalid YAML on reload is logged (ERROR) and the last valid
+ *       policy is kept, so an editing mistake cannot take the system down.</li>
  * </ul>
  */
 @Component
@@ -67,30 +67,30 @@ public class PolicyEngine {
         }
         this.current = new Snapshot(PolicyParser.parse(files), fingerprint(files));
         this.lastCheck = clock.instant();
-        log.info("Politica încărcată din {}: {}", source.description(), summary(current.policies()));
+        log.info("Policy loaded from {}: {}", source.description(), summary(current.policies()));
         warnIfStorageUnused(current.policies());
     }
 
-    /** Politica categoriei (după o eventuală recitire). */
+    /** The category's policy (after any pending reload). */
     public CategoryPolicy policy(Category category) {
         return policies().get(category);
     }
 
-    /** Politicile tuturor categoriilor (după o eventuală recitire); harta nu se modifică. */
+    /** Policies of every category (after any pending reload); the map is unmodifiable. */
     public Map<Category, CategoryPolicy> policies() {
         refreshIfDue();
         return current.policies();
     }
 
-    /** Storage-ul principal al categoriei: unde ajunge următorul fișier când storage-ul răspunde. */
+    /** The category's primary storage: where the next file goes while that storage responds. */
     public StorageType primaryStorage(Category category) {
         return policy(category).primaryStorage();
     }
 
     /**
-     * Alege storage-ul pentru o scriere nouă: principalul dacă e disponibil, altfel cel de rezervă dacă e disponibil,
-     * altfel niciunul (apelantul răspunde 503 cu {@code Retry-After}). Disponibilitatea (health, circuit breaker) o dă
-     * apelantul (C11).
+     * Picks the storage for a new write: the primary if available, otherwise the fallback if available, otherwise none
+     * (the caller answers 503 with {@code Retry-After}). Availability (health, circuit breaker) is supplied by the
+     * caller (C11).
      */
     public Optional<StorageType> chooseStorage(Category category, Predicate<StorageType> available) {
         CategoryPolicy policy = policy(category);
@@ -104,9 +104,9 @@ public class PolicyEngine {
     }
 
     /**
-     * Recitește acum fișierele, fără să aștepte intervalul.
+     * Re-reads the files now, without waiting for the interval.
      *
-     * @return {@code true} dacă politica s-a schimbat și noua variantă e validă
+     * @return {@code true} if the policy changed and the new version is valid
      */
     public boolean reload() {
         synchronized (reloadLock) {
@@ -115,7 +115,7 @@ public class PolicyEngine {
             try {
                 files = source.read();
             } catch (IOException e) {
-                log.error("Nu pot citi politica din {}; păstrez politica actuală: {}", source.description(),
+                log.error("Cannot read the policy from {}; keeping the current policy: {}", source.description(),
                         e.getMessage());
                 return false;
             }
@@ -132,7 +132,7 @@ public class PolicyEngine {
                 policies = PolicyParser.parse(files);
             } catch (PolicyException e) {
                 lastRejectedFingerprint = fingerprint;
-                log.error("Politica nouă din {} este invalidă; păstrez politica actuală: {}", source.description(),
+                log.error("New policy from {} is invalid; keeping the current policy: {}", source.description(),
                         e.getMessage());
                 return false;
             }
@@ -179,7 +179,7 @@ public class PolicyEngine {
             CategoryPolicy old = before.get(category);
             CategoryPolicy now = after.get(category);
             if (!now.equals(old)) {
-                log.info("Politica recitită pentru {}: {} -> {}", category, describe(old), describe(now));
+                log.info("Policy reloaded for {}: {} -> {}", category, describe(old), describe(now));
             }
         }
     }
@@ -189,7 +189,7 @@ public class PolicyEngine {
         policies.values().forEach(p -> used.add(p.primaryStorage()));
         Set<StorageType> unused = EnumSet.complementOf(EnumSet.copyOf(used));
         if (!unused.isEmpty()) {
-            log.warn("Niciun storage principal nu este {} (planul 4.2 cere ca fiecare storage să fie folosit)", unused);
+            log.warn("No category uses {} as primary storage (4.2 requires every storage to be used)", unused);
         }
     }
 

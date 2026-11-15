@@ -31,9 +31,9 @@ import ro.filegrid.resilience.CategoryBulkheads;
 import ro.filegrid.storage.db.MeterReadingBatch;
 
 /**
- * {@code POST /api/v1/meter-readings} (C7): corpul brut se citește limitat la mărimea din politica
- * {@code METER_READING} (altfel 413), se validează, se verifică {@code Idempotency-Key = meterId_ts} al primei
- * citiri și trece la {@link MeterReadingIngestionService}. 201 la lot nou, 200 la lot deja confirmat.
+ * {@code POST /api/v1/meter-readings} (C7): the raw body is read up to the {@code METER_READING} policy size
+ * (otherwise 413), validated, the {@code Idempotency-Key = meterId_ts} of the first reading is checked, and the batch
+ * goes to {@link MeterReadingIngestionService}. 201 for a new batch, 200 for an already confirmed one.
  */
 @RestController
 public class MeterReadingController {
@@ -58,7 +58,7 @@ public class MeterReadingController {
             HttpServletRequest request, Authentication authentication,
             @RequestHeader(name = IDEMPOTENCY_KEY, required = false) String idempotencyKey) throws IOException {
         RequestScenario.read(request);
-        try (var permit = bulkheads.acquire(Category.METER_READING)) { // înainte de citirea corpului (C9)
+        try (var permit = bulkheads.acquire(Category.METER_READING)) { // before reading the body (C9)
             byte[] body = readLimited(request, policies.policy(Category.METER_READING).maxSizeBytes());
             MeterReadingBatch batch = parse(body);
             checkIdempotencyKey(idempotencyKey, batch);

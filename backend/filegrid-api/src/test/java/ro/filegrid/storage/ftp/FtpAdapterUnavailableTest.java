@@ -18,15 +18,15 @@ import ro.filegrid.storage.StorageHealth;
 import ro.filegrid.storage.StorageKeys;
 import ro.filegrid.storage.StorageUnavailableException;
 
-/** Fără server FTP (rulează mereu): storage oprit sau neconfigurat → down / 503, rapid și fără secrete în mesaje. */
+/** No FTP server (always runs): storage stopped or unconfigured -> down / 503, fast and with no secrets in messages. */
 class FtpAdapterUnavailableTest {
 
-    /** Valori de test, nu credențiale reale. */
+    /** Test values, not real credentials. */
     private static final String USER = "test-user";
     private static final String SECRET = "test-password-not-real";
 
     private static FtpAdapter stopped() {
-        // Portul 1 pe 127.0.0.1: conexiune refuzată imediat, ca un container ftp oprit.
+        // Port 1 on 127.0.0.1: connection refused immediately, like a stopped ftp container.
         return FtpAdapter.fromProperties(FtpProperties.of("127.0.0.1", 1, USER, SECRET));
     }
 

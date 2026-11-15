@@ -1,5 +1,4 @@
-# Repo-ul se cloneaza si pe Windows: scripturile si fisierele citite in containere raman cu LF
-# (planul v4, 4.1 "Imagini si repo curat"; cerut si pentru infra/mssql).
+# The repo is also cloned on Windows: scripts and files read inside containers must keep LF endings.
 *.sh            text eol=lf
 *.sql           text eol=lf
 *.yml           text eol=lf

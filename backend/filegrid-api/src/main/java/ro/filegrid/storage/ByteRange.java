@@ -1,16 +1,16 @@
 package ro.filegrid.storage;
 
 /**
- * Intervalul de octeți cerut la {@link StorageAdapter#get(String, ByteRange)}. Conversia din header-ul HTTP
- * {@code Range} o face apelantul: {@code bytes=a-b} → {@code of(a, b - a + 1)}, {@code bytes=a-} → {@code from(a)},
- * {@code bytes=-n} → {@code from(size - n)} (cu {@code size} din {@code files.size_bytes}).
+ * Byte range requested from {@link StorageAdapter#get(String, ByteRange)}. The caller converts the HTTP {@code Range}
+ * header: {@code bytes=a-b} -> {@code of(a, b - a + 1)}, {@code bytes=a-} -> {@code from(a)},
+ * {@code bytes=-n} -> {@code from(size - n)} (with {@code size} from {@code files.size_bytes}).
  *
- * @param offset primul octet, de la 0
- * @param length numărul de octeți, sau {@link #TO_END} pentru „până la sfârșitul obiectului”
+ * @param offset first byte, zero-based
+ * @param length number of bytes, or {@link #TO_END} for "until the end of the object"
  */
 public record ByteRange(long offset, long length) {
 
-    /** Valoarea {@code length} pentru „până la sfârșit”. */
+    /** {@code length} value meaning "until the end". */
     public static final long TO_END = -1;
 
     private static final ByteRange FULL = new ByteRange(0, TO_END);
@@ -24,34 +24,34 @@ public record ByteRange(long offset, long length) {
         }
     }
 
-    /** Tot obiectul. */
+    /** The whole object. */
     public static ByteRange full() {
         return FULL;
     }
 
-    /** De la {@code offset} până la sfârșit. */
+    /** From {@code offset} to the end. */
     public static ByteRange from(long offset) {
         return offset == 0 ? FULL : new ByteRange(offset, TO_END);
     }
 
-    /** {@code length} octeți de la {@code offset} (sau mai puțini, dacă obiectul se termină înainte). */
+    /** {@code length} bytes from {@code offset} (or fewer if the object ends first). */
     public static ByteRange of(long offset, long length) {
         return new ByteRange(offset, length);
     }
 
-    /** {@code true} pentru tot obiectul (offset 0, până la sfârșit). */
+    /** {@code true} for the whole object (offset 0, to the end). */
     public boolean isFull() {
         return offset == 0 && length == TO_END;
     }
 
-    /** {@code true} dacă intervalul merge până la sfârșitul obiectului. */
+    /** {@code true} if the range runs to the end of the object. */
     public boolean isToEnd() {
         return length == TO_END;
     }
 
     /**
-     * Câți octeți se întorc pentru un obiect de {@code objectSize} octeți (0 dacă offsetul e după sfârșit). Util
-     * implementărilor și pentru {@code Content-Length} / {@code Content-Range}.
+     * How many bytes are returned for an object of {@code objectSize} bytes (0 if the offset is past the end). Useful
+     * for implementations and for {@code Content-Length} / {@code Content-Range}.
      */
     public long lengthWithin(long objectSize) {
         if (offset >= objectSize) {

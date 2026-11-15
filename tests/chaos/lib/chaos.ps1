@@ -1,9 +1,9 @@
-# Biblioteca comuna a testelor de haos FileGrid (F9). Se include cu: . "$PSScriptRoot\lib\chaos.ps1"
-# Merge in Windows PowerShell 5.1 si in PowerShell 7. HTTP prin curl.exe (TLS self-signed: -k).
-# Parolele se citesc din .env (FILEGRID_USER_*_PASSWORD), stau doar in memorie si in fisiere temporare sterse imediat;
-# nu se afiseaza si nu apar in linia de comanda.
-# Contract: docs/api/openapi.yaml. Rezilienta: filegrid.resilience din application.yml (health la 3 s, circuit deschis
-# dupa 2 verificari esuate, open-wait 5 s), deci asteptarile de mai jos sunt de ordinul secundelor.
+# Shared library for the FileGrid chaos tests (F9). Dot-source it: . "$PSScriptRoot\lib\chaos.ps1"
+# Works in Windows PowerShell 5.1 and PowerShell 7. HTTP goes through curl.exe (self-signed TLS: -k).
+# Passwords are read from .env (FILEGRID_USER_*_PASSWORD) and kept only in memory and in temp files deleted
+# right away; they are never printed and never appear on a command line.
+# Contract: docs/api/openapi.yaml. Resilience: filegrid.resilience in application.yml (health every 3 s, circuit
+# opens after 2 failed checks, open-wait 5 s), so the waits below are in the order of seconds.
 
 $ErrorActionPreference = 'Stop'
 
@@ -24,17 +24,17 @@ $script:Inv = [Globalization.CultureInfo]::InvariantCulture
 
 # --- .env ------------------------------------------------------------------------------------------------------------
 $envFile = Join-Path $script:Root '.env'
-if (-not (Test-Path $envFile)) { throw ".env lipseste in $script:Root (porneste stack-ul cu scripts\start.ps1)." }
+if (-not (Test-Path $envFile)) { throw ".env is missing in $script:Root (start the stack with scripts\start.ps1)." }
 foreach ($line in Get-Content $envFile) {
   if ($line -match '^\s*FILEGRID_USER_([A-Z]+)_PASSWORD\s*=\s*(.*)$') {
     $script:Passwords[$Matches[1].ToLowerInvariant()] = $Matches[2].Trim().Trim('"').Trim("'")
   }
 }
 foreach ($u in 'teren', 'contor', 'admin', 'dispecer') {
-  if (-not $script:Passwords[$u]) { throw "FILEGRID_USER_$($u.ToUpperInvariant())_PASSWORD lipseste din .env" }
+  if (-not $script:Passwords[$u]) { throw "FILEGRID_USER_$($u.ToUpperInvariant())_PASSWORD is missing from .env" }
 }
 
-# --- Afisare si verificari -------------------------------------------------------------------------------------------
+# --- Output and checks -----------------------------------------------------------------------------------------------
 function Write-Title([string]$Text) { Write-Host ''; Write-Host "=== $Text ===" -ForegroundColor Cyan }
 function Write-Step([string]$Text) { Write-Host "--- $Text" -ForegroundColor Yellow }
 function Write-Info([string]$Text) { Write-Host "    $Text" }
@@ -42,7 +42,7 @@ function Write-Info([string]$Text) { Write-Host "    $Text" }
 function Assert-Check {
   param([string]$Name, [bool]$Ok, [string]$Detail = '')
   [void]$script:Checks.Add([pscustomobject]@{ Name = $Name; Ok = $Ok; Detail = $Detail })
-  $tag = if ($Ok) { '[OK]  ' } else { '[ESEC]' }
+  $tag = if ($Ok) { '[OK]  ' } else { '[FAIL]' }
   $color = if ($Ok) { 'Green' } else { 'Red' }
   $msg = "  $tag $Name"
   if ($Detail) { $msg += " ($Detail)" }
@@ -50,34 +50,34 @@ function Assert-Check {
   return $Ok
 }
 
-# La demo (CHAOS_PAUSE=1): opreste scriptul cu componenta stricata, pana la Enter, ca efectul sa se vada in UI.
-function Wait-Demo([string]$What = 'reparare') {
-  if ($env:CHAOS_PAUSE -eq '1') { [void](Read-Host "    [pauza demo] Enter pentru $What") }
+# Demo mode (CHAOS_PAUSE=1): pauses while the component is broken, until Enter, so the effect is visible in the UI.
+function Wait-Demo([string]$What = 'repair') {
+  if ($env:CHAOS_PAUSE -eq '1') { [void](Read-Host "    [demo pause] Enter to $What") }
 }
 
-# Mesajul unei exceptii, cu fisierul si linia (pentru verificarea "scenariul a rulat fara exceptii").
+# Exception message with file and line (used by the "scenario ran without exceptions" check).
 function Format-Error($ErrorRecord) {
   $ii = $ErrorRecord.InvocationInfo
   $where = if ($ii -and $ii.ScriptName) { " [$(Split-Path $ii.ScriptName -Leaf):$($ii.ScriptLineNumber)]" } else { '' }
   return "$($ErrorRecord.Exception.Message)$where"
 }
 
-# Rezumatul scenariului; intoarce codul de iesire (0 = toate verificarile au trecut).
+# Scenario summary; returns the exit code (0 = all checks passed).
 function Complete-Scenario([string]$Name) {
   $failed = @($script:Checks | Where-Object { -not $_.Ok })
   $total = $script:Checks.Count
   Write-Host ''
   if ($failed.Count -eq 0 -and $total -gt 0) {
-    Write-Host "REZULTAT $Name : TRECUT ($total/$total verificari)" -ForegroundColor Green
+    Write-Host "RESULT $Name : PASSED ($total/$total checks)" -ForegroundColor Green
   } else {
-    Write-Host "REZULTAT $Name : ESUAT ($($total - $failed.Count)/$total verificari)" -ForegroundColor Red
+    Write-Host "RESULT $Name : FAILED ($($total - $failed.Count)/$total checks)" -ForegroundColor Red
     foreach ($f in $failed) { Write-Host "  - $($f.Name) $($f.Detail)" -ForegroundColor Red }
   }
   Remove-Item -Recurse -Force $script:Work -ErrorAction SilentlyContinue
   if ($failed.Count -eq 0 -and $total -gt 0) { return 0 } else { return 1 }
 }
 
-# Asteapta pana cand $Condition intoarce adevarat; intoarce secundele scurse sau -1 la timeout.
+# Polls until $Condition returns true; returns the elapsed seconds, or -1 on timeout.
 function Wait-Until {
   param([scriptblock]$Condition, [int]$TimeoutSec = 60, [int]$PollMs = 500)
   $sw = [Diagnostics.Stopwatch]::StartNew()
@@ -89,7 +89,7 @@ function Wait-Until {
 }
 
 # --- Docker ----------------------------------------------------------------------------------------------------------
-# docker compose din radacina repo-ului. Argumentele in plus (ex. -f override, --profile) vin inainte de comanda.
+# docker compose from the repo root. Extra arguments (e.g. -f override, --profile) go before the subcommand.
 function Invoke-Compose {
   param([string[]]$Arguments, [switch]$Quiet)
   $old = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
@@ -99,7 +99,7 @@ function Invoke-Compose {
     $code = $LASTEXITCODE
   } finally { $ErrorActionPreference = $old }
   if (-not $Quiet) { $out | ForEach-Object { Write-Host "    | $_" -ForegroundColor DarkGray } }
-  if ($code -ne 0) { throw "docker compose $($Arguments -join ' ') a esuat (cod $code): $($out -join ' ')" }
+  if ($code -ne 0) { throw "docker compose $($Arguments -join ' ') failed (exit $code): $($out -join ' ')" }
   return $out
 }
 
@@ -113,8 +113,8 @@ function Get-ContainerId([string]$Service) {
   return $ids[0]
 }
 
-# Starea serviciului pe TOATE containerele lui (api poate avea 3 replici, C14): 'running/healthy' doar daca toate
-# sunt asa; altfel prima stare diferita (ex. 'running/starting', 'exited/').
+# Service state across ALL its containers (api may have 3 replicas, C14): 'running/healthy' only if every one is;
+# otherwise the first differing state (e.g. 'running/starting', 'exited/').
 function Get-ServiceHealth([string]$Service) {
   $ids = @(Get-ContainerIds $Service)
   if ($ids.Count -eq 0) { return 'absent' }
@@ -126,20 +126,20 @@ function Get-ServiceHealth([string]$Service) {
   return "$($bad[0]) ($($states.Count - $bad.Count)/$($states.Count) healthy)"
 }
 
-# Numarul de replici api pornite acum (C14: `docker compose up -d --scale api=3`); se pastreaza la recreare.
+# Number of api replicas currently running (C14: `docker compose up -d --scale api=3`); preserved on recreate.
 function Get-ApiReplicas { $n = @(Get-ContainerIds 'api').Count; if ($n -lt 1) { return 1 } else { return $n } }
 
 function Wait-ServiceHealthy([string]$Service, [int]$TimeoutSec = 180) {
   return Wait-Until -TimeoutSec $TimeoutSec -PollMs 1000 -Condition { (Get-ServiceHealth $Service) -eq 'running/healthy' }
 }
 
-# Comanda shell intr-un container al stack-ului (docker compose exec -T). Intoarce iesirea (linii).
+# Shell command inside a stack container (docker compose exec -T). Returns the output lines.
 function Invoke-InContainer([string]$Service, [string]$Command) {
   return Invoke-Compose -Arguments @('exec', '-T', $Service, 'sh', '-c', $Command) -Quiet
 }
 
-# SQL ca sa, in containerul mssql (parola SA ramane in container, in variabila MSSQL_SA_PASSWORD). Interogarea
-# trece in base64 (Windows PowerShell 5.1 strica ghilimelele din argumentele native si pune BOM pe stdin).
+# SQL as sa inside the mssql container (the SA password never leaves the container: MSSQL_SA_PASSWORD). The query
+# is base64-encoded because Windows PowerShell 5.1 mangles quotes in native arguments and adds a BOM on stdin.
 function Invoke-Sql([string]$Query, [string]$Database = 'master') {
   $b64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes("SET NOCOUNT ON;`n$Query`n"))
   $cmd = 'echo ' + $b64 + ' | base64 -d > /tmp/chaos.sql && SQLCMDPASSWORD=$MSSQL_SA_PASSWORD /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -C -I -b -h -1 -W -s , -d ' + $Database + ' -i /tmp/chaos.sql; rc=$?; rm -f /tmp/chaos.sql; exit $rc'
@@ -149,12 +149,12 @@ function Invoke-Sql([string]$Query, [string]$Database = 'master') {
       ForEach-Object { "$_" }
     $code = $LASTEXITCODE
   } finally { $ErrorActionPreference = $old }
-  if ($code -ne 0) { throw "sqlcmd a esuat (cod $code): $($out -join ' ')" }
+  if ($code -ne 0) { throw "sqlcmd failed (exit $code): $($out -join ' ')" }
   return @($out | Where-Object { $_ -ne '' })
 }
 
 # --- HTTP (curl) -----------------------------------------------------------------------------------------------------
-# Recreeaza directorul de lucru daca a disparut (ex. curatare a %TEMP% in timpul rularii).
+# Recreates the work directory if it vanished (e.g. %TEMP% cleanup during the run).
 function New-TempPath([string]$Suffix = '.tmp') {
   if (-not (Test-Path $script:Work)) { New-Item -ItemType Directory -Force $script:Work | Out-Null }
   return Join-Path $script:Work ([Guid]::NewGuid().ToString('N') + $Suffix)
@@ -193,13 +193,13 @@ function Get-Token([string]$User) {
     [IO.File]::WriteAllText($f, $payload, (New-Object Text.UTF8Encoding($false)))
     $r = Invoke-Curl -Url "$script:BaseUrl/auth/login" -CurlArgs @('-X', 'POST', '-H', 'Content-Type: application/json', '--data-binary', "@$f")
   } finally { Remove-Item $f -Force -ErrorAction SilentlyContinue }
-  if ($r.Status -ne 200 -or -not $r.Json) { throw "Login $User a esuat: HTTP $($r.Status)" }
+  if ($r.Status -ne 200 -or -not $r.Json) { throw "Login $User failed: HTTP $($r.Status)" }
   $script:Tokens[$User] = @{ Token = $r.Json.accessToken; At = Get-Date }
   return $r.Json.accessToken
 }
 
-# Apel API autentificat. -Json: corp JSON (string); -Form: campuri text; -FormFile: fisierul multipart;
-# -InFile: corp binar (application/octet-stream); -OutFile: corpul raspunsului in fisier.
+# Authenticated API call. -Json: JSON body (string); -Form: text fields; -FormFile: multipart file;
+# -InFile: binary body (application/octet-stream); -OutFile: write the response body to a file.
 function Invoke-Api {
   param([string]$Method = 'GET', [string]$Path, [string]$User = 'admin', [string]$Json, [hashtable]$Form,
         [string]$FormFile, [string]$FormFileType = 'application/octet-stream', [string]$InFile, [string]$OutFile,
@@ -227,11 +227,11 @@ function Format-Response($r) {
   return $s
 }
 
-# --- Date de test ----------------------------------------------------------------------------------------------------
+# --- Test data -------------------------------------------------------------------------------------------------------
 function Get-Sha256([string]$Path) { return (Get-FileHash -Algorithm SHA256 -Path $Path).Hash.ToLowerInvariant() }
 
 function New-RandomFile([string]$Name, [int]$Size) {
-  [void](New-TempPath)   # asigura directorul de lucru
+  [void](New-TempPath)   # ensures the work directory exists
   $p = Join-Path $script:Work $Name
   $buf = New-Object byte[] $Size
   (New-Object Random).NextBytes($buf)
@@ -240,7 +240,7 @@ function New-RandomFile([string]$Name, [int]$Size) {
 }
 
 function New-OutageCsv([string]$Name, [int]$Lines = 200) {
-  [void](New-TempPath)   # asigura directorul de lucru
+  [void](New-TempPath)   # ensures the work directory exists
   $p = Join-Path $script:Work $Name
   $rnd = New-Object Random
   $sb = New-Object Text.StringBuilder
@@ -254,7 +254,7 @@ function New-OutageCsv([string]$Name, [int]$Lines = 200) {
   return $p
 }
 
-# --- Operatii API ----------------------------------------------------------------------------------------------------
+# --- API operations --------------------------------------------------------------------------------------------------
 function Send-Outage([string]$Path, [string]$User = 'teren') {
   return Invoke-Api -Method POST -Path '/files' -User $User -FormFile $Path -FormFileType 'text/csv' -Form @{
     category = 'OUTAGE_RECORD'; zone = 'Muntenia'; stationId = 'ST-CHAOS-01'
@@ -262,7 +262,7 @@ function Send-Outage([string]$Path, [string]$User = 'teren') {
   }
 }
 
-# Lot de citiri: $Count citiri la 15 minute de la $Start (UTC). Intoarce raspunsul si cheia folosita.
+# Reading batch: $Count readings 15 minutes apart from $Start (UTC). Returns the body and the idempotency key.
 function New-MeterBatch([string]$MeterId, [datetime]$Start, [int]$Count = 96, [string]$Zone = 'Muntenia') {
   $rnd = New-Object Random
   $items = for ($i = 0; $i -lt $Count; $i++) {
@@ -280,7 +280,7 @@ function Send-MeterBatch($Batch, [string]$User = 'contor') {
   return Invoke-Api -Method POST -Path '/meter-readings' -User $User -Json $Batch.Body -Headers @{ 'Idempotency-Key' = $Batch.Key; 'X-Scenario' = 'chaos' }
 }
 
-# Video prin upload in bucati (init, bucati, complete). $StopAfterChunks: se opreste dupa atatea bucati (reluare).
+# Video through chunked upload (init, chunks, complete).
 function Send-Video([string]$Path, [string]$User = 'teren') {
   $size = (Get-Item $Path).Length
   $name = Split-Path $Path -Leaf
@@ -312,7 +312,7 @@ function Get-FileSlice([string]$Path, [int64]$Offset, [int64]$Length) {
   return $out
 }
 
-# Descarcare directa (ADMIN vede toate categoriile). Intoarce raspunsul + hash-ul calculat local al corpului.
+# Direct download (ADMIN sees every category). Returns the response plus the locally computed body hash.
 function Get-Download([string]$FileId, [string]$User = 'admin') {
   $out = New-TempPath '.dl'
   $r = Invoke-Api -Path "/files/$FileId/download" -User $User -OutFile $out
@@ -330,11 +330,11 @@ function Get-Download([string]$FileId, [string]$User = 'admin') {
 function Get-Verify([string]$FileId, [string]$User = 'admin') { return Invoke-Api -Path "/files/$FileId/verify" -User $User }
 function Get-FileMeta([string]$FileId, [string]$User = 'admin') { return Invoke-Api -Path "/files/$FileId" -User $User }
 
-# Descarcare cu hash corect: 200, X-Content-SHA256 = hash-ul corpului = hash-ul asteptat.
+# Download with a correct hash: 200, X-Content-SHA256 = body hash = expected hash.
 function Test-DownloadOk([string]$FileId, [string]$Expected, [string]$Label) {
   $d = Get-Download $FileId
   $ok = $d.Status -eq 200 -and $d.Sha256 -eq $Expected -and $d.Headers['X-Content-SHA256'] -eq $Expected
-  return Assert-Check "$Label se descarca cu hash corect" $ok "$(Format-Response $d), sha256 $(if ($d.Sha256) { $d.Sha256.Substring(0, 12) } else { '-' })..."
+  return Assert-Check "$Label downloads with the correct hash" $ok "$(Format-Response $d), sha256 $(if ($d.Sha256) { $d.Sha256.Substring(0, 12) } else { '-' })..."
 }
 
 # --- Health per storage (C11, GET /admin/health) ---------------------------------------------------------------------
@@ -345,15 +345,15 @@ function Get-StorageState([string]$Storage) {
 }
 
 function Format-StorageState($s) {
-  if (-not $s) { return 'necunoscut' }
+  if (-not $s) { return 'unknown' }
   $t = "$($s.storage) $($s.status), circuit $($s.circuitBreaker)"
   if ($s.PSObject.Properties.Name -contains 'detail' -and $s.detail) { $t += ", $($s.detail)" }
   return $t
 }
 
-# Asteapta starea storage-ului (ex. DOWN + OPEN, sau UP + CLOSED); intoarce secundele sau -1.
-# /admin/health raspunde de pe instanta care primeste cererea, iar fiecare replica api are circuitul ei: se asteapta
-# pana cand ultima stare vazuta pe FIECARE replica (campul instance; nginx le roteste) e cea ceruta.
+# Waits for a storage state (e.g. DOWN + OPEN, or UP + CLOSED); returns the seconds or -1.
+# /admin/health answers from whichever instance gets the request and each api replica has its own circuit, so we
+# wait until the last state seen on EVERY replica (the `instance` field; nginx rotates them) matches.
 function Wait-StorageState([string]$Storage, [string]$Status, [string]$Circuit, [int]$TimeoutSec = 60) {
   $replicas = Get-ApiReplicas
   $last = @{}
@@ -371,10 +371,10 @@ function Assert-StorageState([string]$Storage, [string]$Status, [string]$Circuit
   $sec = Wait-StorageState $Storage $Status $Circuit $TimeoutSec
   $now = Get-StorageState $Storage
   $want = "$Storage $Status" + $(if ($Circuit) { ", circuit $Circuit" } else { '' })
-  return Assert-Check "/admin/health: $want" ($sec -ge 0) $(if ($sec -ge 0) { "dupa $sec s" } else { "timeout $TimeoutSec s, acum: $(Format-StorageState $now)" })
+  return Assert-Check "/admin/health: $want" ($sec -ge 0) $(if ($sec -ge 0) { "after $sec s" } else { "timeout $TimeoutSec s, now: $(Format-StorageState $now)" })
 }
 
-# Stack-ul la final: toate serviciile pornite si healthy, toate storage-urile UP.
+# Final stack state: every service running and healthy, every storage UP.
 function Assert-StackHealthy([int]$TimeoutSec = 120) {
   foreach ($svc in 'mssql', 'minio', 'ftp', 'api', 'nginx') {
     $sec = Wait-ServiceHealthy $svc $TimeoutSec
@@ -383,7 +383,7 @@ function Assert-StackHealthy([int]$TimeoutSec = 120) {
   foreach ($st in 'FTP', 'S3', 'DB') { [void](Assert-StorageState $st 'UP' 'CLOSED' $TimeoutSec) }
 }
 
-# --- Toxiproxy (API pe 127.0.0.1:8474, doar in profilul chaos) -------------------------------------------------------
+# --- Toxiproxy (API on 127.0.0.1:8474, chaos profile only) -----------------------------------------------------------
 function Invoke-Toxi([string]$Method, [string]$Path, [string]$Json) {
   $a = @('-X', $Method)
   $jf = $null
@@ -399,13 +399,13 @@ function Invoke-Toxi([string]$Method, [string]$Path, [string]$Json) {
 function Add-Toxic([string]$Proxy, [string]$Name, [string]$Type, [hashtable]$Attributes, [double]$Toxicity = 1.0, [string]$Stream = 'downstream') {
   $body = @{ name = $Name; type = $Type; stream = $Stream; toxicity = $Toxicity; attributes = $Attributes } | ConvertTo-Json -Compress
   $r = Invoke-Toxi POST "/proxies/$Proxy/toxics" $body
-  if ($r.Status -ne 200) { throw "toxiproxy: toxic $Name pe $Proxy a esuat (HTTP $($r.Status)) $($r.Text)" }
+  if ($r.Status -ne 200) { throw "toxiproxy: toxic $Name on $Proxy failed (HTTP $($r.Status)) $($r.Text)" }
 }
 
 function Remove-Toxic([string]$Proxy, [string]$Name) { [void](Invoke-Toxi DELETE "/proxies/$Proxy/toxics/$Name") }
 function Set-ProxyEnabled([string]$Proxy, [bool]$Enabled) {
   $r = Invoke-Toxi POST "/proxies/$Proxy" ('{"enabled":' + $Enabled.ToString().ToLowerInvariant() + '}')
-  if ($r.Status -ne 200) { throw "toxiproxy: proxy $Proxy enabled=$Enabled a esuat (HTTP $($r.Status))" }
+  if ($r.Status -ne 200) { throw "toxiproxy: proxy $Proxy enabled=$Enabled failed (HTTP $($r.Status))" }
 }
-# Toate proxy-urile active, fara toxice.
+# All proxies enabled, no toxics.
 function Reset-Toxiproxy { try { [void](Invoke-Toxi POST '/reset') } catch { } }

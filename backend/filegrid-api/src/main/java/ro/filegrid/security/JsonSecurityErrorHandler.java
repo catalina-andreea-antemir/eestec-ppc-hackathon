@@ -19,8 +19,8 @@ import ro.filegrid.api.ApiError;
 import ro.filegrid.observability.TraceIdFilter;
 
 /**
- * Răspunsurile 401 și 403 din filtrele de securitate, în formatul {@link ApiError} (contract: răspunsurile
- * {@code Unauthorized} și {@code Forbidden}), cu {@code WWW-Authenticate: Bearer} la 401.
+ * 401 and 403 responses from the security filters in {@link ApiError} format (contract responses
+ * {@code Unauthorized} and {@code Forbidden}), with {@code WWW-Authenticate: Bearer} on 401.
  */
 @Component
 public class JsonSecurityErrorHandler implements AuthenticationEntryPoint, AccessDeniedHandler {

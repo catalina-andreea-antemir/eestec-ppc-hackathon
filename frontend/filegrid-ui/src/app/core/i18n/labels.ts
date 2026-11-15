@@ -2,8 +2,8 @@ import { Role } from '../auth/auth.models';
 import { FileMetadata, StorageType } from '../upload/upload.models';
 
 /**
- * Etichetele în română pentru valorile tehnice din contractul API.
- * Valorile brute (FIELD, CONFIRMED, DB...) rămân în cod și în cereri; în interfață se afișează doar acestea.
+ * Romanian UI labels for the technical values of the API contract.
+ * Raw values (FIELD, CONFIRMED, DB...) stay in code and requests; only these labels are shown in the UI.
  */
 export const ROLE_LABELS: Record<Role, string> = {
   DISPATCH: 'Dispecerat',

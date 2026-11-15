@@ -11,7 +11,7 @@ import { PeakCard } from './peak-card';
 import { RequirementsCard } from './requirements-card';
 import { StorageAdvisorCard } from './storage-advisor-card';
 
-/** Răspunsul mock-ului pentru o cale, transformat într-un Observable sincron (valoare sau eroare). */
+/** The mock's response for a path, turned into a synchronous Observable (value or error). */
 async function fromMock(path: string, mode: MockStatsMode): Promise<Observable<unknown>> {
   const req = new HttpRequest('GET', `/api/v1${path}`, null);
   try {
@@ -22,7 +22,7 @@ async function fromMock(path: string, mode: MockStatsMode): Promise<Observable<u
   }
 }
 
-/** Randează cartea cu StatsApi alimentat din mock, în situația dată. */
+/** Renders the card with StatsApi fed from the mock, in the given situation. */
 async function render(card: Type<unknown>, mode: MockStatsMode): Promise<HTMLElement> {
   const api = {
     outageZones: await fromMock('/stats/outage-zones', mode),

@@ -4,9 +4,9 @@ import java.io.IOException;
 import java.io.InputStream;
 
 /**
- * Date pseudo-aleatorii deterministe, cu acces aleator: octetul de la poziția {@code p} depinde doar de
- * {@code (seed, p)}. Permite fișiere de sute de MB fără să fie ținute în memorie, iar intervalele așteptate la
- * {@code Range} se calculează direct.
+ * Deterministic pseudo-random data with random access: the byte at position {@code p} depends only on
+ * {@code (seed, p)}. Allows files of hundreds of MB without holding them in memory, and expected {@code Range}
+ * slices can be computed directly.
  */
 final class GeneratedData {
 
@@ -25,7 +25,7 @@ final class GeneratedData {
         return out;
     }
 
-    /** {@code length} octeți de la {@code offset}. */
+    /** {@code length} bytes starting at {@code offset}. */
     static InputStream stream(long seed, long offset, long length) {
         return new InputStream() {
             private long pos = offset;
@@ -65,7 +65,7 @@ final class GeneratedData {
         };
     }
 
-    /** Un stream care aruncă {@link IOException} după {@code failAfter} octeți (conexiune căzută la jumătate). */
+    /** A stream that throws {@link IOException} after {@code failAfter} bytes (connection dropped midway). */
     static InputStream interrupted(InputStream in, long failAfter) {
         return new InputStream() {
             private long read;

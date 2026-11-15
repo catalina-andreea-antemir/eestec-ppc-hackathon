@@ -10,7 +10,7 @@ import ro.filegrid.domain.StorageType;
 import ro.filegrid.ingest.FileRecord;
 import ro.filegrid.integrity.Sha256;
 
-/** Schema {@code FileMetadata} din contract. {@code sha256Plain} apare mereu (null la necriptate). */
+/** Contract schema {@code FileMetadata}. {@code sha256Plain} is always present (null for unencrypted files). */
 public record FileMetadata(UUID id, Category category, String originalName, String contentType, long size,
                            String sha256, String sha256Plain, StorageType storage, String status, boolean encrypted,
                            Instant createdAt, String createdBy,
@@ -24,7 +24,7 @@ public record FileMetadata(UUID id, Category category, String originalName, Stri
                 o == null ? null : new OutageDetails(o.zone(), o.stationId(), o.occurredAt()));
     }
 
-    /** Schema {@code OutageDetails}: rândul din {@code outage_records}. */
+    /** Schema {@code OutageDetails}: the {@code outage_records} row. */
     public record OutageDetails(String zone, String stationId, Instant occurredAt) {
     }
 }

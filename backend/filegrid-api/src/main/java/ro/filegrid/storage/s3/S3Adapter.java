@@ -47,39 +47,38 @@ import software.amazon.awssdk.services.s3.model.MultipartUpload;
 import software.amazon.awssdk.services.s3.model.S3Exception;
 
 /**
- * {@link StorageAdapter} și {@link ChunkedWriter} pe MinIO (S3), cu AWS SDK v2 (C5; planul v4 4.1, ADR-003).
+ * {@link StorageAdapter} and {@link ChunkedWriter} on MinIO (S3), using AWS SDK v2 (C5, ADR-003).
  *
  * <ul>
- *   <li><b>Client</b>: path-style (MinIO), client HTTP Apache 5 cu pool, timeout-uri scurte (conectare 2 s, socket 30 s,
- *       operațiile mici 10 s, {@code health} 2 s) și <b>fără retry</b> în adaptor: reziliența (retry cu backoff, circuit
- *       breaker, fallback) vine deasupra, la C11. Sumele de control CRC ale SDK-ului se trimit doar când operația le
- *       cere ({@code WHEN_REQUIRED}), ca MinIO să primească cereri S3 clasice; integritatea o asigură SHA-256 al
- *       apelantului.</li>
- *   <li><b>{@code put}</b>: în streaming, fără buffer de dimensiunea obiectului. Până la {@code partSize} (16 MiB)
- *       un singur {@code PutObject}; peste, multipart intern cu părți fixe de {@code partSize} (ultima mai mică),
- *       abandonat ({@code AbortMultipartUpload}) la orice eroare, deci obiectul nu apare pe jumătate.</li>
- *   <li><b>{@code get}</b>: {@code GetObject} cu {@code Range: bytes=a-b} (S3 range GET); un offset după sfârșit
- *       (416 la S3) dă un stream gol. Stream-ul întors abandonează conexiunea la {@code close()} dacă nu a fost citit
- *       până la capăt (nu descarcă restul doar ca să refolosească conexiunea).</li>
- *   <li><b>Upload în bucăți</b>: {@code open} = {@code CreateMultipartUpload} (referința = {@code UploadId}),
- *       {@code append(n)} = {@code UploadPart} cu {@code partNumber = n} (o retrimitere înlocuiește partea),
- *       {@code finish} = {@code CompleteMultipartUpload} cu ETag-urile în ordine (idempotent), {@code abort} =
- *       {@code AbortMultipartUpload} (idempotent) plus ștergerea obiectului, dacă upload-ul apucase să fie încheiat.
- *       </li>
- *   <li><b>Erori</b>: rețea / timeout / HTTP 5xx / 429 → {@link StorageUnavailableException}; cheie inexistentă →
- *       {@link StorageObjectNotFoundException}; sursa apelantului prea scurtă sau întreruptă și restul erorilor S3
- *       (403, bucket inexistent etc.) → {@link StorageException}. Mesajele conțin operația, codul HTTP și codul de
- *       eroare S3, niciodată credențiale.</li>
+ *   <li><b>Client</b>: path-style (MinIO), pooled Apache 5 HTTP client, short timeouts (connect 2 s, socket 30 s,
+ *       small operations 10 s, {@code health} 2 s) and <b>no retry</b> in the adapter: resilience (retry with
+ *       backoff, circuit breaker, fallback) is layered on top (C11). SDK CRC checksums are only sent when the
+ *       operation requires them ({@code WHEN_REQUIRED}) so MinIO gets classic S3 requests; integrity is guaranteed
+ *       by the caller's SHA-256.</li>
+ *   <li><b>{@code put}</b>: streamed, no object-sized buffer. Up to {@code partSize} (16 MiB) a single
+ *       {@code PutObject}; above that, internal multipart with fixed {@code partSize} parts (the last one smaller),
+ *       aborted ({@code AbortMultipartUpload}) on any error so the object never shows up half-written.</li>
+ *   <li><b>{@code get}</b>: {@code GetObject} with {@code Range: bytes=a-b} (S3 range GET); an offset past the end
+ *       (416 on S3) yields an empty stream. The returned stream abandons the connection on {@code close()} if it was
+ *       not read to the end (it does not download the rest just to reuse the connection).</li>
+ *   <li><b>Chunked upload</b>: {@code open} = {@code CreateMultipartUpload} (reference = {@code UploadId}),
+ *       {@code append(n)} = {@code UploadPart} with {@code partNumber = n} (a resend replaces the part),
+ *       {@code finish} = {@code CompleteMultipartUpload} with the ETags in order (idempotent), {@code abort} =
+ *       {@code AbortMultipartUpload} (idempotent) plus deleting the object if the upload had already completed.</li>
+ *   <li><b>Errors</b>: network / timeout / HTTP 5xx / 429 -> {@link StorageUnavailableException}; missing key ->
+ *       {@link StorageObjectNotFoundException}; a short or broken caller source and other S3 errors (403, missing
+ *       bucket, etc.) -> {@link StorageException}. Messages include the operation, HTTP status and S3 error code,
+ *       never credentials.</li>
  * </ul>
  *
- * Fără stare per cerere în câmpuri: o instanță se folosește concurent.
+ * No per-request state in fields: one instance is used concurrently.
  */
 public class S3Adapter implements StorageAdapter, ChunkedWriter, AutoCloseable {
 
-    /** Partea minimă la S3 / MinIO (cu excepția ultimei). */
+    /** Minimum part size on S3 / MinIO (except the last part). */
     public static final long MIN_PART_SIZE = 5L * 1024 * 1024;
 
-    /** Numărul maxim de părți ale unui upload multipart (limita S3). */
+    /** Maximum number of parts in a multipart upload (S3 limit). */
     public static final int MAX_PARTS = 10_000;
 
     private static final Logger log = LoggerFactory.getLogger(S3Adapter.class);
@@ -92,15 +91,15 @@ public class S3Adapter implements StorageAdapter, ChunkedWriter, AutoCloseable {
     private final long partSize;
     private final Duration operationTimeout;
     private final Duration healthTimeout;
-    /** Motivul pentru care adaptorul nu e configurat (numele variabilelor lipsă), sau {@code null}. */
+    /** Why the adapter is not configured (names of the missing variables), or {@code null}. */
     private final String notConfigured;
 
     /**
-     * @param client           clientul S3 (adaptorul îl închide la {@link #close()})
-     * @param bucket           bucket-ul
-     * @param partSize         mărimea părților la {@code put} multipart (minim 5 MiB)
-     * @param operationTimeout timeout total pentru operațiile mici
-     * @param healthTimeout    timeout total pentru {@link #health()} (maxim 2 s)
+     * @param client           the S3 client (closed by the adapter in {@link #close()})
+     * @param bucket           the bucket
+     * @param partSize         part size for multipart {@code put} (at least 5 MiB)
+     * @param operationTimeout total timeout for small operations
+     * @param healthTimeout    total timeout for {@link #health()} (at most 2 s)
      */
     public S3Adapter(S3Client client, String bucket, long partSize, Duration operationTimeout, Duration healthTimeout) {
         this.client = Objects.requireNonNull(client, "client");
@@ -124,23 +123,23 @@ public class S3Adapter implements StorageAdapter, ChunkedWriter, AutoCloseable {
     }
 
     /**
-     * Adaptorul din configurație. Dacă lipsesc variabile ({@code S3_*}), întoarce un adaptor neconfigurat: aplicația
-     * pornește, {@link #health()} e down, iar operațiile aruncă {@link StorageUnavailableException}.
+     * Adapter built from configuration. If variables ({@code S3_*}) are missing, returns an unconfigured adapter: the
+     * app starts, {@link #health()} is down and operations throw {@link StorageUnavailableException}.
      */
     public static S3Adapter fromProperties(S3Properties properties) {
         if (!properties.isConfigured()) {
             String reason = "S3 neconfigurat (lipsesc " + properties.missing() + ")";
-            log.warn("{}: storage-ul S3 va fi raportat indisponibil", reason);
+            log.warn("{}: S3 storage will be reported as unavailable", reason);
             return new S3Adapter(reason);
         }
         S3Adapter adapter = new S3Adapter(buildClient(properties), properties.bucket(),
                 properties.partSize().toBytes(), properties.operationTimeout(), properties.healthTimeout());
-        log.info("S3Adapter: endpoint {}, bucket {}, părți de {} MiB", properties.endpoint(), properties.bucket(),
+        log.info("S3Adapter: endpoint {}, bucket {}, {} MiB parts", properties.endpoint(), properties.bucket(),
                 properties.partSize().toMegabytes());
         return adapter;
     }
 
-    /** Clientul S3 pentru MinIO: path-style, Apache 5, timeout-uri scurte, fără retry. */
+    /** S3 client for MinIO: path-style, Apache 5, short timeouts, no retry. */
     public static S3Client buildClient(S3Properties p) {
         if (!p.isConfigured()) {
             throw new IllegalArgumentException("S3 neconfigurat (lipsesc " + p.missing() + ")");
@@ -233,7 +232,7 @@ public class S3Adapter implements StorageAdapter, ChunkedWriter, AutoCloseable {
             return new ObjectStream(s3.getObject(request.build()));
         } catch (S3Exception e) {
             if (e.statusCode() == 416) {
-                // Offset după sfârșitul obiectului (cheia există; altfel S3 dă 404): stream gol, după contract.
+                // Offset past the end of the object (the key exists; otherwise S3 returns 404): empty stream, per the contract.
                 return InputStream.nullInputStream();
             }
             throw translate("GetObject", key, e, null);
@@ -327,8 +326,8 @@ public class S3Adapter implements StorageAdapter, ChunkedWriter, AutoCloseable {
             if (!isNoSuchUpload(e)) {
                 throw translate("CompleteMultipartUpload", upload.key(), e, null);
             }
-            // Upload-ul nu mai există: dacă obiectul e deja complet, e un al doilea finish (idempotent).
-            log.debug("CompleteMultipartUpload: NoSuchUpload pentru {}, verific obiectul", upload.key());
+            // The upload no longer exists: if the object is already complete, this is a second finish (idempotent).
+            log.debug("CompleteMultipartUpload: NoSuchUpload for {}, checking the object", upload.key());
         } catch (SdkException e) {
             throw translate("CompleteMultipartUpload", upload.key(), e, null);
         }
@@ -358,8 +357,8 @@ public class S3Adapter implements StorageAdapter, ChunkedWriter, AutoCloseable {
         } catch (SdkException e) {
             throw translate("AbortMultipartUpload", upload.key(), e, null);
         }
-        // „Șterge tot ce s-a scris”: dacă finish apucase să reușească (dar sesiunea nu a fost confirmată), obiectul
-        // final rămâne orfan; cheia e unică per sesiune, deci ștergerea e sigură. Idempotent.
+        // "Delete everything written": if finish had already succeeded (but the session was not confirmed), the final
+        // object would be orphaned; the key is unique per session, so deleting it is safe. Idempotent.
         try {
             s3.deleteObject(b -> b.bucket(bucket).key(upload.key()).overrideConfiguration(small()));
         } catch (SdkException e) {
@@ -367,7 +366,7 @@ public class S3Adapter implements StorageAdapter, ChunkedWriter, AutoCloseable {
         }
     }
 
-    /** Închide clientul S3 (și pool-ul HTTP); Spring îl apelează la oprirea contextului. */
+    /** Closes the S3 client (and its HTTP pool); Spring calls it when the context shuts down. */
     @Override
     public void close() {
         if (client != null) {
@@ -375,7 +374,7 @@ public class S3Adapter implements StorageAdapter, ChunkedWriter, AutoCloseable {
         }
     }
 
-    // --- utilitare S3 -----------------------------------------------------------------------------------------
+    // --- S3 helpers -------------------------------------------------------------------------------------------
 
     private S3Client client() {
         if (client == null) {
@@ -417,7 +416,7 @@ public class S3Adapter implements StorageAdapter, ChunkedWriter, AutoCloseable {
         }
     }
 
-    /** {@code null} dacă obiectul nu există. */
+    /** {@code null} if the object does not exist. */
     private HeadObjectResponse head(S3Client s3, String key) {
         try {
             return s3.headObject(b -> b.bucket(bucket).key(key).overrideConfiguration(small()));
@@ -431,7 +430,7 @@ public class S3Adapter implements StorageAdapter, ChunkedWriter, AutoCloseable {
         }
     }
 
-    /** Abandonează upload-urile multipart neterminate pentru exact această cheie; întoarce câte a găsit. */
+    /** Aborts unfinished multipart uploads for exactly this key; returns how many it found. */
     private int abortPendingUploads(S3Client s3, String key) {
         int aborted = 0;
         String keyMarker = null;
@@ -466,9 +465,9 @@ public class S3Adapter implements StorageAdapter, ChunkedWriter, AutoCloseable {
         try {
             s3.abortMultipartUpload(b -> b.bucket(bucket).key(key).uploadId(uploadId).overrideConfiguration(small()));
         } catch (RuntimeException e) {
-            // Rămâne pentru curățarea sesiunilor (24 h, C7) sau pentru curățarea MinIO (stale_uploads_expiry, implicit
-            // 24 h); eroarea inițială e cea care contează.
-            log.warn("AbortMultipartUpload a eșuat pentru {}: {}", key, detail(e));
+            // Left for session cleanup (24 h, C7) or MinIO's own cleanup (stale_uploads_expiry, 24 h by default);
+            // the original error is the one that matters.
+            log.warn("AbortMultipartUpload failed for {}: {}", key, detail(e));
         }
     }
 
@@ -511,8 +510,8 @@ public class S3Adapter implements StorageAdapter, ChunkedWriter, AutoCloseable {
     }
 
     /**
-     * Excepția SDK → excepția din contract. {@code source} (dacă există) spune dacă eroarea vine din sursa
-     * apelantului, nu din storage.
+     * SDK exception -> contract exception. {@code source} (if present) tells whether the error came from the caller's
+     * source rather than from storage.
      */
     private static StorageException translate(String operation, String key, SdkException e, BoundedSource source) {
         if (source != null && source.failure() != null) {
@@ -530,13 +529,13 @@ public class S3Adapter implements StorageAdapter, ChunkedWriter, AutoCloseable {
             return new StorageException(TYPE, message, e);
         }
         if (e instanceof SdkClientException) {
-            // Conexiune refuzată / întreruptă, timeout (ApiCallTimeoutException e tot SdkClientException).
+            // Connection refused / dropped, timeout (ApiCallTimeoutException is also an SdkClientException).
             return new StorageUnavailableException(TYPE, "S3 " + operation + " " + key + ": " + detail(e), e);
         }
         return new StorageException(TYPE, "S3 " + operation + " " + key + ": " + detail(e), e);
     }
 
-    /** Motiv scurt, fără credențiale (SDK-ul nu pune cheile în mesaje; codul HTTP și codul S3 ajung). */
+    /** Short reason without credentials (the SDK never puts keys in messages; HTTP status and S3 code are kept). */
     private static String detail(Throwable e) {
         String text;
         if (e instanceof S3Exception s3) {
@@ -554,12 +553,12 @@ public class S3Adapter implements StorageAdapter, ChunkedWriter, AutoCloseable {
         return value;
     }
 
-    // --- stream-uri -------------------------------------------------------------------------------------------
+    // --- streams ----------------------------------------------------------------------------------------------
 
     /**
-     * Sursa apelantului limitată la exact {@code length} octeți: nu citește mai mult (nici înainte), iar dacă sursa
-     * se termină mai devreme sau aruncă, reține motivul, ca eroarea să nu fie confundată cu storage-ul căzut.
-     * {@code close()} nu închide sursa (o deține apelantul).
+     * The caller's source capped at exactly {@code length} bytes: never reads more (not even ahead), and if the source
+     * ends early or throws, the reason is recorded so the error is not mistaken for a storage outage.
+     * {@code close()} does not close the source (the caller owns it).
      */
     static final class BoundedSource extends InputStream {
 
@@ -577,7 +576,7 @@ public class S3Adapter implements StorageAdapter, ChunkedWriter, AutoCloseable {
             return failure;
         }
 
-        /** Următorii {@code partLength} octeți, ca stream separat (pentru o parte multipart). */
+        /** The next {@code partLength} bytes as a separate stream (for one multipart part). */
         InputStream slice(long partLength) {
             BoundedSource parent = this;
             return new InputStream() {
@@ -643,14 +642,14 @@ public class S3Adapter implements StorageAdapter, ChunkedWriter, AutoCloseable {
 
         @Override
         public void close() {
-            // Sursa o închide apelantul.
+            // The caller closes the source.
         }
     }
 
     /**
-     * Corpul unui {@code GetObject}: erorile SDK din timpul citirii ies ca {@link IOException}, iar {@code close()}
-     * înainte de sfârșit abandonează conexiunea în loc s-o golească (important la Range-uri mici din obiecte mari și
-     * la clienți HTTP care renunță).
+     * A {@code GetObject} body: SDK errors during reading surface as {@link IOException}, and {@code close()} before the
+     * end abandons the connection instead of draining it (matters for small Ranges of large objects and for HTTP
+     * clients that give up).
      */
     static final class ObjectStream extends FilterInputStream {
 

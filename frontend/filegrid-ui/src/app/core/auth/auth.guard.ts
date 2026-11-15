@@ -3,7 +3,7 @@ import { CanActivateFn, Router } from '@angular/router';
 
 import { AuthService } from './auth.service';
 
-/** Lasă să treacă doar utilizatorii autentificați; ceilalți ajung la /login. */
+/** Lets only authenticated users through; everyone else goes to /login. */
 export const authGuard: CanActivateFn = (_route, state) => {
   const auth = inject(AuthService);
   if (auth.isLoggedIn()) {

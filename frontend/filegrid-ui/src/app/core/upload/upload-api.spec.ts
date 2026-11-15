@@ -2,7 +2,7 @@ import { scaleToFile } from './upload-api';
 
 describe('scaleToFile (progresul la POST /files)', () => {
   it('corpul multipart mai mare decât fișierul nu trece de 100%', () => {
-    // 1,36 KB trimiși dintr-un corp de 1,36 KB, pentru un fișier de 1,04 KB
+    // 1.36 KB sent out of a 1.36 KB body, for a 1.04 KB file
     expect(scaleToFile(1393, 1393, 1065)).toBe(1065);
   });
 

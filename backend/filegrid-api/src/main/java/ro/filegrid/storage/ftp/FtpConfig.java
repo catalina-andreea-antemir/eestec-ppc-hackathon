@@ -5,8 +5,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /**
- * Beanul {@link FtpAdapter} (C6), găsit de {@code StorageAdapterRegistry} ca {@code StorageAdapter} și
- * {@code ChunkedWriter} pentru {@code FTP}. Adaptorul nu ține conexiuni deschise între operații, deci nu are ce închide.
+ * The {@link FtpAdapter} bean (C6), picked up by {@code StorageAdapterRegistry} as the {@code StorageAdapter} and
+ * {@code ChunkedWriter} for {@code FTP}. The adapter holds no connections between operations, so there is nothing to close.
  */
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(FtpProperties.class)

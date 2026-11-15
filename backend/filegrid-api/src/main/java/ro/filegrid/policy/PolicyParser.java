@@ -14,8 +14,8 @@ import ro.filegrid.domain.Category;
 import ro.filegrid.domain.StorageType;
 
 /**
- * Transformă conținutul fișierelor {@code policies/*.yml} (câte unul per categorie) în politici validate. Câmpurile
- * necunoscute sunt erori, ca o greșeală de scriere în YAML să nu treacă neobservată.
+ * Turns the content of {@code policies/*.yml} (one file per category) into validated policies. Unknown fields are
+ * errors, so a typo in the YAML cannot go unnoticed.
  */
 final class PolicyParser {
 
@@ -26,9 +26,9 @@ final class PolicyParser {
     }
 
     /**
-     * @param files numele fișierului → conținutul (UTF-8)
-     * @return politica fiecărei categorii; toate cele 4 categorii sunt prezente, fiecare o singură dată
-     * @throws PolicyException la orice fișier sau câmp invalid
+     * @param files file name -> content (UTF-8)
+     * @return each category's policy; all 4 categories are present, each exactly once
+     * @throws PolicyException on any invalid file or field
      */
     static Map<Category, CategoryPolicy> parse(Map<String, byte[]> files) {
         Map<Category, CategoryPolicy> policies = new EnumMap<>(Category.class);

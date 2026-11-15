@@ -7,7 +7,7 @@ import ro.filegrid.storage.ByteRange;
 import ro.filegrid.storage.StorageAdapter;
 import ro.filegrid.storage.StorageHealth;
 
-/** {@link StorageAdapter} înfășurat în circuit breaker și retry (vezi {@link StorageGuard}). */
+/** {@link StorageAdapter} wrapped in a circuit breaker and retry (see {@link StorageGuard}). */
 class ResilientStorageAdapter implements StorageAdapter {
 
     private final StorageAdapter delegate;
@@ -43,7 +43,7 @@ class ResilientStorageAdapter implements StorageAdapter {
         return guard.read(type(), () -> delegate.exists(key));
     }
 
-    /** Starea cache-uită (fără apel către storage). */
+    /** Cached state (no call to the storage). */
     @Override
     public StorageHealth health() {
         return guard.health(type());

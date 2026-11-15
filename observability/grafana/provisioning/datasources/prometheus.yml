@@ -1,5 +1,5 @@
-# Datasource-ul Prometheus (F7). Serviciul `prometheus` (port 9090, scrape 5 s) vine din O8; uid-ul fix `prometheus`
-# e folosit de dashboard-uri si de regulile de alerta, deci nu se schimba.
+# Prometheus datasource (F7). The `prometheus` service (port 9090, 5 s scrape) comes from O8; the fixed uid
+# `prometheus` is referenced by dashboards and alert rules, so do not change it.
 apiVersion: 1
 
 deleteDatasources:

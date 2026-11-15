@@ -32,11 +32,11 @@ import { Topbar } from '../../shared/topbar/topbar';
 import { FileActions } from '../download/file-actions';
 
 /**
- * Pagina Căutare (F5): filtre (categorie, text, interval de date), tabel paginat, detalii pe rând
- * și, pentru fiecare fișier, „Descarcă” și „Verifică integritatea”.
+ * Search page (F5): filters (category, text, date range), paged table, per-row details
+ * and, for every file, download and verify-integrity actions.
  *
- * Filtrele stau în URL (/search?category=OUTAGE_RECORD&page=2), deci refresh-ul și butonul Înapoi
- * păstrează căutarea. Filtrul de categorie arată doar categoriile permise rolului (matricea 4.4).
+ * Filters live in the URL (/search?category=OUTAGE_RECORD&page=2), so refresh and the Back button
+ * keep the search. The category filter only offers the categories allowed for the role (matrix 4.4).
  */
 @Component({
   selector: 'app-search',
@@ -58,13 +58,13 @@ export class Search implements OnInit {
   protected readonly formatBytes = formatBytes;
   protected readonly rangeLabel = rangeLabel;
 
-  /** Categoriile pe care rolul le poate căuta; goală la METER_SERVICE. */
+  /** Categories the role may search; empty for METER_SERVICE. */
   protected readonly categories = computed(() => searchableCategories(this.auth.user()?.role));
 
-  /** Filtrele aplicate (din URL). */
+  /** Applied filters (from the URL). */
   protected readonly filters = signal<SearchFilters>(EMPTY_FILTERS);
 
-  // Câmpurile formularului (se aplică la „Caută”).
+  // Form fields (applied on submit).
   protected readonly category = signal<Category | ''>('');
   protected readonly q = signal('');
   protected readonly fromDay = signal('');
@@ -76,7 +76,7 @@ export class Search implements OnInit {
   protected readonly result = signal<FilePage | null>(null);
   protected readonly expandedId = signal<string | null>(null);
 
-  /** La documente de racordare textul nu se aplică (numele e criptat pe server). */
+  /** Text does not apply to connection documents (the name is encrypted on the server). */
   protected readonly textDisabled = computed(() => this.category() === 'CONNECTION_DOC');
   protected readonly dateError = computed(() =>
     this.fromDay() && this.toDay() && this.fromDay() > this.toDay() ? '„De la” trebuie să fie înainte de „Până la”.' : null,
@@ -97,7 +97,7 @@ export class Search implements OnInit {
     });
   }
 
-  /** „Caută”: filtrele noi în URL, de la pagina 1 (abonarea de mai sus face cererea). */
+  /** Submit: new filters go into the URL from page 1 (the subscription above makes the request). */
   submit(): void {
     if (this.dateError()) {
       return;
@@ -151,7 +151,7 @@ export class Search implements OnInit {
       next: (page) => {
         this.result.set(page);
         this.loading.set(false);
-        // Pagina cerută nu mai există (au rămas mai puține rezultate): mergem la ultima.
+        // The requested page no longer exists (fewer results remain): go to the last one.
         if (page.items.length === 0 && page.totalPages > 0 && filters.page > page.totalPages) {
           this.goToPage(page.totalPages);
         }

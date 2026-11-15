@@ -4,7 +4,7 @@
     <include resource="org/springframework/boot/logging/logback/structured-console-appender.xml"/>
 
     <appender name="API_JSON" class="ch.qos.logback.core.rolling.RollingFileAppender">
-        <!-- Fara fisier activ separat: fiecare cale ramane stabila la rollover, inclusiv cand Promtail e oprit. -->
+        <!-- No separate active file: each path stays stable across rollover, even while Promtail is stopped. -->
         <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
             <fileNamePattern>/var/log/filegrid/api-${HOSTNAME}.%d{yyyy-MM-dd,UTC}.%i.log</fileNamePattern>
             <maxFileSize>${LOGBACK_ROLLINGPOLICY_MAX_FILE_SIZE:-8MB}</maxFileSize>

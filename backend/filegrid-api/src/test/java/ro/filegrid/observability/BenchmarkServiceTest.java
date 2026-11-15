@@ -71,7 +71,7 @@ class BenchmarkServiceTest {
         recorder.shutdown();
     }
 
-    /** Ține minte cheile aflate în storage, ca testul să poată verifica lipsa resturilor. */
+    /** Remembers the keys in storage so the test can check nothing is left behind. */
     private static class Tracking extends InMemoryStorageAdapter {
         final java.util.Set<String> live = java.util.concurrent.ConcurrentHashMap.newKeySet();
 

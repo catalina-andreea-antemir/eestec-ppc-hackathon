@@ -1,7 +1,7 @@
 /**
- * SHA-256 incremental, doar pentru mock: crypto.subtle nu poate calcula hash-ul pe bucăți,
- * iar mock-ul primește video-ul bucată cu bucată (și trebuie să supraviețuiască unui refresh,
- * deci starea se poate salva ca JSON). Rezultatul e identic cu `Get-FileHash -Algorithm SHA256`.
+ * Incremental SHA-256, mock only: crypto.subtle cannot hash in chunks, while the mock receives the video
+ * chunk by chunk (and must survive a refresh, so the state has to be JSON-serializable).
+ * The result is identical to `Get-FileHash -Algorithm SHA256`.
  */
 const K = new Uint32Array([
   0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98,
@@ -18,7 +18,7 @@ const INITIAL = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9
 
 export interface Sha256State {
   h: number[];
-  /** Octeții rămași (sub 64) din ultimul bloc incomplet. */
+  /** Leftover bytes (fewer than 64) of the last incomplete block. */
   pending: number[];
   length: number;
 }

@@ -12,10 +12,10 @@ const ACCESS_KEY = 'filegrid.accessToken';
 const REFRESH_KEY = 'filegrid.refreshToken';
 
 /**
- * Ține token-urile și starea de autentificare.
+ * Holds the tokens and the authentication state.
  *
- * Token-urile stau în sessionStorage: supraviețuiesc unui refresh de pagină
- * (ca upload-ul în bucăți să se poată relua), dar dispar la închiderea tab-ului.
+ * Tokens live in sessionStorage: they survive a page refresh (so a chunked upload can resume)
+ * but disappear when the tab is closed.
  */
 @Injectable({ providedIn: 'root' })
 export class AuthService {
@@ -25,16 +25,16 @@ export class AuthService {
   private readonly accessToken = signal<string | null>(readStorage(ACCESS_KEY));
   private refreshInFlight$: Observable<string> | null = null;
 
-  /** Utilizatorul curent, extras din payload-ul JWT (null dacă nu e autentificat). */
+  /** The current user, decoded from the JWT payload (null when not authenticated). */
   readonly user = computed<AuthUser | null>(() => decodeUser(this.accessToken()));
   readonly isLoggedIn = computed(() => this.user() !== null);
 
-  /** Token-ul pe care interceptorul îl pune în header-ul Authorization. */
+  /** The token the interceptor puts in the Authorization header. */
   getAccessToken(): string | null {
     return this.accessToken();
   }
 
-  /** True dacă utilizatorul are unul dintre rolurile date. ADMIN are acces la tot (matricea 4.4). */
+  /** True if the user has one of the given roles. ADMIN can access everything (matrix 4.4). */
   hasRole(...roles: Role[]): boolean {
     const role = this.user()?.role;
     return !!role && (role === 'ADMIN' || roles.includes(role));
@@ -48,9 +48,9 @@ export class AuthService {
   }
 
   /**
-   * Cere un accessToken nou cu refreshToken-ul (POST /auth/refresh).
-   * Dacă mai multe cereri primesc 401 în același timp, toate așteaptă aceeași
-   * reînnoire, în loc să trimită fiecare câte un refresh.
+   * Requests a new accessToken with the refreshToken (POST /auth/refresh).
+   * If several requests get a 401 at the same time, they all wait for the same refresh
+   * instead of each sending its own.
    */
   refresh(): Observable<string> {
     if (this.refreshInFlight$) {
@@ -58,7 +58,7 @@ export class AuthService {
     }
     const refreshToken = readStorage(REFRESH_KEY);
     if (!refreshToken) {
-      // Fără refresh token sesiunea nu se poate reînnoi: tratat ca un refresh respins.
+      // Without a refresh token the session cannot be renewed: treated as a rejected refresh.
       return throwError(() => new HttpErrorResponse({ status: 401, statusText: 'Fără refresh token' }));
     }
     const body: RefreshRequest = { refreshToken };
@@ -85,7 +85,7 @@ export class AuthService {
 
   private storeTokens(tokens: TokenPair | AccessToken): void {
     writeStorage(ACCESS_KEY, tokens.accessToken);
-    // /auth/login trimite și refreshToken; /auth/refresh trimite doar accessToken.
+    // /auth/login also returns a refreshToken; /auth/refresh only returns an accessToken.
     if ('refreshToken' in tokens && tokens.refreshToken) {
       writeStorage(REFRESH_KEY, tokens.refreshToken);
     }
@@ -94,8 +94,8 @@ export class AuthService {
 }
 
 /**
- * Citește claim-urile `sub` (utilizator) și `role` (un singur rol) din payload-ul JWT,
- * cum fixează contractul. Semnătura o verifică doar backend-ul.
+ * Reads the `sub` (user) and `role` (single role) claims from the JWT payload, as the contract
+ * specifies. Only the backend verifies the signature.
  */
 function decodeUser(token: string | null): AuthUser | null {
   if (!token) {
@@ -117,7 +117,7 @@ function base64UrlDecode(value: string): string {
   return new TextDecoder().decode(bytes);
 }
 
-// sessionStorage poate arunca (mod privat, stocare blocată): interfața merge și fără el.
+// sessionStorage may throw (private mode, blocked storage): the UI works without it.
 function readStorage(key: string): string | null {
   try {
     return sessionStorage.getItem(key);
@@ -130,7 +130,7 @@ function writeStorage(key: string, value: string): void {
   try {
     sessionStorage.setItem(key, value);
   } catch {
-    /* ignorat */
+    /* ignored */
   }
 }
 
@@ -138,6 +138,6 @@ function removeStorage(key: string): void {
   try {
     sessionStorage.removeItem(key);
   } catch {
-    /* ignorat */
+    /* ignored */
   }
 }

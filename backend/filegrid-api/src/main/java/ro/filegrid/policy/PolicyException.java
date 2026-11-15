@@ -1,6 +1,6 @@
 package ro.filegrid.policy;
 
-/** Fișierele de politică lipsesc sau sunt invalide; mesajul spune fișierul și câmpul. */
+/** Policy files are missing or invalid; the message names the file and the field. */
 public class PolicyException extends RuntimeException {
 
     public PolicyException(String message) {

@@ -6,7 +6,7 @@ import ro.filegrid.domain.Category;
 import ro.filegrid.domain.StorageType;
 import ro.filegrid.storage.ChunkedUpload;
 
-/** Un rând din {@code upload_sessions} (starea unui upload în bucăți, doar în FileGridMeta). */
+/** An {@code upload_sessions} row (state of a chunked upload, only in FileGridMeta). */
 public record UploadSession(UUID id, Category category, StorageType storage, String uploadRef, String fileName,
                             String contentType, int chunkSize, long totalSize, String status, int nextChunk,
                             Instant createdAt, Instant updatedAt, Instant storageUnavailableSince, String createdBy) {
@@ -16,7 +16,7 @@ public record UploadSession(UUID id, Category category, StorageType storage, Str
     public static final String ABORTED = "ABORTED";
     public static final String FAILED = "FAILED";
 
-    /** Cheia obiectului final este chiar {@code uploadId} (UUID), la fel ca {@code files.id}. */
+    /** The final object's key is the {@code uploadId} itself (UUID), same as {@code files.id}. */
     public ChunkedUpload toChunkedUpload() {
         return new ChunkedUpload(id.toString(), uploadRef, totalSize, chunkSize);
     }
@@ -29,7 +29,7 @@ public record UploadSession(UUID id, Category category, StorageType storage, Str
         return PENDING.equals(status);
     }
 
-    /** Starea din contract: IN_PROGRESS, COMPLETED, ABORTED, ABANDONED. */
+    /** Contract status: IN_PROGRESS, COMPLETED, ABORTED, ABANDONED. */
     public String apiStatus() {
         return switch (status) {
             case PENDING -> "IN_PROGRESS";

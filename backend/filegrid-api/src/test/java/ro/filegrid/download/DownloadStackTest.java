@@ -52,12 +52,13 @@ import ro.filegrid.upload.UploadService;
 import ro.filegrid.upload.UploadStatus;
 
 /**
- * C8 pe stack-ul real, pe fiecare storage (S3/MinIO, FTP, DB): aplicația pornește cu profilul {@code db} (Tomcat real,
- * pe port aleatoriu), iar verificările merg prin HTTP. Pe storage: fișier mic corupt manual în storage (un octet) →
- * {@code /verify} și {@code /download} 409; fișier de 20 MiB corupt → conexiunea se întrerupe înainte de ultimul
- * bloc; 1,1 GB urcat prin {@code /uploads} (bucăți de 16 MiB): Range exact, inclusiv peste granița dintre bucăți,
- * descărcare întreagă cu hash identic sub {@code -Xmx256m}, {@code /verify}, descărcare întreruptă și reluată cu Range
- * prin link semnat; căutare cu paginare pe baza reală. Datele se șterg la final. Fără stack, testele se <b>sar</b>.
+ * C8 on the real stack, on every storage (S3/MinIO, FTP, DB): the app starts with the {@code db} profile (real
+ * Tomcat on a random port) and the checks go over HTTP. Per storage: a small file manually corrupted in storage (one
+ * byte) -> {@code /verify} and {@code /download} 409; a corrupted 20 MiB file -> the connection is cut before the last
+ * block; 1.1 GB uploaded through {@code /uploads} (16 MiB chunks): exact Range, including across chunk boundaries,
+ * full download with an identical hash under {@code -Xmx256m}, {@code /verify}, a download interrupted and resumed
+ * with Range through a signed link; paged search on the real database. Data is deleted at the end. Without the stack,
+ * the tests are <b>skipped</b>.
  */
 class DownloadStackTest {
 
@@ -128,7 +129,7 @@ class DownloadStackTest {
         }
     }
 
-    /** O rulare pe un storage: aplicația pornită, tokenul admin și lista a ce trebuie curățat. */
+    /** One run on a storage: the started app, the admin token and the list of things to clean up. */
     private final class Run {
         final ConfigurableApplicationContext app;
         final StorageType type;
@@ -157,7 +158,7 @@ class DownloadStackTest {
             storageDb.setInitializationFailTimeout(-1);
         }
 
-        /** Pune un fișier în storage (cu un octet schimbat la {@code flipAt}, dacă e >= 0) și îi scrie rândul din files. */
+        /** Puts a file in storage (with one byte changed at {@code flipAt} if >= 0) and writes its files row. */
         UUID register(String name, long size, long seed, long hashSeedFlip, boolean outage) throws Exception {
             UUID id = UUID.randomUUID();
             Virtual original = new Virtual(size, seed);
@@ -171,7 +172,7 @@ class DownloadStackTest {
             return id;
         }
 
-        /** Strică manual un octet din storage, ca după o corupere pe disc / în bază. */
+        /** Manually corrupts one byte in storage, as after disk / database corruption. */
         void corrupt(UUID id, long size, long seed, long at) {
             storage.put(id.toString(), new Flipped(new Virtual(size, seed).range(0, size), at), size, "text/csv");
         }
@@ -206,7 +207,7 @@ class DownloadStackTest {
         }
 
         void largeCorruptionBreaksTheConnection() throws Exception {
-            long size = 20L * MIB; // peste pragul de 16 MB: hash-ul se verifică în timpul trimiterii
+            long size = 20L * MIB; // above the 16 MB threshold: the hash is verified while sending
             UUID id = register("mediu-" + type + ".csv", size, 12, -1, true);
             Fetched good = fetch("/api/v1/files/" + id + "/download", null);
             assertThat(good.status).isEqualTo(200);
@@ -230,7 +231,7 @@ class DownloadStackTest {
             } catch (IOException e) {
                 broken = true;
             }
-            // Conexiunea s-a întrerupt: fie eroare de citire, fie mai puțini octeți decât Content-Length.
+            // The connection was cut: either a read error, or fewer bytes than Content-Length.
             assertThat(broken || received < size).as("descărcarea coruptă nu trebuie să se încheie normal").isTrue();
         }
 
@@ -250,17 +251,17 @@ class DownloadStackTest {
             assertThat(page1.get("totalPages").asInt()).isEqualTo(2);
             assertThat(page1.get("page").asInt()).isEqualTo(1);
             assertThat(page1.get("items")).hasSize(2);
-            assertThat(page1.get("items").get(0).get("id").asText()).isEqualTo(ids.get(2).toString()); // cele mai noi întâi
+            assertThat(page1.get("items").get(0).get("id").asText()).isEqualTo(ids.get(2).toString()); // newest first
             assertThat(page1.get("items").get(0).get("outage").get("zone").asText()).isEqualTo("Muntenia");
             assertThat(page1.get("items").get(0).has("storageKey")).isFalse();
             JsonNode page2 = json(200, "/api/v1/files?" + q + "&size=2&page=2");
             assertThat(page2.get("items")).hasSize(1);
             assertThat(page2.get("items").get(0).get("id").asText()).isEqualTo(ids.get(0).toString());
             assertThat(json(200, "/api/v1/files?" + q + "&size=2&page=3").get("items")).isEmpty();
-            // from inclusiv, to exclusiv
+            // from inclusive, to exclusive
             assertThat(json(200, "/api/v1/files?" + q + "&from=2020-01-02T12:00:00Z&to=2020-01-03T12:00:00Z")
                     .get("items")).hasSize(1);
-            // % și _ din nume nu sunt metacaractere; q fără potrivire
+            // % and _ in names are not wildcards; q with no match
             assertThat(json(200, "/api/v1/files?category=OUTAGE_RECORD&q=" + tag + "-1_%25").get("items")).hasSize(1);
             assertThat(json(200, "/api/v1/files?category=OUTAGE_RECORD&q=" + tag + "-%25-").get("items")).isEmpty();
             assertThat(json(200, "/api/v1/files?category=INSPECTION_VIDEO&q=" + tag).get("items")).isEmpty();
@@ -285,7 +286,7 @@ class DownloadStackTest {
             String expected = Virtual.hex(video.sha256());
             String file = "/api/v1/files/" + id;
 
-            // Range exact, inclusiv peste granița dintre bucăți (16 MiB).
+            // Exact Range, including across the boundary between chunks (16 MiB).
             long chunk = created.chunkSize();
             long[][] ranges = {{chunk - 5, 20}, {3 * chunk - 1, 2}, {chunk, chunk}, {5, 1}, {VIDEO_SIZE - 70_000, 70_000}};
             for (long[] r : ranges) {
@@ -300,11 +301,11 @@ class DownloadStackTest {
             assertThat(suffix.hash).isEqualTo(Virtual.hex(video.sha256(VIDEO_SIZE - 1000, 1000)));
             assertThat(fetch(file + "/download", "bytes=" + VIDEO_SIZE + "-").status).isEqualTo(416);
 
-            // /verify pe 1,1 GB
+            // /verify on 1.1 GB
             JsonNode verified = json(200, file + "/verify");
             assertThat(verified.get("actualSha256").asText()).isEqualTo(expected);
 
-            // Link semnat: descărcare întreagă (heap -Xmx256m), apoi întreruptă și reluată cu Range.
+            // Signed link: full download (heap -Xmx256m), then interrupted and resumed with Range.
             HttpResponse<String> linkResponse = http.send(HttpRequest.newBuilder(URI.create(base + file + "/download-link"))
                     .header("Authorization", bearer).POST(HttpRequest.BodyPublishers.noBody()).build(),
                     HttpResponse.BodyHandlers.ofString());
@@ -319,7 +320,7 @@ class DownloadStackTest {
             long cut = 100L * MIB + 12_345;
             MessageDigest combined = Sha256.newDigest();
             Fetched first = fetchPublic(url, null, cut, combined);
-            assertThat(first.bytes).isEqualTo(cut); // clientul a renunțat după `cut` octeți
+            assertThat(first.bytes).isEqualTo(cut); // the client gave up after `cut` bytes
             Fetched rest = fetchPublic(url, "bytes=" + cut + "-", -1, combined);
             assertThat(rest.status).isEqualTo(206);
             assertThat(rest.header("content-range")).isEqualTo("bytes " + cut + "-" + (VIDEO_SIZE - 1) + "/" + VIDEO_SIZE);
@@ -437,7 +438,7 @@ class DownloadStackTest {
         return JSON.readTree(r.body());
     }
 
-    // --- ajutoare ----------------------------------------------------------------------------------------------
+    // --- helpers ----------------------------------------------------------------------------------------------
 
     private static void copyPolicies(Path dir, StorageType primary) throws IOException {
         StorageType fallback = primary == StorageType.S3 ? StorageType.DB : StorageType.S3;
@@ -459,7 +460,7 @@ class DownloadStackTest {
         return b;
     }
 
-    /** Variabilele de mediu, completate cu {@code .env} din rădăcina repo-ului (mediul are prioritate). */
+    /** Environment variables, completed from the repo-root {@code .env} (the environment wins). */
     private static Map<String, String> environment() {
         Map<String, String> values = new HashMap<>();
         for (Path dir = Path.of("").toAbsolutePath(); dir != null; dir = dir.getParent()) {
@@ -473,7 +474,7 @@ class DownloadStackTest {
                         }
                     }
                 } catch (IOException e) {
-                    // Fără .env lizibil rămân variabilele de mediu.
+                    // Without a readable .env, only the environment variables remain.
                 }
                 break;
             }
@@ -486,7 +487,7 @@ class DownloadStackTest {
         return values;
     }
 
-    /** Conținut virtual determinist, citit în streaming (nu există fișiere și nu se ține nimic în memorie). */
+    /** Deterministic virtual content, streamed (no files exist and nothing is held in memory). */
     private static final class Virtual {
         private static final int PERIOD = 1 << 16;
         private final long size;
@@ -551,7 +552,7 @@ class DownloadStackTest {
         }
     }
 
-    /** Aceleași octeți, cu unul schimbat la poziția {@code at}. */
+    /** Same bytes, with one changed at position {@code at}. */
     private static final class Flipped extends InputStream {
         private final InputStream source;
         private final long at;

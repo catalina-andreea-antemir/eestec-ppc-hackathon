@@ -1,9 +1,9 @@
 package ro.filegrid.security;
 
 /**
- * Cele 5 roluri (contract: schema {@code Role}, matricea 4.4). În JWT apar în claim-urile {@code role} (șir) și
- * {@code roles} (listă); în Spring Security devin autoritățile {@code ROLE_<nume>} (de exemplu
- * {@code hasRole("ADMIN")}). Permisiunile pe endpoint-uri se aplică la C10.
+ * The 5 roles (contract schema {@code Role}, matrix 4.4). In the JWT they appear in the {@code role} (string) and
+ * {@code roles} (list) claims; in Spring Security they become {@code ROLE_<name>} authorities (e.g.
+ * {@code hasRole("ADMIN")}).
  */
 public enum Role {
     DISPATCH,

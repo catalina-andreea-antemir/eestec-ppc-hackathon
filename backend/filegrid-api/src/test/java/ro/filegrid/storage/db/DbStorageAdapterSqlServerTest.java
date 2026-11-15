@@ -48,7 +48,7 @@ import ro.filegrid.storage.StorageKeys;
 import ro.filegrid.storage.StorageObjectNotFoundException;
 import ro.filegrid.storage.StorageUnavailableException;
 
-/** Din modulul Maven: ./mvnw -Dfilegrid.sql.integration=true -Dtest=DbStorageAdapterSqlServerTest test */
+/** From the Maven module: ./mvnw -Dfilegrid.sql.integration=true -Dtest=DbStorageAdapterSqlServerTest test */
 @EnabledIfSystemProperty(named = "filegrid.sql.integration", matches = "true")
 class DbStorageAdapterSqlServerTest {
 
@@ -107,7 +107,7 @@ class DbStorageAdapterSqlServerTest {
         if (observer == null) {
             return;
         }
-        // Folosim JDBC direct pentru ca o problemă în adaptor să nu dezactiveze curățarea.
+        // Plain JDBC on purpose, so a bug in the adapter cannot disable the cleanup.
         try (Connection cleanup = observer) {
             if (key == null) {
                 return;
@@ -273,7 +273,7 @@ class DbStorageAdapterSqlServerTest {
             @Override
             public synchronized int read(byte[] bytes, int offset, int length) {
                 if (available() == 1) {
-                    // Primul INSERT a terminat. Citim numai metadatele neconfirmate ale cheii noastre.
+                    // The first INSERT has finished. Read only the unconfirmed metadata of our own key.
                     try {
                         versions(key, " WITH (READUNCOMMITTED)").stream().map(Version::id)
                                 .forEach(testVersions::add);
@@ -613,7 +613,7 @@ class DbStorageAdapterSqlServerTest {
             Path env = Path.of("..", "..", ".env");
             String prefix = "STORAGE_DB_PASSWORD=";
             if (Files.isRegularFile(env)) {
-                // Același format KEY=value folosit de scripts/start.*. Fișierul nu este executat.
+                // Same KEY=value format used by scripts/start.*. The file is never executed.
                 try (var lines = Files.lines(env)) {
                     password = lines.filter(line -> line.startsWith(prefix)).map(line -> line.substring(prefix.length()))
                             .reduce((first, last) -> last).orElse(null);

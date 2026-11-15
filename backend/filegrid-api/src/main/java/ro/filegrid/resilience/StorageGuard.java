@@ -33,19 +33,19 @@ import ro.filegrid.storage.StorageHealth;
 import ro.filegrid.storage.StorageUnavailableException;
 
 /**
- * Reziliența per storage (C11), deasupra adaptoarelor: circuit breaker, retry cu backoff exponențial și jitter, și o
- * stare de health cache-uită, reîmprospătată periodic în fundal (cererile nu o așteaptă).
- * {@link ro.filegrid.storage.StorageAdapterRegistry} înfășoară adaptoarele cu {@link #wrap(StorageAdapter)} /
- * {@link #wrap(ChunkedWriter)}, deci tot codul existent trece pe aici fără modificări.
+ * Per-storage resilience (C11) on top of the adapters: circuit breaker, retry with exponential backoff and jitter,
+ * and a cached health state refreshed periodically in the background (requests never wait for it).
+ * {@link ro.filegrid.storage.StorageAdapterRegistry} wraps the adapters with {@link #wrap(StorageAdapter)} /
+ * {@link #wrap(ChunkedWriter)}, so all existing code goes through here unchanged.
  *
  * <ul>
- *   <li>Doar {@link StorageUnavailableException} se numără ca eșec și se reîncearcă; {@code NotFound} și celelalte
- *       erori nu ating circuitul.</li>
- *   <li>Retry doar pentru operații fără corp citit: get / exists / delete / finish / abort. {@code put}, {@code append}
- *       și {@code open} eșuează imediat (corpul e consumat; reîncearcă clientul).</li>
- *   <li>Circuit deschis ⇒ {@link StorageCircuitOpenException} imediat (503 + Retry-After la apelant).</li>
- *   <li>Verificarea periodică: după {@code healthFailuresToOpen} eșecuri la rând circuitul se deschide; la HALF_OPEN
- *       verificarea e apelul de probă (succes ⇒ circuitul se închide singur, eșec ⇒ se redeschide).</li>
+ *   <li>Only {@link StorageUnavailableException} counts as a failure and is retried; {@code NotFound} and other
+ *       errors do not affect the circuit.</li>
+ *   <li>Retry only for operations that have not consumed a body: get / exists / delete / finish / abort.
+ *       {@code put}, {@code append} and {@code open} fail immediately (the body is consumed; the client retries).</li>
+ *   <li>Open circuit => {@link StorageCircuitOpenException} immediately (503 + Retry-After at the caller).</li>
+ *   <li>Periodic check: after {@code healthFailuresToOpen} consecutive failures the circuit opens; in HALF_OPEN the
+ *       check is the probe call (success => the circuit closes by itself, failure => it reopens).</li>
  * </ul>
  */
 @Component
@@ -73,7 +73,7 @@ public class StorageGuard {
         this.meters = meters;
     }
 
-    /** Înfășoară adaptorul și pornește verificarea lui periodică. */
+    /** Wraps the adapter and starts its periodic check. */
     public StorageAdapter wrap(StorageAdapter raw) {
         Entry entry = entry(raw.type());
         entry.raw = raw;
@@ -87,13 +87,13 @@ public class StorageGuard {
         return new ResilientChunkedWriter(raw, this);
     }
 
-    /** Operație care se poate repeta: retry pe indisponibilitate, prin circuit. */
+    /** Repeatable operation: retried on unavailability, through the circuit. */
     <T> T read(StorageType type, Supplier<T> op) {
         Entry e = entry(type);
         return Retry.decorateSupplier(e.retry, () -> through(e, op)).get();
     }
 
-    /** Operație care consumă un corp (put / append / open): o singură încercare, prin circuit. */
+    /** Operation that consumes a body (put / append / open): single attempt, through the circuit. */
     <T> T once(StorageType type, Supplier<T> op) {
         return through(entry(type), op);
     }
@@ -106,7 +106,7 @@ public class StorageGuard {
         }
     }
 
-    /** Starea cache-uită; circuitul deschis înseamnă DOWN. Nu blochează și nu apelează storage-ul. */
+    /** Cached state; an open circuit means DOWN. Never blocks and never calls the storage. */
     public StorageHealth health(StorageType type) {
         Entry e = entries.get(type);
         if (e == null) {
@@ -133,7 +133,7 @@ public class StorageGuard {
         };
     }
 
-    /** Rulează acum verificarea storage-ului (teste). */
+    /** Runs the storage check now (tests). */
     void checkNow(StorageType type) {
         Entry e = entries.get(type);
         if (e != null && e.raw != null) {
@@ -145,7 +145,7 @@ public class StorageGuard {
         try {
             check(e);
         } catch (RuntimeException ex) {
-            log.warn("Verificarea storage-ului {} a eșuat neașteptat: {}", e.type, ex.toString());
+            log.warn("Health check of storage {} failed unexpectedly: {}", e.type, ex.toString());
         }
     }
 
@@ -169,7 +169,7 @@ public class StorageGuard {
             e.failures = 0;
             if (state == CircuitBreaker.State.HALF_OPEN) {
                 e.breaker.transitionToClosedState();
-                log.info("Storage-ul {} a revenit; circuit închis", e.type);
+                log.info("Storage {} is back; circuit closed", e.type);
             }
             return;
         }
@@ -177,7 +177,7 @@ public class StorageGuard {
         boolean open = state == CircuitBreaker.State.OPEN || state == CircuitBreaker.State.FORCED_OPEN;
         if (!open && (state == CircuitBreaker.State.HALF_OPEN || e.failures >= props.healthFailuresToOpen())) {
             e.breaker.transitionToOpenState();
-            log.warn("Storage-ul {} este căzut ({}); circuit deschis", e.type, h.detail());
+            log.warn("Storage {} is down ({}); circuit open", e.type, h.detail());
         }
     }
 
@@ -228,7 +228,7 @@ public class StorageGuard {
             this.type = type;
             this.breaker = breaker;
             this.retry = retry;
-            this.cached = StorageHealth.up(type, Duration.ZERO); // optimist până la prima verificare
+            this.cached = StorageHealth.up(type, Duration.ZERO); // optimistic until the first check
         }
     }
 }

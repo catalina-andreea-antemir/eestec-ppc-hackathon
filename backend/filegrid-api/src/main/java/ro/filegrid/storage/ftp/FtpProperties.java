@@ -5,18 +5,18 @@ import java.time.Duration;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
- * Configurația {@code filegrid.ftp} (vsftpd, C6), din variabilele {@code FTP_HOST}, {@code FTP_PORT}, {@code FTP_USER},
- * {@code FTP_PASSWORD} (setate în compose pentru containerul {@code api}). Fără valori implicite pentru credențiale:
- * dacă lipsesc, adaptorul pornește „neconfigurat” ({@code health} = down, operațiile → 503), iar aplicația pornește.
+ * {@code filegrid.ftp} configuration (vsftpd, C6), from {@code FTP_HOST}, {@code FTP_PORT}, {@code FTP_USER},
+ * {@code FTP_PASSWORD} (set in compose for the {@code api} container). No credential defaults: if they are missing
+ * the adapter starts "unconfigured" ({@code health} = down, operations -> 503) while the app still starts.
  *
- * @param host           numele sau adresa serverului FTP, de exemplu {@code ftp}
- * @param port           portul de control (implicit 21)
- * @param user           utilizatorul aplicației
- * @param password       parola utilizatorului aplicației
- * @param connectTimeout timeout de conectare TCP (implicit 2 s)
- * @param controlTimeout timeout de inactivitate pe conexiunea de control: răspunsurile la comenzi (implicit 30 s)
- * @param dataTimeout    timeout de inactivitate pe conexiunea de date: citire / scriere (implicit 30 s)
- * @param healthTimeout  timeout total pentru {@code health()} (implicit 2 s, maxim 2 s după contract)
+ * @param host           FTP server name or address, e.g. {@code ftp}
+ * @param port           control port (default 21)
+ * @param user           the app's user
+ * @param password       the app user's password
+ * @param connectTimeout TCP connect timeout (default 2 s)
+ * @param controlTimeout idle timeout on the control connection: command replies (default 30 s)
+ * @param dataTimeout    idle timeout on the data connection: read / write (default 30 s)
+ * @param healthTimeout  total timeout for {@code health()} (default 2 s, at most 2 s per the contract)
  */
 @ConfigurationProperties("filegrid.ftp")
 public record FtpProperties(String host, Integer port, String user, String password, Duration connectTimeout,
@@ -36,17 +36,17 @@ public record FtpProperties(String host, Integer port, String user, String passw
         }
     }
 
-    /** Adresa și credențialele pentru teste sau cod, cu restul valorilor implicite. */
+    /** Address and credentials for tests or code, everything else default. */
     public static FtpProperties of(String host, int port, String user, String password) {
         return new FtpProperties(host, port, user, password, null, null, null, null);
     }
 
-    /** {@code true} dacă sunt setate serverul, utilizatorul și parola. */
+    /** {@code true} if server, user and password are set. */
     public boolean isConfigured() {
         return missing().isEmpty();
     }
 
-    /** Numele variabilelor lipsă (fără valori), pentru log și pentru {@code health}. */
+    /** Names of the missing variables (no values), for the log and for {@code health}. */
     String missing() {
         StringBuilder sb = new StringBuilder();
         append(sb, host, "FTP_HOST");
@@ -55,7 +55,7 @@ public record FtpProperties(String host, Integer port, String user, String passw
         return sb.toString();
     }
 
-    /** Fără parolă (record-ul implicit ar afișa-o). */
+    /** Without the password (the default record toString would print it). */
     @Override
     public String toString() {
         return "FtpProperties[host=" + host + ", port=" + port + "]";

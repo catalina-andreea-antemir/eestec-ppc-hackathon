@@ -8,8 +8,8 @@ import ro.filegrid.storage.StorageAdapter;
 import ro.filegrid.storage.StorageAdapterContractTest;
 
 /**
- * Testul de contract comun ({@link StorageAdapterContractTest}) rulat pe {@link FtpAdapter}, contra serverului FTP real
- * din stack (vezi {@link FtpTestSupport}); se sare dacă FTP nu e disponibil.
+ * The shared contract test ({@link StorageAdapterContractTest}) run on {@link FtpAdapter} against the stack's real FTP
+ * server (see {@link FtpTestSupport}); skipped if FTP is not available.
  */
 class FtpAdapterContractTest extends StorageAdapterContractTest {
 

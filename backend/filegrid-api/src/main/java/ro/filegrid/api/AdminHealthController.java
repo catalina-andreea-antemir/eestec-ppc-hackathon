@@ -18,8 +18,8 @@ import ro.filegrid.storage.StorageAdapterRegistry;
 import ro.filegrid.storage.StorageHealth;
 
 /**
- * {@code GET /api/v1/admin/health} (rol ADMIN, contract {@code getAdminHealth}): starea fiecărui storage (health
- * cache-uit + circuit breaker) și a FileGridMeta, pe instanța care răspunde. Răspunde 200 și când un storage e DOWN.
+ * {@code GET /api/v1/admin/health} (ADMIN, contract {@code getAdminHealth}): state of every storage backend (cached
+ * health + circuit breaker) and of FileGridMeta, as seen by the answering instance. Returns 200 even when a storage is DOWN.
  */
 @RestController
 public class AdminHealthController {

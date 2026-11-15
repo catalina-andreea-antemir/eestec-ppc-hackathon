@@ -8,13 +8,12 @@ import { FilesApi } from '../../core/files/files-api';
 import { FileMetadata } from '../../core/files/files.models';
 
 /**
- * Butoanele „Descarcă” și „Verifică integritatea” pentru un fișier (F5).
+ * Download and verify-integrity buttons for one file (F5).
  *
- * - Descarcă: cere un link semnat și îl lasă pe browser să descarce nativ (vezi FileDownloader).
- * - Verifică: serverul recitește fișierul din storage și recalculează SHA-256; 200 → „OK” verde,
- *   409 FILE_CORRUPT → „Corupt” roșu, cu hash-ul așteptat și cel găsit.
- *   La documente de racordare se poate cere și verificarea completă (deep: decriptează și compară
- *   și hash-ul originalului).
+ * - Download: requests a signed link and lets the browser download it natively (see FileDownloader).
+ * - Verify: the server re-reads the file from storage and recomputes SHA-256; 200 -> green, 409 FILE_CORRUPT
+ *   -> red, with the expected and actual hashes. For connection documents a full check can also be requested
+ *   (deep: decrypts and also compares the original's hash).
  */
 @Component({
   selector: 'app-file-actions',

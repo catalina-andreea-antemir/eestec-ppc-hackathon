@@ -216,7 +216,7 @@ class StatsApiTest {
                         "OUTAGE_RECORD a avut cea mai mare creștere a cererilor (de la 36 la 480")))
                 .andExpect(jsonPath("$.interpretation").value(org.hamcrest.Matchers.containsString(
                         "Bulkhead-ul a respins 14 cereri în „storm” (OUTAGE_RECORD: 14)")));
-        // Fereastra reală a fiecărui scenariu (primul–ultimul rând, sfârșit exclusiv) ajunge în interogarea 05.
+        // Each scenario's real window (first-last row, exclusive end) reaches query 05.
         verify(repository).peakVsNormal("normal", normalStart, normalStart.plusSeconds(1800).plusNanos(100),
                 "storm", stormStart, stormStart.plusSeconds(1800).plusNanos(100));
     }

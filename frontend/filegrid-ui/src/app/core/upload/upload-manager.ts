@@ -18,21 +18,21 @@ export interface UploadState {
   sentBytes: number;
   chunk?: number;
   totalChunks?: number;
-  /** Octeți pe secundă, media de la începutul încercării curente. */
+  /** Bytes per second, averaged since the start of the current attempt. */
   bytesPerSecond?: number;
-  /** Mesajul afișat la reîncercare sau eroare. */
+  /** Message shown on retry or error. */
   message?: string;
   result?: FileMetadata;
 }
 
-/** Ce păstrăm în sessionStorage ca upload-ul video să se poată relua după refresh. */
+/** What we keep in sessionStorage so a video upload can resume after a refresh. */
 export interface PendingUpload {
   uploadId: string;
   fileName: string;
   totalSize: number;
   category: 'INSPECTION_VIDEO';
   username: string;
-  /** Ultima valoare cunoscută (pentru afișare). */
+  /** Last known value (for display). */
   receivedBytes: number;
 }
 
@@ -41,8 +41,8 @@ export const PENDING_UPLOAD_KEY = 'filegrid.pendingUpload';
 const IDLE: UploadState = { phase: 'idle', category: null, fileName: '', totalBytes: 0, sentBytes: 0 };
 
 /**
- * Ține upload-ul în curs. E un serviciu la nivel de aplicație, deci upload-ul continuă
- * chiar dacă utilizatorul trece pe altă pagină.
+ * Owns the upload in progress. It is an application-wide service, so the upload keeps going
+ * even when the user navigates to another page.
  */
 @Injectable({ providedIn: 'root' })
 export class UploadManager {
@@ -54,23 +54,23 @@ export class UploadManager {
 
   private controller: AbortController | null = null;
   private pausing = false;
-  /** Fișierul video curent, păstrat în memorie ca „Continuă” să nu ceară re-selectarea lui. */
+  /** The current video file, kept in memory so "Continue" does not require re-selecting it. */
   private readonly currentFile = signal<File | null>(null);
   private rateStart = { time: 0, bytes: 0 };
 
   readonly state = this.stateSignal.asReadonly();
   readonly busy = computed(() => ['uploading', 'retrying', 'completing'].includes(this.stateSignal().phase));
 
-  /** Upload video neterminat al utilizatorului curent (din sessionStorage). */
+  /** The current user's unfinished video upload (from sessionStorage). */
   readonly pending = computed(() => {
     const pending = this.pendingSignal();
     return pending && pending.username === this.auth.user()?.username ? pending : null;
   });
 
-  /** True dacă fișierul din memorie poate continua fără re-selectare. */
+  /** True if the in-memory file can continue without being re-selected. */
   readonly canContinueWithoutFile = computed(() => !!this.pending() && !!this.currentFile() && !this.busy());
 
-  /** Pornește un upload: POST /files pentru fișiere mici, în bucăți pentru video. */
+  /** Starts an upload: POST /files for small files, chunked for videos. */
   async start(file: File, category: ManualCategory, outage: OutageDetails | null = null): Promise<void> {
     if (this.busy()) {
       return;
@@ -84,8 +84,8 @@ export class UploadManager {
   }
 
   /**
-   * Reia upload-ul video păstrat. Fără `file` folosește fișierul din memorie (după pauză);
-   * după refresh, fișierul trebuie re-selectat și trebuie să aibă același nume și aceeași mărime.
+   * Resumes the saved video upload. Without `file` it uses the in-memory file (after a pause);
+   * after a refresh the file must be re-selected and must have the same name and size.
    */
   async resume(file?: File): Promise<void> {
     const pending = this.pending();
@@ -108,7 +108,7 @@ export class UploadManager {
     await this.runVideo(chosen, pending.uploadId);
   }
 
-  /** Oprește trimiterea; sesiunea rămâne pe server și în sessionStorage. */
+  /** Stops sending; the session stays on the server and in sessionStorage. */
   pause(): void {
     if (this.busy() && this.stateSignal().category === 'INSPECTION_VIDEO') {
       this.pausing = true;
@@ -116,7 +116,7 @@ export class UploadManager {
     }
   }
 
-  /** Oprește și anulează sesiunea pe server (POST /uploads/{id}/abort). */
+  /** Stops and cancels the session on the server (POST /uploads/{id}/abort). */
   async cancel(): Promise<void> {
     this.pausing = false;
     this.controller?.abort();
@@ -128,12 +128,12 @@ export class UploadManager {
       try {
         await withRetry(() => this.api.abortUpload(pending.uploadId), { timeoutMs: 15_000 });
       } catch {
-        // Sesiunile inactive se curăță oricum pe server după 24 h.
+        // Idle sessions are cleaned up on the server after 24 h anyway.
       }
     }
   }
 
-  /** Verifică pe server upload-ul păstrat (la deschiderea paginii, după refresh). */
+  /** Checks the saved upload on the server (when the page opens, after a refresh). */
   async checkPending(): Promise<void> {
     const pending = this.pending();
     if (!pending || this.busy() || this.stateSignal().phase === 'paused') {
@@ -150,11 +150,11 @@ export class UploadManager {
       if (httpStatus(error) === 404 || httpStatus(error) === 403) {
         this.clearPending();
       }
-      // Alte erori (rețea): păstrăm sesiunea; reluarea va încerca din nou.
+      // Other errors (network): keep the session; resuming will try again.
     }
   }
 
-  /** Înapoi la formular după un upload terminat sau o eroare. */
+  /** Back to the form after a finished upload or an error. */
   reset(): void {
     if (!this.busy()) {
       this.stateSignal.set(IDLE);
@@ -253,7 +253,7 @@ export class UploadManager {
     });
     const pending = this.pending();
     if (pending && update.sentBytes !== undefined && update.phase) {
-      // Actualizăm rar (la fiecare bucată), nu la fiecare eveniment de progres.
+      // Update rarely (once per chunk), not on every progress event.
       if (update.sentBytes - pending.receivedBytes >= 16 * 1024 * 1024 || update.phase === 'completing') {
         this.savePending({ ...pending, receivedBytes: update.sentBytes });
       }
@@ -263,7 +263,7 @@ export class UploadManager {
   private showRetry(info: RetryInfo, operation: string): void {
     const seconds = Math.max(1, Math.round(info.delayMs / 1000));
     this.rateStart = { time: 0, bytes: 0 };
-    // Dacă serverul a trimis un mesaj în română (schema Error), îl arătăm pe acela: spune motivul real.
+    // If the server sent a Romanian message (Error schema), show it: it states the real reason.
     const reason = toApiError(info.error)?.message ?? `${retryReason(info.error)} la ${operation}.`;
     this.stateSignal.update((state) => ({
       ...state,
@@ -306,7 +306,7 @@ export class UploadManager {
     try {
       sessionStorage.setItem(PENDING_UPLOAD_KEY, JSON.stringify(pending));
     } catch {
-      /* fără sessionStorage reluarea merge doar fără refresh */
+      /* without sessionStorage, resuming only works without a refresh */
     }
   }
 
@@ -315,7 +315,7 @@ export class UploadManager {
     try {
       sessionStorage.removeItem(PENDING_UPLOAD_KEY);
     } catch {
-      /* ignorat */
+      /* ignored */
     }
   }
 }
@@ -348,7 +348,7 @@ function retryReason(error: unknown): string {
   return `Eroare de server (${status})`;
 }
 
-/** Mesaj în română pentru utilizator. */
+/** Romanian user-facing message. */
 export function describeError(error: unknown, resumable: boolean): string {
   if (error instanceof RetryTimeoutError) {
     return resumable

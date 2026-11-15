@@ -8,24 +8,24 @@ import { apiError, nowIso, respond } from './mock-uploads';
 import { Sha256, sha256Hex } from './sha256';
 
 /**
- * Mock pentru căutare, detalii, verificare și descărcare (GET /files, GET /files/{id},
- * GET /files/{id}/verify, POST /files/{id}/download-link), după contract.
+ * Mock for search, details, verification and download (GET /files, GET /files/{id},
+ * GET /files/{id}/verify, POST /files/{id}/download-link), per the contract.
  *
- * - Conține fișierele urcate din pagina Upload (metadatele în sessionStorage, conținutul doar în
- *   memorie: după un refresh, fișierele urcate încă se văd, dar nu se mai pot descărca/verifica)
- *   plus ~45 de fișiere „seed”, generate la prima cerere, ca paginarea să aibă ce arăta.
- * - Două fișiere seed sunt corupte intenționat (conținutul stocat nu mai are hash-ul din metadate),
- *   ca „Verifică integritatea” să poată arăta și roșul: `avarie-ST-TIMISOARA-007-CORUPT.csv` și
+ * - Holds files uploaded from the Upload page (metadata in sessionStorage, content only in
+ *   memory: after a refresh uploaded files are still listed but can no longer be downloaded/verified)
+ *   plus ~45 "seed" files generated on the first request, so paging has something to show.
+ * - Two seed files are deliberately corrupt (the stored content no longer matches the metadata hash),
+ *   so "Verify integrity" can show the red state too: `avarie-ST-TIMISOARA-007-CORUPT.csv` and
  *   `contract-racordare-CORUPT.pdf`.
- * - Descărcarea: link-ul primit e un URL `blob:` al conținutului din memorie, valabil 15 minute
- *   (apoi URL-ul e revocat, echivalentul lui 401 „link expirat”). Browserul îl descarcă nativ, ca pe
- *   backend-ul real `/api/v1/downloads/{token}`, iar codul din interfață e același. Am ales `blob:`
- *   pentru că `ng serve` nu poate servi un endpoint propriu, iar fără backend proxy-ul ar da eroare.
+ * - Download: the link is a `blob:` URL of the in-memory content, valid for 15 minutes
+ *   (then the URL is revoked, the equivalent of a 401 "link expired"). The browser downloads it natively,
+ *   like the real backend's `/api/v1/downloads/{token}`, and the UI code is the same. `blob:` was chosen
+ *   because `ng serve` cannot serve an endpoint of its own, and without a backend the proxy would fail.
  */
 
 interface StoredFile {
   meta: FileMetadata;
-  /** Bytes-ii „stocați” (la documente: originalul; cifrarea e doar simulată în hash). null = pierdut la refresh. */
+  /** The "stored" bytes (for documents: the original; encryption is only simulated in the hash). null = lost on refresh. */
   content: Blob | null;
 }
 
@@ -33,11 +33,11 @@ const UPLOADED_KEY = 'filegrid.mock.files';
 const LINK_TTL_MS = 15 * 60 * 1000;
 const STORED_ENCRYPTION_PREFIX = 'aes-gcm:';
 
-/** Conținutul fișierelor urcate în sesiunea curentă (doar în memorie). */
+/** Content of the files uploaded in the current session (memory only). */
 const uploadedContent = new Map<string, Blob>();
 let seedPromise: Promise<StoredFile[]> | null = null;
 
-/** Chemat de mock-ul de upload după POST /files și POST /uploads/{id}/complete. */
+/** Called by the upload mock after POST /files and POST /uploads/{id}/complete. */
 export function registerMockFile(meta: FileMetadata, content: Blob | null): void {
   if (content) {
     uploadedContent.set(meta.id, content);
@@ -47,11 +47,11 @@ export function registerMockFile(meta: FileMetadata, content: Blob | null): void
   try {
     sessionStorage.setItem(UPLOADED_KEY, JSON.stringify(all));
   } catch {
-    /* ignorat */
+    /* ignored */
   }
 }
 
-/** Hash-ul din metadate pentru bytes-ii „stocați”: la documente criptate imităm hash-ul textului cifrat. */
+/** Metadata hash for the "stored" bytes: for encrypted documents we mimic the ciphertext hash. */
 export async function storedSha256(plainSha256: string, encrypted: boolean): Promise<string> {
   return encrypted ? sha256Hex(new TextEncoder().encode(STORED_ENCRYPTION_PREFIX + plainSha256)) : plainSha256;
 }
@@ -125,7 +125,7 @@ function search(files: StoredFile[], req: HttpRequest<unknown>, role: Role): Obs
   const matches = files
     .map((f) => f.meta)
     .filter((m) => (category ? m.category === category : allowed.includes(m.category)))
-    // Numele documentelor e criptat pe server: q nu se aplică la CONNECTION_DOC.
+    // Document names are encrypted on the server: q does not apply to CONNECTION_DOC.
     .filter((m) => !q || m.category === 'CONNECTION_DOC' || m.originalName.toLowerCase().includes(q))
     .filter((m) => fromMs === null || Date.parse(m.createdAt) >= fromMs)
     .filter((m) => toMs === null || Date.parse(m.createdAt) < toMs)
@@ -141,7 +141,7 @@ function search(files: StoredFile[], req: HttpRequest<unknown>, role: Role): Obs
   return respond(200, body);
 }
 
-/** null = parametru lipsă; undefined = invalid. */
+/** null = parameter missing; undefined = invalid. */
 function parseInstant(value: string | null): number | null | undefined {
   if (value === null || value === '') {
     return null;
@@ -188,7 +188,7 @@ function verify(file: StoredFile, deepRequested: boolean): Observable<HttpEvent<
   );
 }
 
-/** SHA-256 al unui Blob citit pe bucăți (merge și pentru video-uri de 1 GB fără să le încarce întregi). */
+/** SHA-256 of a Blob read in chunks (also works for 1 GB videos without loading them whole). */
 async function hashBlob(blob: Blob): Promise<string> {
   if (blob.size <= 64 * 1024 * 1024) {
     return sha256Hex(await blob.arrayBuffer());
@@ -209,13 +209,13 @@ function downloadLink(file: StoredFile): Observable<HttpEvent<unknown>> {
   }
   const typed = file.content.type ? file.content : new Blob([file.content], { type: file.meta.contentType });
   const url = URL.createObjectURL(typed);
-  // Ca pe server: după 15 minute link-ul nu mai merge.
+  // As on the server: the link stops working after 15 minutes.
   setTimeout(() => URL.revokeObjectURL(url), LINK_TTL_MS);
   const body: DownloadLink = { url, expiresAt: new Date(Date.now() + LINK_TTL_MS).toISOString().replace(/\.\d{3}Z$/, 'Z') };
   return respond(200, body);
 }
 
-// ---------- fișierele: seed + urcate ----------
+// ---------- files: seed + uploaded ----------
 
 function withFiles(handler: (files: StoredFile[]) => Observable<HttpEvent<unknown>>): Observable<HttpEvent<unknown>> {
   seedPromise ??= buildSeed();
@@ -252,7 +252,7 @@ const STATIONS = ['ST-BRASOV-114', 'ST-CONSTANTA-020', 'ST-TIMISOARA-007', 'ST-P
 const METERS = ['RO-MUN-0004821', 'RO-BAN-0001377', 'RO-DOB-0000412', 'RO-MUN-0019930', 'RO-BAN-0007712'];
 const DOCS = ['cerere-racordare', 'aviz-tehnic-racordare', 'contract-racordare', 'certificat-racordare', 'plan-situatie'];
 
-/** Fișierele seed: aceleași la fiecare pornire (generator pseudo-aleator cu sămânță fixă). */
+/** Seed files: identical on every start (pseudo-random generator with a fixed seed). */
 async function buildSeed(): Promise<StoredFile[]> {
   const rand = mulberry32(20261114);
   const text = (value: string) => new TextEncoder().encode(value);
@@ -314,7 +314,7 @@ async function buildSeed(): Promise<StoredFile[]> {
       content: bytes,
     });
   }
-  // Cele două fișiere corupte intenționat (pentru „Corupt” roșu).
+  // The two deliberately corrupt files (for the red "Corrupt" state).
   specs.push({
     category: 'OUTAGE_RECORD',
     name: 'avarie-ST-TIMISOARA-007-CORUPT.csv',
@@ -362,7 +362,7 @@ async function toStored(spec: SeedSpec, index: number): Promise<StoredFile> {
   };
   const bytes = spec.content.slice();
   if (spec.corrupt) {
-    // Un octet schimbat în storage după scriere („bit rot”): metadatele păstrează hash-ul inițial.
+    // One byte changed in storage after writing ("bit rot"): the metadata keeps the original hash.
     bytes[bytes.length - 2] ^= 0xff;
   }
   return { meta, content: new Blob([bytes], { type: spec.contentType }) };

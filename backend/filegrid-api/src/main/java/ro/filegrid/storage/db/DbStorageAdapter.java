@@ -40,7 +40,7 @@ import ro.filegrid.storage.StorageKeys;
 import ro.filegrid.storage.StorageObjectNotFoundException;
 import ro.filegrid.storage.StorageUnavailableException;
 
-/** Storage de octeți în FileGridStorage, cu tranzacții locale pe conexiunea JDBC proprie. */
+/** Byte storage in FileGridStorage, with local transactions on its own JDBC connection. */
 @Repository
 @Profile("db")
 public class DbStorageAdapter implements StorageAdapter, ChunkedWriter {
@@ -84,7 +84,7 @@ public class DbStorageAdapter implements StorageAdapter, ChunkedWriter {
         if (length <= 0) {
             throw new IllegalArgumentException("length trebuie să fie pozitiv");
         }
-        // Prefixul rezervat separă cheile fizice de cheile logice valide din schema inițială.
+        // The reserved prefix keeps physical keys apart from the valid logical keys of the initial schema.
         String version = "~" + UUID.randomUUID();
         return mutate(key, "put", connection -> {
             insertVersion(connection, version, key, length, null);
@@ -279,7 +279,7 @@ public class DbStorageAdapter implements StorageAdapter, ChunkedWriter {
             try (ResultSet rows = chunks.executeQuery()) {
                 long offset = 0;
                 while (rows.next()) {
-                    // Verifică și granița fiecărei bucăți multipart, inclusiv a ultimei bucăți scurte.
+                    // Also check the boundary of every multipart chunk, including the short last chunk.
                     long chunkRemaining = upload.chunkSize() - offset % upload.chunkSize();
                     long expected = Math.min(ROW_SIZE, Math.min(chunkRemaining, upload.totalSize() - offset));
                     if (expected <= 0 || rows.getLong(1) != offset || rows.getInt(2) != expected) {
@@ -431,14 +431,14 @@ public class DbStorageAdapter implements StorageAdapter, ChunkedWriter {
             long remaining = HEALTH_TIMEOUT_MILLIS - TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
             if (remaining > 0) {
                 connection.setNetworkTimeout(Runnable::run, (int) Math.min(remaining, 1_000));
-                // Driverul SQL Server implementează isValid prin SELECT 1.
+                // The SQL Server driver implements isValid as SELECT 1.
                 if (connection.isValid(1) && System.nanoTime() - start < TimeUnit.MILLISECONDS
                         .toNanos(HEALTH_TIMEOUT_MILLIS)) {
                     return StorageHealth.up(TYPE, Duration.ofNanos(System.nanoTime() - start));
                 }
             }
         } catch (SQLException | RuntimeException e) {
-            // Doar starea și durata ies din health, fără detalii ale conexiunii.
+            // Only status and duration leave health; no connection details.
         }
         return StorageHealth.down(TYPE, Duration.ofNanos(System.nanoTime() - start), "FileGridStorage indisponibil");
     }
@@ -478,8 +478,8 @@ public class DbStorageAdapter implements StorageAdapter, ChunkedWriter {
         connection.setAutoCommit(false);
         try (Statement begin = connection.createStatement()) {
             begin.setQueryTimeout(QUERY_TIMEOUT_SECONDS);
-            // Un batch direct pornește tranzacția înainte de sp_getapplock. Cu IMPLICIT_TRANSACTIONS ON,
-            // BEGIN TRANSACTION ar crea două niveluri, iar Connection.commit() ar elibera doar unul.
+            // A direct batch starts the transaction before sp_getapplock. With IMPLICIT_TRANSACTIONS ON,
+            // BEGIN TRANSACTION would create two nesting levels and Connection.commit() would release only one.
             begin.execute("SET IMPLICIT_TRANSACTIONS OFF; BEGIN TRANSACTION; SET IMPLICIT_TRANSACTIONS ON;");
         }
         try (PreparedStatement lock = prepare(connection, LOCK_KEY)) {
@@ -538,7 +538,7 @@ public class DbStorageAdapter implements StorageAdapter, ChunkedWriter {
         return new StorageException(TYPE, "DB " + operation + ": sursa s-a întrerupt înainte de lungimea declarată", error);
     }
 
-    /** Vedere limitată la un rând SQL. Sursa aparține apelantului, inclusiv când driverul închide vederea. */
+    /** View limited to one SQL row. The source belongs to the caller, even when the driver closes the view. */
     private static final class RowSource extends InputStream {
         private final InputStream source;
         private int remaining;
@@ -590,7 +590,7 @@ public class DbStorageAdapter implements StorageAdapter, ChunkedWriter {
         }
     }
 
-    /** Păstrează lockul partajat până la EOF/close. O singură bucată SQL poate fi în curs de citire. */
+    /** Holds the shared lock until EOF/close. Only one SQL chunk can be in the middle of being read. */
     private static final class ObjectStream extends InputStream {
         private final Connection connection;
         private final PreparedStatement statement;
@@ -673,7 +673,7 @@ public class DbStorageAdapter implements StorageAdapter, ChunkedWriter {
 
         private void closeRow() throws IOException, SQLException {
             try (ResultSet result = row; InputStream blob = data) {
-                // Închide streamul înaintea rezultatului, inclusiv la ieșire anticipată.
+                // Close the stream before the result set, including on early exit.
             } finally {
                 row = null;
                 data = null;
@@ -686,7 +686,7 @@ public class DbStorageAdapter implements StorageAdapter, ChunkedWriter {
                 return;
             }
             closed = true;
-            // Resursele se închid în ordinea inversă, inclusiv dacă eliberarea uneia eșuează.
+            // Resources are closed in reverse order, even if releasing one of them fails.
             try (AutoCloseable transaction = () -> closeRead(connection); statement) {
                 closeRow();
             } catch (Exception e) {

@@ -33,16 +33,16 @@ import org.springframework.stereotype.Component;
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
 
 /**
- * Emite și verifică token-urile (contract: {@code /auth/login}, {@code /auth/refresh}). Ambele sunt JWT HS256 semnate
- * cu {@code JWT_SECRET}, deci orice instanță {@code api} le acceptă (stateless, fără revocare):
+ * Issues and verifies tokens (contract {@code /auth/login}, {@code /auth/refresh}). Both are HS256 JWTs signed with
+ * {@code JWT_SECRET}, so any {@code api} instance accepts them (stateless, no revocation):
  * <ul>
- *   <li>{@code accessToken}: 15 minute; claim-uri {@code iss}, {@code sub}, {@code iat}, {@code exp}, {@code jti},
- *       {@code typ = "access"}, {@code role} (șir, ca în contract) și {@code roles} (listă cu același rol, citită de
- *       interfața Angular).</li>
- *   <li>{@code refreshToken}: 8 ore; claim-uri {@code iss}, {@code sub}, {@code iat}, {@code exp}, {@code jti},
- *       {@code typ = "refresh"}, fără rol (rolul se ia din configurație la reînnoire).</li>
+ *   <li>{@code accessToken}: 15 minutes; claims {@code iss}, {@code sub}, {@code iat}, {@code exp}, {@code jti},
+ *       {@code typ = "access"}, {@code role} (string, as in the contract) and {@code roles} (list with the same role,
+ *       read by the Angular UI).</li>
+ *   <li>{@code refreshToken}: 8 hours; claims {@code iss}, {@code sub}, {@code iat}, {@code exp}, {@code jti},
+ *       {@code typ = "refresh"}, no role (the role is looked up from configuration on refresh).</li>
  * </ul>
- * Câmpul {@code typ} împiedică folosirea unui refreshToken ca accessToken și invers.
+ * The {@code typ} claim prevents using a refreshToken as an accessToken and vice versa.
  */
 @Component
 public class TokenService {
@@ -50,7 +50,7 @@ public class TokenService {
     static final String TYPE_CLAIM = "typ";
     static final String ACCESS = "access";
     static final String REFRESH = "refresh";
-    /** Toleranța de ceas între instanțe. */
+    /** Clock skew tolerance between instances. */
     static final Duration CLOCK_SKEW = Duration.ofSeconds(30);
     private static final int MIN_KEY_BYTES = 32;
 
@@ -79,12 +79,12 @@ public class TokenService {
         this.refreshDecoder = decoder(key, REFRESH);
     }
 
-    /** Decodorul folosit de resource server pentru {@code Authorization: Bearer}. */
+    /** Decoder used by the resource server for {@code Authorization: Bearer}. */
     public JwtDecoder accessTokenDecoder() {
         return accessDecoder;
     }
 
-    /** Valabilitatea accessToken-ului, în secunde ({@code expiresIn}). */
+    /** accessToken lifetime in seconds ({@code expiresIn}). */
     public long accessTokenTtlSeconds() {
         return accessTtl.toSeconds();
     }
@@ -103,10 +103,10 @@ public class TokenService {
     }
 
     /**
-     * Verifică un refreshToken (semnătură, emitent, expirare, {@code typ = "refresh"}).
+     * Verifies a refreshToken (signature, issuer, expiry, {@code typ = "refresh"}).
      *
-     * @return utilizatorul ({@code sub})
-     * @throws JwtException dacă token-ul nu este valid
+     * @return the user ({@code sub})
+     * @throws JwtException if the token is not valid
      */
     public String verifyRefreshToken(String token) {
         return refreshDecoder.decode(token).getSubject();

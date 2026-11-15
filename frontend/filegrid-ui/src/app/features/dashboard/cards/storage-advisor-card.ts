@@ -7,7 +7,7 @@ import { StorageAdvisor } from '../../../core/stats/stats.models';
 import { buildAdvisorMatrix, costAssumptionLine, CostLine, scoreTint } from '../../../core/stats/stats-view';
 import { loadable, loadInto, StatCard } from '../stat-card';
 
-/** Cartea 1: ce storage se potrivește fiecărei categorii (matrice 4 × 3 cu scor, din benchmark). */
+/** Card 1: which storage fits each category (4 x 3 score matrix, from the benchmark). */
 @Component({
   selector: 'app-storage-advisor-card',
   imports: [StatCard, DecimalPipe, DatePipe],
@@ -15,7 +15,7 @@ import { loadable, loadInto, StatCard } from '../stat-card';
   styleUrl: './storage-advisor-card.scss',
 })
 export class StorageAdvisorCard {
-  /** Se schimbă când utilizatorul apasă „Reîncarcă”. */
+  /** Changes when the user clicks the reload button. */
   readonly reload = input(0);
 
   private readonly api = inject(StatsApi);
@@ -44,7 +44,7 @@ export class StorageAdvisorCard {
     });
   }
 
-  /** „FTP = 1,0, S3 = 1,4, DB = 3,2”. */
+  /** "FTP = 1,0, S3 = 1,4, DB = 3,2". */
   protected costValues(c: CostLine): string {
     return c.values.map((v) => `${v.storage} = ${v.cost.toLocaleString('ro-RO', { minimumFractionDigits: 1 })}`).join(', ');
   }

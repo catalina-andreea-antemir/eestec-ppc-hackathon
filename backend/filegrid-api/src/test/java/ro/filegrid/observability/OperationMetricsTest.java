@@ -121,7 +121,7 @@ class OperationMetricsTest {
                 .contains("filegrid_meter_duplicates_total{");
     }
 
-    /** ObjectProvider minimal pentru test. */
+    /** Minimal ObjectProvider for the test. */
     private record SingleProvider(OperationRecorder value)
             implements org.springframework.beans.factory.ObjectProvider<OperationRecorder> {
         @Override

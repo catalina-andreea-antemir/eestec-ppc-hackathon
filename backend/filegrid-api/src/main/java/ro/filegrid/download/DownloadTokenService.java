@@ -25,10 +25,10 @@ import ro.filegrid.api.ApiException;
 import ro.filegrid.integrity.Sha256;
 
 /**
- * Link-uri semnate de descărcare (C8): {@code base64url(payload) "." base64url(HMAC-SHA256)}, cu payload-ul JSON
- * {@code {"f": fileId, "u": etichetă-utilizator, "e": expirare (secunde epoch)}}. Eticheta utilizatorului e o amprentă
- * opacă (primii 8 octeți din SHA-256 al numelui), deci token-ul nu conține date personale. Orice token expirat,
- * modificat sau semnat cu altă cheie dă 401.
+ * Signed download links (C8): {@code base64url(payload) "." base64url(HMAC-SHA256)}, with the JSON payload
+ * {@code {"f": fileId, "u": user tag, "e": expiry (epoch seconds)}}. The user tag is an opaque fingerprint
+ * (first 8 bytes of SHA-256 of the username), so the token carries no personal data. Any expired, tampered or
+ * foreign-key-signed token yields 401.
  */
 @Component
 public class DownloadTokenService {
@@ -53,11 +53,11 @@ public class DownloadTokenService {
         this.clock = clock;
     }
 
-    /** Ce spune un token valid. */
+    /** What a valid token asserts. */
     public record Claims(UUID fileId, String userTag, Instant expiresAt) {
     }
 
-    /** Token-ul și momentul expirării. */
+    /** The token and its expiry. */
     public record Link(String token, Instant expiresAt) {
     }
 
@@ -69,7 +69,7 @@ public class DownloadTokenService {
         return new Link(payload + "." + B64.encodeToString(sign(payload)), expires);
     }
 
-    /** @throws ApiException 401 dacă token-ul e expirat, invalid sau modificat */
+    /** @throws ApiException 401 if the token is expired, invalid or tampered with */
     public Claims verify(String token) {
         if (token == null || token.length() > MAX_TOKEN_LENGTH) {
             throw invalid();
@@ -93,7 +93,7 @@ public class DownloadTokenService {
             tag = (String) fields.get("u");
         } catch (ApiException e) {
             throw e;
-        } catch (Exception e) { // base64 / JSON / UUID invalide: token modificat sau făcut de altcineva
+        } catch (Exception e) { // invalid base64 / JSON / UUID: tampered or forged token
             throw invalid();
         }
         if (!clock.instant().isBefore(expires)) {
