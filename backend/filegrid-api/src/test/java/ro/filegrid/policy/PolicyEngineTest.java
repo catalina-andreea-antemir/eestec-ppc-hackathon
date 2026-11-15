@@ -51,7 +51,7 @@ class PolicyEngineTest {
                 StorageType.DB, StorageType.S3, 20L * MIB, true, null, 10));
         assertThat(engine.policy(Category.INSPECTION_VIDEO)).isEqualTo(new CategoryPolicy(Category.INSPECTION_VIDEO,
                 StorageType.FTP, StorageType.S3, 5L * 1024 * MIB, false, 16 * MIB, 4));
-        // Fiecare storage este principal pentru cel puțin o categorie (4.2).
+        // Every storage is primary for at least one category (4.2).
         assertThat(engine.policies().values().stream().map(CategoryPolicy::primaryStorage).distinct())
                 .containsExactlyInAnyOrder(StorageType.values());
     }
@@ -70,7 +70,7 @@ class PolicyEngineTest {
 
     @Test
     void watcherPicksUpTheChangeInTheBackground() throws Exception {
-        // Recitirea la cerere e practic oprită (1 h); doar firul din fundal poate vedea schimbarea.
+        // On-demand reload is effectively off (1 h); only the background thread can see the change.
         PolicyEngine engine = new PolicyEngine(dir.toString(), Duration.ofHours(1));
         PolicyWatcher watcher = new PolicyWatcher(engine, Duration.ofSeconds(1));
         watcher.start();

@@ -3,35 +3,35 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { toApiError } from '../api/api-error';
 
 /**
- * Reîncercare cu backoff exponențial, până la un timeout (implicit 2 minute de la primul eșec).
+ * Retry with exponential backoff, up to a timeout (default 2 minutes from the first failure).
  *
- * - Dacă serverul spune cât să așteptăm (`Retry-After` sau `retryAfterSeconds`, la 429, 503 și
- *   409 UPLOAD_BUSY), așteptăm exact atât.
- * - Altfel: 1 s, 2 s, 4 s, 8 s, apoi 10 s (plafon), cu ±20% variație ca mai mulți clienți să nu
- *   reîncerce toți în aceeași secundă.
- * - La o eroare de rețea, așteptarea se scurtează când browserul anunță că a revenit online.
+ * - If the server says how long to wait (`Retry-After` or `retryAfterSeconds`, on 429, 503 and
+ *   409 UPLOAD_BUSY), we wait exactly that long.
+ * - Otherwise: 1 s, 2 s, 4 s, 8 s, then 10 s (cap), with +-20% jitter so many clients do not all
+ *   retry in the same second.
+ * - On a network error the wait is cut short when the browser reports it is back online.
  */
 export interface RetryOptions {
-  /** Cât timp reîncercăm, de la primul eșec. */
+  /** How long we keep retrying, from the first failure. */
   timeoutMs: number;
   baseDelayMs: number;
   maxDelayMs: number;
-  /** Ce erori merită reîncercate (implicit isTransientError). */
+  /** Which errors are worth retrying (isTransientError by default). */
   isRetriable: (error: unknown) => boolean;
   signal?: AbortSignal;
   onRetry?: (info: RetryInfo) => void;
-  // Injectabile pentru teste.
+  // Injectable for tests.
   now: () => number;
   sleep: (ms: number, signal?: AbortSignal, wakeOnOnline?: boolean) => Promise<void>;
   random: () => number;
 }
 
 export interface RetryInfo {
-  /** Numărul reîncercării (1 = prima reîncercare). */
+  /** Retry number (1 = first retry). */
   attempt: number;
   delayMs: number;
   error: unknown;
-  /** true dacă întârzierea vine de la server (Retry-After). */
+  /** true if the delay came from the server (Retry-After). */
   serverHint: boolean;
 }
 
@@ -45,7 +45,7 @@ export const DEFAULT_RETRY: RetryOptions = {
   random: Math.random,
 };
 
-/** Aruncată când reîncercările au depășit timeout-ul; `cause` este ultima eroare. */
+/** Thrown when retries exceed the timeout; `cause` is the last error. */
 export class RetryTimeoutError extends Error {
   constructor(
     readonly lastError: unknown,
@@ -82,13 +82,13 @@ export async function withRetry<T>(operation: () => Promise<T>, options: Partial
   }
 }
 
-/** 1 s, 2 s, 4 s, 8 s, ... plafonat la maxDelayMs, cu ±20% variație. */
+/** 1 s, 2 s, 4 s, 8 s, ... capped at maxDelayMs, with +-20% jitter. */
 export function backoffMs(attempt: number, opts: Pick<RetryOptions, 'baseDelayMs' | 'maxDelayMs' | 'random'>): number {
   const exponential = Math.min(opts.maxDelayMs, opts.baseDelayMs * 2 ** (attempt - 1));
   return Math.round(exponential * (0.8 + 0.4 * opts.random()));
 }
 
-/** Întârzierea cerută de server: `retryAfterSeconds` din corp sau header-ul `Retry-After` (secunde). */
+/** The delay requested by the server: `retryAfterSeconds` in the body or the `Retry-After` header (seconds). */
 export function retryAfterMs(error: unknown): number | null {
   if (!(error instanceof HttpErrorResponse)) {
     return null;
@@ -102,8 +102,8 @@ export function retryAfterMs(error: unknown): number | null {
 }
 
 /**
- * Erori trecătoare, pentru operații sigure la repetare (bucăți, GET, complete, abort):
- * rețea căzută (status 0), 408, 429, 5xx și 409 UPLOAD_BUSY (lease ocupat).
+ * Transient errors, for operations that are safe to repeat (chunks, GET, complete, abort):
+ * network down (status 0), 408, 429, 5xx and 409 UPLOAD_BUSY (lease taken).
  */
 export function isTransientError(error: unknown): boolean {
   const status = httpStatus(error);
@@ -117,9 +117,9 @@ export function isTransientError(error: unknown): boolean {
 }
 
 /**
- * Pentru POST /files (fără Idempotency-Key în contract): reîncercăm doar când serverul n-a
- * păstrat fișierul (429, 503) sau când nu știm (rețea, 502, 504). În ultimul caz există
- * un risc mic de duplicat, preferabil pierderii unei înregistrări de avarie.
+ * For POST /files (the contract has no Idempotency-Key for it): retry only when the server did not
+ * keep the file (429, 503) or when we cannot tell (network, 502, 504). In the latter case there is
+ * a small risk of a duplicate, which beats losing an outage record.
  */
 export function isTransientFileError(error: unknown): boolean {
   const status = httpStatus(error);
@@ -144,7 +144,7 @@ export function throwIfAborted(signal?: AbortSignal): void {
   }
 }
 
-/** Așteaptă `ms`; se oprește la abort și, opțional, mai devreme când browserul revine online. */
+/** Waits `ms`; stops on abort and, optionally, earlier when the browser comes back online. */
 export function abortableSleep(ms: number, signal?: AbortSignal, wakeOnOnline = false): Promise<void> {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {
@@ -164,7 +164,7 @@ export function abortableSleep(ms: number, signal?: AbortSignal, wakeOnOnline = 
     };
     const onOnline = () => {
       done();
-      // O secundă de răgaz: rețeaua abia a revenit.
+      // One second of grace: the network has only just come back.
       setTimeout(resolve, 1000);
     };
     const timer = setTimeout(() => {

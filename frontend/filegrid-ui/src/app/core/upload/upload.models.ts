@@ -1,11 +1,11 @@
-// Tipurile din contractul API (docs/api/openapi.yaml: Category, StorageType, Zone, FileMetadata,
-// OutageDetails, UploadInit, UploadSession, ChunkAck) și regulile de upload din plan (4.2, 4.4).
+// API contract types (docs/api/openapi.yaml: Category, StorageType, Zone, FileMetadata,
+// OutageDetails, UploadInit, UploadSession, ChunkAck) and the upload rules from the plan (4.2, 4.4).
 
 import { Role } from '../auth/auth.models';
 
 export type Category = 'METER_READING' | 'OUTAGE_RECORD' | 'CONNECTION_DOC' | 'INSPECTION_VIDEO';
 
-/** Categoriile încărcate din interfață. METER_READING intră doar prin simulator (POST /meter-readings). */
+/** Categories uploaded from the UI. METER_READING only comes in through the simulator (POST /meter-readings). */
 export type ManualCategory = Exclude<Category, 'METER_READING'>;
 
 export type StorageType = 'FTP' | 'S3' | 'DB';
@@ -13,7 +13,7 @@ export type StorageType = 'FTP' | 'S3' | 'DB';
 export type Zone = 'Muntenia' | 'Banat' | 'Dobrogea';
 export const ZONES: readonly Zone[] = ['Muntenia', 'Banat', 'Dobrogea'];
 
-/** Doar la OUTAGE_RECORD. */
+/** OUTAGE_RECORD only. */
 export interface OutageDetails {
   zone: Zone;
   stationId?: string | null;
@@ -21,16 +21,16 @@ export interface OutageDetails {
   occurredAt: string;
 }
 
-/** Răspunsul de la POST /files și POST /uploads/{id}/complete. */
+/** POST /files and POST /uploads/{id}/complete response. */
 export interface FileMetadata {
   id: string;
   category: Category;
   originalName: string;
   contentType: string;
   size: number;
-  /** SHA-256 pe bytes-ii stocați (cifrați la CONNECTION_DOC). */
+  /** SHA-256 of the stored bytes (encrypted for CONNECTION_DOC). */
   sha256: string;
-  /** SHA-256 pe fișierul original; doar la documente criptate. Îl arată interfața. */
+  /** SHA-256 of the original file; only for encrypted documents. Shown by the UI. */
   sha256Plain?: string | null;
   storage: StorageType;
   status: 'PENDING' | 'CONFIRMED' | 'FAILED';
@@ -40,7 +40,7 @@ export interface FileMetadata {
   outage?: OutageDetails;
 }
 
-/** Corpul de la POST /uploads. */
+/** POST /uploads body. */
 export interface UploadInit {
   category: 'INSPECTION_VIDEO';
   fileName: string;
@@ -49,17 +49,17 @@ export interface UploadInit {
 
 export type UploadStatus = 'IN_PROGRESS' | 'COMPLETED' | 'ABORTED' | 'ABANDONED';
 
-/** Starea unui upload în bucăți (POST /uploads, GET /uploads/{id}, POST /uploads/{id}/abort). */
+/** State of a chunked upload (POST /uploads, GET /uploads/{id}, POST /uploads/{id}/abort). */
 export interface UploadSession {
   uploadId: string;
   category: Category;
   fileName: string;
   storage: StorageType;
   totalSize: number;
-  /** Din politică: între 5 MiB și 64 MiB (implicit 16 MiB). Ultima bucată poate fi mai mică. */
+  /** From the policy: between 5 MiB and 64 MiB (16 MiB by default). The last chunk may be smaller. */
   chunkSize: number;
   totalChunks: number;
-  /** Următoarea bucată așteptată (de la 1). */
+  /** Next expected chunk (1-based). */
   nextChunk: number;
   receivedBytes: number;
   status: UploadStatus;
@@ -67,13 +67,13 @@ export interface UploadSession {
   lastActivityAt: string;
 }
 
-/** Răspunsul de la PUT /uploads/{id}/chunks/{n}. */
+/** PUT /uploads/{id}/chunks/{n} response. */
 export interface ChunkAck {
   n: number;
   size: number;
   sha256: string;
   nextChunk: number;
-  /** true dacă bucata fusese deja primită (confirmare idempotentă). */
+  /** true if the chunk had already been received (idempotent confirmation). */
   duplicate: boolean;
 }
 
@@ -82,13 +82,13 @@ const MB = 1024 * 1024;
 export interface CategoryRule {
   label: string;
   description: string;
-  /** Rolurile care pot încărca (ADMIN poate tot; vezi AuthService.hasRole). */
+  /** Roles that can upload (ADMIN can do everything; see AuthService.hasRole). */
   roles: Role[];
-  /** Mărimea maximă din politica implicită (4.2). */
+  /** Maximum size from the default policy (4.2). */
   maxBytes: number;
-  /** true: upload în bucăți (POST /uploads); false: POST /files. */
+  /** true: chunked upload (POST /uploads); false: POST /files. */
   chunked: boolean;
-  /** Sugestie pentru selectorul de fișiere (nu e o restricție). */
+  /** Hint for the file picker (not a restriction). */
   accept: string;
 }
 
@@ -121,7 +121,7 @@ export const CATEGORY_RULES: Record<ManualCategory, CategoryRule> = {
 
 export const MANUAL_CATEGORIES: readonly ManualCategory[] = ['OUTAGE_RECORD', 'CONNECTION_DOC', 'INSPECTION_VIDEO'];
 
-/** Formatare prietenoasă pentru mărimi (1 MB = 1024 × 1024 octeți). */
+/** Human-friendly sizes (1 MB = 1024 x 1024 bytes). */
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) {
     return `${bytes} B`;

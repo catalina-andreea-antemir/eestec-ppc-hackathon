@@ -22,10 +22,10 @@ import ro.filegrid.storage.db.OperationMetric;
 import ro.filegrid.storage.db.OperationMetricsRepository;
 
 /**
- * Scrie {@code operation_metrics} fără să blocheze cererile (planul 4.1): coadă mărginită, un fir propriu care golește
- * în loturi (la {@code flushInterval} sau {@code batchSize} rânduri) prin {@link OperationMetricsRepository#insertBatch}.
- * Coada plină aruncă rândul și incrementează {@code filegrid_opmetrics_dropped_total}; la oprire coada se golește.
- * Un lot a cărui inserare eșuează se pierde (se numără ca dropped), ca să nu blocheze recorder-ul.
+ * Writes {@code operation_metrics} without blocking requests: a bounded queue and a dedicated thread that flushes in
+ * batches (every {@code flushInterval} or {@code batchSize} rows) via {@link OperationMetricsRepository#insertBatch}.
+ * A full queue drops the row and increments {@code filegrid_opmetrics_dropped_total}; the queue is drained on shutdown.
+ * A batch whose insert fails is lost (counted as dropped) so it cannot stall the recorder.
  */
 @Component
 @Profile("db")
@@ -61,7 +61,7 @@ public class OperationRecorder {
         this.worker = Thread.ofPlatform().name("opmetrics-recorder").daemon(true).start(this::loop);
     }
 
-    /** Nu blochează niciodată: coadă plină → rândul se aruncă și se numără. */
+    /** Never blocks: full queue -> the row is dropped and counted. */
     public void record(OperationMetric metric) {
         if (!running || !queue.offer(metric)) {
             dropped.increment();
@@ -96,7 +96,7 @@ public class OperationRecorder {
                 flush(batch);
             } catch (InterruptedException e) {
                 if (!batch.isEmpty()) {
-                    flush(batch); // lotul început nu se pierde la oprire
+                    flush(batch); // a batch already started is not lost on shutdown
                 }
                 return;
             }
@@ -108,11 +108,11 @@ public class OperationRecorder {
             sink.accept(List.copyOf(batch));
         } catch (RuntimeException e) {
             dropped.increment(batch.size());
-            log.warn("Inserarea a {} rânduri în operation_metrics a eșuat: {}", batch.size(), e.getMessage());
+            log.warn("Inserting {} rows into operation_metrics failed: {}", batch.size(), e.getMessage());
         }
     }
 
-    /** Oprește firul și golește ce a rămas în coadă (apelat la oprirea aplicației). */
+    /** Stops the thread and drains whatever is left in the queue (called on application shutdown). */
     @PreDestroy
     public void shutdown() {
         running = false;

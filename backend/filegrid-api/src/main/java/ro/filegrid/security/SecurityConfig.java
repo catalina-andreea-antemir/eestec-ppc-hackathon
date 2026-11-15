@@ -20,17 +20,16 @@ import org.springframework.security.web.util.matcher.RequestMatcher;
 import jakarta.servlet.DispatcherType;
 
 /**
- * Securitatea HTTP (C4: login; C10: rolurile pe endpoint-uri, matricea 4.4).
+ * HTTP security (C4: login; C10: per-endpoint roles, matrix 4.4).
  *
  * <ul>
- *   <li>Publice: {@code GET /api/v1/health}, {@code POST /api/v1/auth/login}, {@code POST /api/v1/auth/refresh} și
- *       Actuator health / prometheus (nginx nu proxiază {@code /actuator}, deci acestea sunt doar pe rețeaua
- *       internă). Pe rutele publice un header {@code Authorization} (de exemplu un token expirat trimis de
- *       interceptorul interfeței) se ignoră, ca să nu dea 401.</li>
- *   <li>Restul cere {@code Authorization: Bearer <accessToken>} valid (semnătură HS256, {@code iss}, {@code exp},
- *       {@code typ = "access"}); altfel 401 JSON cu {@code WWW-Authenticate: Bearer}.</li>
- *   <li>Autoritățile vin din claim-ul {@code roles}: {@code ROLE_DISPATCH}, ..., ca la C10 să meargă
- *       {@code hasRole(...)}.</li>
+ *   <li>Public: {@code GET /api/v1/health}, {@code POST /api/v1/auth/login}, {@code POST /api/v1/auth/refresh} and
+ *       Actuator health / prometheus (nginx does not proxy {@code /actuator}, so those are internal-network only).
+ *       On public routes an {@code Authorization} header (e.g. an expired token sent by the UI interceptor) is
+ *       ignored so it does not cause a 401.</li>
+ *   <li>Everything else requires a valid {@code Authorization: Bearer <accessToken>} (HS256 signature, {@code iss},
+ *       {@code exp}, {@code typ = "access"}); otherwise a JSON 401 with {@code WWW-Authenticate: Bearer}.</li>
+ *   <li>Authorities come from the {@code roles} claim: {@code ROLE_DISPATCH}, ..., so {@code hasRole(...)} works.</li>
  * </ul>
  */
 @Configuration
@@ -43,7 +42,7 @@ public class SecurityConfig {
             PATHS.matcher(HttpMethod.GET, "/api/v1/health"),
             PATHS.matcher(HttpMethod.POST, "/api/v1/auth/login"),
             PATHS.matcher(HttpMethod.POST, "/api/v1/auth/refresh"),
-            // Link semnat de descărcare (C8): autorizarea e token-ul din cale, nu Authorization.
+            // Signed download link (C8): authorization is the token in the path, not the Authorization header.
             PATHS.matcher(HttpMethod.GET, "/api/v1/downloads/*"),
             PATHS.matcher(HttpMethod.GET, "/actuator/health"),
             PATHS.matcher(HttpMethod.GET, "/actuator/health/**"),
@@ -63,7 +62,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(a -> a
                         .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
                         .requestMatchers(PUBLIC_ENDPOINTS).permitAll()
-                        // Matricea rolurilor 4.4 (C10); rolul pe categorie se verifică în FileAccess.
+                        // Role matrix 4.4 (C10); the per-category role check happens in FileAccess.
                         .requestMatchers(PATHS.matcher(HttpMethod.POST, "/api/v1/meter-readings"))
                                 .hasAnyRole("METER_SERVICE", "ADMIN")
                         .requestMatchers(PATHS.matcher("/api/v1/stats/**")).hasAnyRole("DISPATCH", "ADMIN")
@@ -82,7 +81,7 @@ public class SecurityConfig {
         return http.build();
     }
 
-    /** Token-ul din {@code Authorization: Bearer}, ignorat pe rutele publice. */
+    /** The token from {@code Authorization: Bearer}, ignored on public routes. */
     static BearerTokenResolver bearerTokenResolver() {
         DefaultBearerTokenResolver standard = new DefaultBearerTokenResolver();
         return request -> PUBLIC_ENDPOINTS.matches(request) ? null : standard.resolve(request);

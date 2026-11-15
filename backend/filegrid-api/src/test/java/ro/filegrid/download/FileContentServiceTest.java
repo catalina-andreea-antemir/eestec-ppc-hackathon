@@ -20,7 +20,7 @@ import ro.filegrid.integrity.Sha256;
 import ro.filegrid.storage.InMemoryStorageAdapter;
 import ro.filegrid.storage.StorageAdapterRegistry;
 
-/** Descărcarea și /verify peste un storage în memorie: Range, hash înainte / în timpul trimiterii, erori. */
+/** Download and /verify over an in-memory storage: Range, hash before / while sending, errors. */
 class FileContentServiceTest {
 
     private final InMemoryStorageAdapter storage = new InMemoryStorageAdapter(StorageType.S3);
@@ -124,14 +124,14 @@ class FileContentServiceTest {
     void largeFileIsVerifiedWhileSendingAndCorruptionAbortsBeforeTheLastBlock() throws Exception {
         byte[] content = data(500_000);
         FileRecord file = store(content, false);
-        FileContentService large = new FileContentService(registry, access, 1000); // sub prag -> „mare”
+        FileContentService large = new FileContentService(registry, access, 1000); // below the threshold -> "large"
         MockHttpServletResponse ok = send(large, file, null);
         assertThat(ok.getContentAsByteArray()).isEqualTo(content);
 
         corruptOneByte(storage, file);
         MockHttpServletResponse partial = new MockHttpServletResponse();
         assertThatThrownBy(() -> large.send(file, null, partial)).isInstanceOf(FileContentService.TransferAborted.class);
-        // Ultimul bloc a fost ținut înapoi: corpul nu s-a încheiat.
+        // The last block was held back: the body never completed.
         assertThat(partial.getContentAsByteArray().length).isLessThan(content.length);
         assertThat(partial.getContentAsByteArray().length).isGreaterThan(0);
     }
@@ -164,7 +164,7 @@ class FileContentServiceTest {
     private static final ro.filegrid.ingest.AesGcmDocumentEncryption ENC =
             new ro.filegrid.ingest.AesGcmDocumentEncryption(ro.filegrid.TestSecrets.DOC_KEY_BYTES);
 
-    /** Document criptat: octeții stocați sunt cifrați, sha256 pe ei, sha256_plain pe original, size = original. */
+    /** Encrypted document: stored bytes are ciphertext, sha256 over them, sha256_plain over the original, size = original. */
     private FileRecord storeEncrypted(byte[] plain) throws IOException {
         byte[] cipher = ENC.encrypt(new ByteArrayInputStream(plain)).readAllBytes();
         UUID id = UUID.randomUUID();
@@ -180,7 +180,7 @@ class FileContentServiceTest {
         try (InputStream in = storage.get(doc.storageKey(), ro.filegrid.storage.ByteRange.full())) {
             now = in.readAllBytes();
         }
-        // sha256 pe octeții stocați "se potrivește" din nou: doar GCM mai poate prinde alterarea.
+        // sha256 over the stored bytes "matches" again: only GCM can still catch the tampering.
         return new FileRecord(doc.id(), doc.category(), doc.originalName(), doc.contentType(), doc.size(),
                 Sha256.of(now), doc.sha256Plain(), doc.storage(), doc.storageKey(), doc.status(), true,
                 doc.createdAt(), doc.createdBy(), null);
@@ -225,15 +225,15 @@ class FileContentServiceTest {
                 e -> assertThat(e.code()).isEqualTo("FILE_CORRUPT"));
 
         FileRecord gcmCaught = tampered(storeEncrypted(data(150_000)));
-        assertThat(service.verify(gcmCaught, false).ok()).isTrue(); // hash pe octeții stocați: nu vede nimic
+        assertThat(service.verify(gcmCaught, false).ok()).isTrue(); // hash over the stored bytes: sees nothing
         assertThatThrownBy(() -> service.verify(gcmCaught, true)).isInstanceOfSatisfying(ApiException.class, e -> {
             assertThat(e.status().value()).isEqualTo(409);
             assertThat(e.code()).isEqualTo("FILE_CORRUPT");
         });
-        // Alterare în al doilea segment: primul bloc a plecat deja, deci conexiunea se întrerupe (ca la fișiere mari).
+        // Tampering in the second segment: the first block already left, so the connection is cut (as for large files).
         assertThatThrownBy(() -> send(service, tampered(storeEncrypted(data(150_000))), null))
                 .isInstanceOf(FileContentService.TransferAborted.class);
-        // Alterare în primul segment: nimic nu a plecat încă, deci 409 curat.
+        // Tampering in the first segment: nothing has left yet, so a clean 409.
         FileRecord early = storeEncrypted(data(150_000));
         byte[] raw;
         try (InputStream in = storage.get(early.storageKey(), ro.filegrid.storage.ByteRange.full())) {

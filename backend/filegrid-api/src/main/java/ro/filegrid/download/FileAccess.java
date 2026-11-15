@@ -10,49 +10,49 @@ import ro.filegrid.domain.Category;
 import ro.filegrid.ingest.FileRecord;
 
 /**
- * Accesul la fișiere (C8 → C10): rolul pe categorie (matricea 4.4), auditul accesului la documentele de racordare și
- * decriptarea lor. Implementarea e {@link RoleBasedFileAccess}.
+ * File access (C8 -> C10): per-category role check (matrix 4.4), audit of connection document access and their
+ * decryption. Implemented by {@link RoleBasedFileAccess}.
  */
 public interface FileAccess {
 
-    /** Acțiunea „încărcare” (matricea „Poate încărca”); orice altă acțiune e citire („Poate căuta și descărca”). */
+    /** The "upload" action (matrix column "Can upload"); every other action is a read ("Can search and download"). */
     String UPLOAD = "UPLOAD";
 
     /**
-     * Singurul loc unde se verifică rolul față de categorie (matricea 4.4); 403 {@code FORBIDDEN} dacă nu e permis.
-     * Un refuz la {@code CONNECTION_DOC} se auditează și incrementează {@code filegrid_doc_access_total{result="denied"}}.
+     * The single place where role vs. category is checked (matrix 4.4); 403 {@code FORBIDDEN} if not allowed.
+     * A denial on {@code CONNECTION_DOC} is audited and increments {@code filegrid_doc_access_total{result="denied"}}.
      *
-     * @param action acțiunea ({@link #UPLOAD}, {@code SEARCH}, {@code DOWNLOAD}, {@code VERIFY}, ...)
-     * @param fileId fișierul vizat, dacă există deja (altfel {@code null})
+     * @param action the action ({@link #UPLOAD}, {@code SEARCH}, {@code DOWNLOAD}, {@code VERIFY}, ...)
+     * @param fileId the target file, if it already exists (otherwise {@code null})
      */
     void requireRole(Authentication user, Category category, String action, UUID fileId);
 
-    /** Verificare de citire fără fișier anume. */
+    /** Read check without a specific file. */
     default void requireRole(Authentication user, Category category) {
         requireRole(user, category, "READ", null);
     }
 
-    /** Categoriile pe care le poate căuta rolul (contract {@code GET /files}). */
+    /** Categories the role may search (contract {@code GET /files}). */
     Set<Category> visibleCategories(Authentication user);
 
     /**
-     * Auditul accesului reușit (doar {@code CONNECTION_DOC}); {@code user} e {@code null} la link semnat. Dacă auditul
-     * nu se poate scrie, accesul se refuză (503).
+     * Audit of a successful access ({@code CONNECTION_DOC} only); {@code user} is {@code null} for signed links. If the
+     * audit row cannot be written, access is denied (503).
      */
     default void audit(Authentication user, FileRecord file, String action) {
         auditAs(user == null ? "download-link" : user.getName(), file, action);
     }
 
-    /** La fel, cu actorul dat direct (de exemplu utilizatorul care a cerut linkul semnat). */
+    /** Same, with the actor given explicitly (e.g. the user who requested the signed link). */
     void auditAs(String actor, FileRecord file, String action);
 
-    /** O operație pe un document a eșuat după ce accesul a fost permis ({@code result="error"}). */
+    /** An operation on a document failed after access was granted ({@code result="error"}). */
     default void failed(Category category, String action) {
     }
 
-    /** Pasul de decriptare: octeții stocați → conținutul în clar, în streaming (doar pentru {@code encrypted}). */
+    /** Decryption step: stored bytes -> plaintext, streamed (only for {@code encrypted} files). */
     InputStream decrypt(FileRecord file, InputStream stored);
 
-    /** Numele original în clar (la documente e criptat în baza de date); apelat doar după verificarea rolului. */
+    /** Plaintext original name (encrypted in the database for documents); call only after the role check. */
     FileRecord reveal(FileRecord file);
 }

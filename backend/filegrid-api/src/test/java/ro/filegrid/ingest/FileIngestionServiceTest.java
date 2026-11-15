@@ -107,7 +107,7 @@ class FileIngestionServiceTest {
         FileRecord stored = service.upload(upload(Category.CONNECTION_DOC, content.length));
 
         assertThat(stored.encrypted()).isTrue();
-        assertThat(stored.originalName()).isEqualTo("avarie.csv"); // răspunsul poartă numele în clar
+        assertThat(stored.originalName()).isEqualTo("avarie.csv"); // the response carries the plaintext name
         assertThat(stored.sha256Plain()).isEqualTo(Sha256.of(content));
         assertThat(stored.sha256()).isNotEqualTo(stored.sha256Plain());
         assertThat(stored.size()).isEqualTo(content.length);

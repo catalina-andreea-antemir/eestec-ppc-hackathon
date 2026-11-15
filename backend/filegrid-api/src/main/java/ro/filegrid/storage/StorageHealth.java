@@ -6,14 +6,14 @@ import java.util.Objects;
 import ro.filegrid.domain.StorageType;
 
 /**
- * Rezultatul {@link StorageAdapter#health()}: alimentează {@code filegrid_storage_up}, {@code GET /admin/health} și
- * alegerea storage-ului de rezervă.
+ * Result of {@link StorageAdapter#health()}: feeds {@code filegrid_storage_up}, {@code GET /admin/health} and the
+ * fallback selection.
  *
- * @param storage storage-ul verificat
- * @param up      {@code true} dacă operația minimă a reușit în timp
- * @param latency durata verificării
- * @param detail  scurt motiv la {@code down} (de exemplu „Database 'FileGridStorage' is offline”); fără parole sau
- *                chei; {@code null} la {@code up}
+ * @param storage the checked storage
+ * @param up      {@code true} if the minimal operation succeeded in time
+ * @param latency duration of the check
+ * @param detail  short reason when {@code down} (e.g. "Database 'FileGridStorage' is offline"); no passwords or
+ *                keys; {@code null} when {@code up}
  */
 public record StorageHealth(StorageType storage, boolean up, Duration latency, String detail) {
 

@@ -6,7 +6,7 @@ import { Role } from '../auth/auth.models';
 import { FilePage, VerifyResult } from '../files/files.models';
 import { handleFileRoutes } from './mock-files';
 
-/** Rulează o cerere prin mock și întoarce corpul răspunsului sau eroarea din contract. */
+/** Runs a request through the mock and returns the response body or the contract error. */
 async function call<T>(role: Role, method: string, path: string, params: Record<string, string> = {}): Promise<T> {
   const req = new HttpRequest(method as 'GET', `/api/v1${path}`, null, { params: new HttpParams({ fromObject: params }) });
   const events$ = handleFileRoutes(req, path, { sub: 'test', role }) as Observable<HttpEvent<T>>;

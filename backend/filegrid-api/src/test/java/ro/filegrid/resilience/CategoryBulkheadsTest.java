@@ -31,7 +31,7 @@ import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
-/** Bulkhead-urile pe categorii (C9): fail-fast, eliberare, redimensionare la reload, izolare, contor. */
+/** Per-category bulkheads (C9): fail-fast, release, resize on reload, isolation, counter. */
 class CategoryBulkheadsTest {
 
     @TempDir
@@ -47,7 +47,7 @@ class CategoryBulkheadsTest {
                 Files.write(dir.resolve(name + ".yml"), in.readAllBytes());
             }
         }
-        engine = new PolicyEngine(dir.toString(), Duration.ofHours(1)); // recitirea o cer explicit
+        engine = new PolicyEngine(dir.toString(), Duration.ofHours(1)); // reloads are requested explicitly
         bulkheads = new CategoryBulkheads(engine, meters);
     }
 
@@ -101,7 +101,7 @@ class CategoryBulkheadsTest {
             }
             assertThatThrownBy(() -> recording.acquire(Category.OUTAGE_RECORD)).isInstanceOf(ApiException.class);
             held.forEach(Bulkhead.Permit::close);
-            recording.acquire(Category.OUTAGE_RECORD).close(); // o cerere servită nu scrie rânduri aici
+            recording.acquire(Category.OUTAGE_RECORD).close(); // a served request writes no rows here
         } finally {
             RequestContextHolder.resetRequestAttributes();
             recorder.shutdown();
@@ -125,7 +125,7 @@ class CategoryBulkheadsTest {
 
         Bulkhead.Permit permit = bulkheads.acquire(Category.INSPECTION_VIDEO);
         permit.close();
-        permit.close(); // stream închis de două ori (terminat + client căzut) nu eliberează de două ori
+        permit.close(); // a stream closed twice (finished + dropped client) does not release twice
         assertThat(bulkheads.bulkhead(Category.INSPECTION_VIDEO).inUse()).isZero();
     }
 
@@ -138,16 +138,16 @@ class CategoryBulkheadsTest {
         }
         assertThatThrownBy(() -> bulkheads.acquire(Category.OUTAGE_RECORD)).isInstanceOf(ApiException.class);
 
-        setOutageLimit(5); // creștere: două locuri noi, imediat
+        setOutageLimit(5); // growth: two new slots, immediately
         held.add(bulkheads.acquire(Category.OUTAGE_RECORD));
         held.add(bulkheads.acquire(Category.OUTAGE_RECORD));
         assertThatThrownBy(() -> bulkheads.acquire(Category.OUTAGE_RECORD)).isInstanceOf(ApiException.class);
 
-        setOutageLimit(2); // scădere sub numărul în uz: cele 5 în curs rămân, nu intră altele până scade sub 2
+        setOutageLimit(2); // shrinking below the in-use count: the 5 in flight stay, none get in until usage drops below 2
         assertThat(bulkheads.bulkhead(Category.OUTAGE_RECORD).inUse()).isEqualTo(5);
-        held.subList(0, 3).forEach(Bulkhead.Permit::close); // rămân 2 în uz = limita
+        held.subList(0, 3).forEach(Bulkhead.Permit::close); // 2 still in use = the limit
         assertThatThrownBy(() -> bulkheads.acquire(Category.OUTAGE_RECORD)).isInstanceOf(ApiException.class);
-        held.get(3).close(); // 1 în uz < 2
+        held.get(3).close(); // 1 in use < 2
         Bulkhead.Permit again = bulkheads.acquire(Category.OUTAGE_RECORD);
         assertThat(bulkheads.bulkhead(Category.OUTAGE_RECORD).inUse()).isEqualTo(2);
         again.close();
@@ -165,7 +165,7 @@ class CategoryBulkheadsTest {
         assertThatThrownBy(() -> bulkheads.acquire(Category.CONNECTION_DOC)).isInstanceOf(ApiException.class);
         for (Category other : new Category[] {Category.METER_READING, Category.OUTAGE_RECORD,
                 Category.INSPECTION_VIDEO}) {
-            bulkheads.acquire(other).close(); // celelalte categorii nu sunt afectate
+            bulkheads.acquire(other).close(); // other categories are unaffected
         }
         held.forEach(Bulkhead.Permit::close);
     }
@@ -184,7 +184,7 @@ class CategoryBulkheadsTest {
                         peak.accumulateAndGet(inside.incrementAndGet(), Math::max);
                         inside.decrementAndGet();
                     } catch (ApiException expected) {
-                        // saturat
+                        // saturated
                     }
                 }
             }));

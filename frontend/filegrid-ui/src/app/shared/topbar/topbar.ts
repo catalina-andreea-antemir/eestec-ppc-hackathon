@@ -8,7 +8,7 @@ import { canViewStats } from '../../core/stats/stats.models';
 import { CATEGORY_RULES, MANUAL_CATEGORIES } from '../../core/upload/upload.models';
 import { Logo } from '../logo/logo';
 
-/** Bara de sus, comună paginilor protejate: navigare, utilizator, ieșire. */
+/** Top bar shared by the protected pages: navigation, user, sign out. */
 @Component({
   selector: 'app-topbar',
   imports: [RouterLink, RouterLinkActive, Logo],
@@ -19,15 +19,15 @@ export class Topbar {
   protected readonly auth = inject(AuthService);
   protected readonly roleLabel = roleLabel;
 
-  /** Link-ul Upload apare doar pentru rolurile care pot încărca ceva (matricea 4.4). */
+  /** The upload link only shows for roles that can upload something (matrix 4.4). */
   protected readonly canUpload = computed(() => {
     this.auth.user();
     return MANUAL_CATEGORIES.some((c) => this.auth.hasRole(...CATEGORY_RULES[c].roles));
   });
 
-  /** Link-ul Căutare apare doar pentru rolurile care pot căuta ceva (METER_SERVICE nu poate). */
+  /** The search link only shows for roles that can search something (METER_SERVICE cannot). */
   protected readonly canSearch = computed(() => searchableCategories(this.auth.user()?.role).length > 0);
 
-  /** Link-ul Statistici apare doar pentru DISPATCH și ADMIN (x-roles pe /stats/*). */
+  /** The statistics link only shows for DISPATCH and ADMIN (x-roles on /stats/*). */
   protected readonly canViewStats = computed(() => canViewStats(this.auth.user()?.role));
 }

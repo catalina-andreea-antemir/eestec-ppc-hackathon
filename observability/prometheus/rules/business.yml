@@ -3,8 +3,8 @@ groups:
     interval: 5s
     rules:
       - alert: FileGridUnconfirmedMeterReadings
-        # Umple golurile din fereastra cu zero si verifica si marginea de acum 2 minute,
-        # ca simulatorul abia pornit sa nu declanseze alerta pentru citiri in curs.
+        # Fill gaps in the window with zero and also check the edge 2 minutes back,
+        # so a freshly started simulator does not fire the alert for readings still in flight.
         expr: >-
           (max(filegrid_meter_unconfirmed) > 0)
           or (sum(increase(sim_readings_abandoned_total[5m])) > 0)
@@ -28,8 +28,8 @@ groups:
           summary: "Latenta p95 pe inregistrarile de avarie depaseste 2 s"
 
       - alert: FileGridVideoTransferFailureRate
-        # C11 poate furniza doar numaratorul. Raportul se evalueaza cand exista si
-        # date pentru transferurile reusite, din instrumentarea C12.
+        # C11 only provides the numerator. The ratio is evaluated once data for
+        # successful transfers exists too (C12 instrumentation).
         expr: >-
           sum(increase(filegrid_transfers_failed_total{category="INSPECTION_VIDEO"}[5m]))
           / clamp_min(

@@ -1,5 +1,5 @@
 #!/bin/sh
-# Creeaza (sau actualizeaza) utilizatorul FTP din variabilele de mediu si porneste vsftpd in prim-plan.
+# Creates (or updates) the FTP user from the environment and runs vsftpd in the foreground.
 set -eu
 
 : "${FTP_USER:?Lipseste FTP_USER}"
@@ -7,7 +7,7 @@ set -eu
 
 case "$FTP_USER" in
     *[!a-z0-9_-]* | "" | -*)
-        echo "FTP_USER poate contine doar litere mici, cifre, '_' si '-'." >&2
+        echo "FTP_USER may only contain lowercase letters, digits, '_' and '-'." >&2
         exit 1
         ;;
 esac
@@ -15,24 +15,24 @@ esac
 if ! id "$FTP_USER" >/dev/null 2>&1; then
     adduser -D -H -h /srv/ftp -s /sbin/nologin -u 1000 "$FTP_USER"
 fi
-# chpasswd citeste din stdin, deci parola nu apare in lista de procese.
+# chpasswd reads from stdin, so the password never shows up in the process list.
 printf '%s:%s\n' "$FTP_USER" "$FTP_PASSWORD" | chpasswd >/dev/null 2>&1
 printf '%s\n' "$FTP_USER" >/etc/vsftpd/user_list
 
-# vsftpd cere ca shell-ul utilizatorului sa fie in /etc/shells.
+# vsftpd requires the user's shell to be listed in /etc/shells.
 grep -qx /sbin/nologin /etc/shells || echo /sbin/nologin >>/etc/shells
 
 chown "$FTP_USER:$FTP_USER" /srv/ftp
 chmod 755 /srv/ftp
 
-# Doar pentru dezvoltare: FTP_PASV_ADDRESS (setat in docker-compose.dev.yml) face vsftpd sa anunte aceasta adresa in
-# raspunsul PASV, ca serverul sa poata fi folosit de pe host prin porturile publicate pe 127.0.0.1. Fara variabila
-# (configuratia implicita) nu se schimba nimic: se foloseste direct vsftpd.conf din imagine.
+# Development only: FTP_PASV_ADDRESS (set in docker-compose.dev.yml) makes vsftpd advertise this address in the
+# PASV reply, so the server is usable from the host through the ports published on 127.0.0.1. Without the
+# variable nothing changes and the image's vsftpd.conf is used as is.
 CONF=/etc/vsftpd/vsftpd.conf
 if [ -n "${FTP_PASV_ADDRESS:-}" ]; then
     case "$FTP_PASV_ADDRESS" in
         *[!0-9.]* | "" | .* | *.)
-            echo "FTP_PASV_ADDRESS trebuie sa fie o adresa IPv4." >&2
+            echo "FTP_PASV_ADDRESS must be an IPv4 address." >&2
             exit 1
             ;;
     esac

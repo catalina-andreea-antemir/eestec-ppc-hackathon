@@ -29,10 +29,10 @@ import ro.filegrid.storage.StorageUnavailableException;
 import ro.filegrid.storage.db.OperationMetric;
 
 /**
- * Punctul unic de instrumentare a operațiilor pe storage (C12, planul 4.3): fiecare apel de storage din servicii trece
- * prin {@link #time}, care înregistrează timerul cu histogramă {@code filegrid_operation_seconds}, contoarele de erori
- * și de transferuri eșuate și, dacă există recorder, rândul pentru {@code operation_metrics} (scenariul vine din
- * {@code X-Scenario}). Etichetele au exact valorile din {@code x-metrics.labelValues} (openapi.yaml).
+ * Single instrumentation point for storage operations (C12): every storage call in the services goes through
+ * {@link #time}, which records the {@code filegrid_operation_seconds} histogram timer, the error and failed-transfer
+ * counters and, when a recorder exists, the {@code operation_metrics} row (scenario taken from {@code X-Scenario}).
+ * Label values match {@code x-metrics.labelValues} in openapi.yaml exactly.
  */
 @Component
 public class OperationMetrics {
@@ -43,7 +43,7 @@ public class OperationMetrics {
     public static final String DOWNLOAD = "download";
     public static final String VERIFY = "verify";
     public static final String DELETE = "delete";
-    /** Operația rândurilor scrise la respingerile de bulkhead; statisticile de latență și erori o exclud. */
+    /** Operation name of rows written for bulkhead rejections; latency and error statistics exclude it. */
     public static final String BULKHEAD_REJECTED = "rejected";
 
     public static final String OK = "ok";
@@ -61,7 +61,7 @@ public class OperationMetrics {
         this.recorder = recorder;
     }
 
-    /** Fără recorder și cu un registru propriu (teste unitare ale serviciilor). */
+    /** No recorder and a private registry (service unit tests). */
     public static OperationMetrics noop() {
         return new OperationMetrics(new SimpleMeterRegistry(), null);
     }
@@ -92,9 +92,9 @@ public class OperationMetrics {
     }
 
     /**
-     * Rândul {@code operation_metrics} pentru o cerere respinsă de bulkhead ({@link #BULKHEAD_REJECTED}, ok=false,
-     * latență 0, storage-ul principal al categoriei). Contorul Micrometer îl incrementează {@code CategoryBulkheads};
-     * aici nu se înregistrează timer, ca latențele operațiilor reale să rămână neatinse.
+     * The {@code operation_metrics} row for a request rejected by the bulkhead ({@link #BULKHEAD_REJECTED}, ok=false,
+     * latency 0, the category's primary storage). {@code CategoryBulkheads} increments the Micrometer counter; no timer is
+     * recorded here, so latencies of real operations stay untouched.
      */
     public void bulkheadRejected(Category category, StorageType primaryStorage) {
         OperationRecorder rec = recorder == null ? null : recorder.getIfAvailable();
@@ -131,19 +131,19 @@ public class OperationMetrics {
         OperationRecorder rec = recorder == null ? null : recorder.getIfAvailable();
         if (rec != null) {
             rec.record(new OperationMetric(category.name(), storage.name(), operation,
-                    BigDecimal.valueOf(nanos).movePointLeft(6), error == null, // 4xx ale clientului nu sunt eșecuri de storage
+                    BigDecimal.valueOf(nanos).movePointLeft(6), error == null, // client 4xx are not storage failures
                     sizeBytes != null && sizeBytes > 0 ? sizeBytes : null, "live", currentScenario()));
         }
     }
 
-    /** {@code rejected} pentru circuit deschis și 4xx ale clientului (error null); {@code error} pentru restul. */
+    /** {@code rejected} for an open circuit and client 4xx (error null); {@code error} for everything else. */
     static String outcomeOf(String error) {
         return error == null || "circuit_open".equals(error) ? REJECTED : ERROR;
     }
 
     /**
-     * Valoarea etichetei {@code error}. {@code null} înseamnă un 4xx al clientului (validare, Range invalid), care nu
-     * e o eroare de storage și nu se numără în contoare.
+     * Value of the {@code error} label. {@code null} means a client 4xx (validation, invalid Range), which is not a
+     * storage error and is not counted.
      */
     static String classify(Throwable e) {
         if (e instanceof StorageCircuitOpenException) {

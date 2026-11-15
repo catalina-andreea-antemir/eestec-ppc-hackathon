@@ -1,8 +1,8 @@
 import { Component, input } from '@angular/core';
 
 /**
- * Sigla FileGrid: o grilă de fișiere (2 × 2) în care o celulă e un fulger, adică rețeaua electrică.
- * Desenată în SVG, folosește culorile temei (merge și pe fundal deschis, și pe întunecat).
+ * FileGrid logo: a 2 x 2 grid of files where one cell is a lightning bolt, i.e. the power grid.
+ * Drawn in SVG with the theme colours (works on both light and dark backgrounds).
  */
 @Component({
   selector: 'app-logo',

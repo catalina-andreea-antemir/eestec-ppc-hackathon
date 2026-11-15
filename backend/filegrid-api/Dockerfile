@@ -1,13 +1,13 @@
 # syntax=docker/dockerfile:1
-# Imaginea api (C3, planul v4 4.1 "Imagini si repo curat"): build Maven + JDK 21 in container, rulare pe JRE 21.
-# Contextul de build este RADACINA repo-ului (ca sa copieze db/migrations):
+# API image: Maven + JDK 21 build stage, JRE 21 runtime.
+# The build context is the REPO ROOT so db/migrations can be copied:
 #   docker build -f backend/filegrid-api/Dockerfile .
-# Ce intra in context e filtrat de Dockerfile.dockerignore (langa acest fisier).
+# The context is filtered by Dockerfile.dockerignore (next to this file).
 
 FROM maven:3.9.16-eclipse-temurin-21-noble AS build
 WORKDIR /src/backend/filegrid-api
 COPY backend/filegrid-api/pom.xml ./
-# Cache BuildKit pentru ~/.m2: dependentele se descarca o singura data, si dupa schimbari in pom.xml.
+# BuildKit cache for ~/.m2: dependencies are downloaded once and survive pom.xml changes.
 RUN --mount=type=cache,target=/root/.m2 mvn -B -q -ntp dependency:go-offline || true
 COPY backend/filegrid-api/src ./src
 COPY db/analytics-queries /src/db/analytics-queries
@@ -19,10 +19,10 @@ RUN groupadd --system --gid 10001 filegrid \
     && useradd --system --uid 10001 --gid filegrid --home-dir /app --shell /usr/sbin/nologin filegrid
 WORKDIR /app
 COPY --from=build /tmp/app.jar /app/app.jar
-# Flyway (profilul db) gestioneaza doar FileGridMeta, din db/migrations copiat in imagine.
+# Flyway (db profile) only manages FileGridMeta, from the migrations baked into the image.
 COPY db/migrations /app/db/migrations
-# Politica per categorie (4.2). docker-compose monteaza directorul din repo peste el, ca schimbarile din YAML sa fie
-# recitite fara restart (PolicyEngine); fara montare se folosesc fisierele din imagine.
+# Per-category policies (4.2). docker-compose mounts the repo directory over this one so YAML edits are
+# picked up without a restart (PolicyEngine); without the mount the baked-in files are used.
 COPY backend/filegrid-api/src/main/resources/policies /app/policies
 ENV FLYWAY_LOCATIONS=filesystem:/app/db/migrations \
     FILEGRID_POLICY_DIR=/app/policies \
@@ -30,5 +30,5 @@ ENV FLYWAY_LOCATIONS=filesystem:/app/db/migrations \
     JAVA_OPTS=""
 USER filegrid
 EXPOSE 8080
-# exec: java devine PID 1 si primeste SIGTERM la `docker compose stop`.
+# exec: java becomes PID 1 and receives SIGTERM on `docker compose stop`.
 ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar /app/app.jar"]

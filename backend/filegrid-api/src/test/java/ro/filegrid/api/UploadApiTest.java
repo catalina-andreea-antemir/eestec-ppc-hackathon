@@ -38,7 +38,7 @@ import ro.filegrid.upload.ChunkAck;
 import ro.filegrid.upload.UploadService;
 import ro.filegrid.upload.UploadStatus;
 
-/** Contractul HTTP al upload-ului în bucăți (coduri, forme, corp binar); serviciul e simulat. */
+/** HTTP contract of the chunked upload (codes, shapes, binary body); the service is mocked. */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class UploadApiTest {
 

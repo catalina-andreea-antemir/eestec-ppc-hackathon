@@ -3,18 +3,18 @@ import { Params } from '@angular/router';
 import { ALL_CATEGORIES, Category, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, SearchFilters } from './files.models';
 
 /**
- * Funcții pure pentru căutare: filtre ⇄ parametrii lui GET /files ⇄ parametrii din URL-ul paginii.
- * Sunt separate de componentă ca să se poată testa ușor.
+ * Pure search helpers: filters <-> GET /files parameters <-> page URL parameters.
+ * Kept out of the component so they are easy to test.
  */
 
-/** Parametrii pentru GET /files; lipsesc cei goi, ca serverul să aplice valorile implicite. */
+/** GET /files parameters; empty ones are omitted so the server applies its defaults. */
 export function toApiParams(filters: SearchFilters): Record<string, string> {
   const params: Record<string, string> = {};
   if (filters.category) {
     params['category'] = filters.category;
   }
   const q = filters.q.trim();
-  // La documente de racordare numele e criptat pe server, deci q nu are efect; nu-l mai trimitem.
+  // Connection document names are encrypted on the server, so q has no effect; do not send it.
   if (q && filters.category !== 'CONNECTION_DOC') {
     params['q'] = q.slice(0, 200);
   }
@@ -30,8 +30,8 @@ export function toApiParams(filters: SearchFilters): Record<string, string> {
 }
 
 /**
- * Ziua aleasă în `<input type="date">` (YYYY-MM-DD, ora României a browserului) → momentul
- * de început al zilei, în UTC. `from` e inclusiv.
+ * The day picked in `<input type="date">` (YYYY-MM-DD, browser local time) -> the start of that day
+ * in UTC. `from` is inclusive.
  */
 export function dayStartIso(day: string): string | null {
   const date = parseLocalDay(day);
@@ -39,8 +39,8 @@ export function dayStartIso(day: string): string | null {
 }
 
 /**
- * Ziua „până la” e inclusivă în interfață, dar `to` e exclusiv în contract:
- * trimitem începutul zilei următoare.
+ * The "to" day is inclusive in the UI, but `to` is exclusive in the contract:
+ * send the start of the next day.
  */
 export function dayEndExclusiveIso(day: string): string | null {
   const date = parseLocalDay(day);
@@ -51,7 +51,7 @@ export function dayEndExclusiveIso(day: string): string | null {
   return toIsoSeconds(date);
 }
 
-/** Inversul lui dayStartIso: momentul UTC → ziua locală, pentru câmpul de dată. */
+/** Inverse of dayStartIso: UTC instant -> local day, for the date input. */
 export function isoToDay(iso: string | null): string {
   if (!iso) {
     return '';
@@ -64,7 +64,7 @@ export function isoToDay(iso: string | null): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
-/** Inversul lui dayEndExclusiveIso. */
+/** Inverse of dayEndExclusiveIso. */
 export function isoToInclusiveDay(iso: string | null): string {
   if (!iso) {
     return '';
@@ -74,7 +74,7 @@ export function isoToInclusiveDay(iso: string | null): string {
   return isoToDay(date.toISOString());
 }
 
-/** Filtrele în URL-ul paginii (/search?category=...&page=2), ca refresh-ul și link-urile să le păstreze. */
+/** Filters in the page URL (/search?category=...&page=2), so refreshes and links keep them. */
 export function toQueryParams(filters: SearchFilters): Params {
   return {
     category: filters.category ?? null,
@@ -86,7 +86,7 @@ export function toQueryParams(filters: SearchFilters): Params {
   };
 }
 
-/** Citește filtrele din URL; valorile greșite sunt ignorate (se folosesc cele implicite). */
+/** Reads the filters from the URL; invalid values are ignored (defaults are used). */
 export function fromQueryParams(params: Params): SearchFilters {
   const category = ALL_CATEGORIES.includes(params['category']) ? (params['category'] as Category) : null;
   return {
@@ -110,7 +110,7 @@ export function clampSize(size: number): number {
   return Math.min(size, MAX_PAGE_SIZE);
 }
 
-/** „Afișez 21–40 din 45” pentru pagina curentă. */
+/** "21-40 of 45" for the current page. */
 export function rangeLabel(page: number, size: number, totalItems: number): string {
   if (totalItems === 0) {
     return '0 rezultate';

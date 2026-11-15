@@ -6,10 +6,10 @@ import { environment } from '../../../environments/environment';
 import { abortError } from './retry';
 import { ChunkAck, FileMetadata, OutageDetails, UploadInit, UploadSession } from './upload.models';
 
-/** `loadedBytes` = octeți trimiși din corpul cererii; `totalBytes` = mărimea corpului, dacă browserul o știe. */
+/** `loadedBytes` = bytes sent from the request body; `totalBytes` = body size, if the browser knows it. */
 export type ProgressFn = (loadedBytes: number, totalBytes?: number) => void;
 
-/** Operațiile de upload în bucăți, ca promisiuni care se pot opri cu un AbortSignal. */
+/** Chunked upload operations, as promises that can be stopped with an AbortSignal. */
 export interface ChunkTransport {
   initUpload(init: UploadInit, signal?: AbortSignal): Promise<UploadSession>;
   getUpload(uploadId: string, signal?: AbortSignal): Promise<UploadSession>;
@@ -19,15 +19,15 @@ export interface ChunkTransport {
 }
 
 /**
- * Apelurile HTTP pentru upload (contractul: POST /files și /uploads/*).
- * Token-ul și reînnoirea lui le pune authInterceptor.
+ * HTTP calls for uploads (contract: POST /files and /uploads/*).
+ * authInterceptor adds the token and handles its refresh.
  */
 @Injectable({ providedIn: 'root' })
 export class UploadApi implements ChunkTransport {
   private readonly http = inject(HttpClient);
   private readonly base = environment.apiBaseUrl;
 
-  /** POST /files (multipart): OUTAGE_RECORD sau CONNECTION_DOC, până la 20 MB. */
+  /** POST /files (multipart): OUTAGE_RECORD or CONNECTION_DOC, up to 20 MB. */
   uploadFile(
     file: File,
     category: 'OUTAGE_RECORD' | 'CONNECTION_DOC',
@@ -45,8 +45,8 @@ export class UploadApi implements ChunkTransport {
         form.append('stationId', outage.stationId);
       }
     }
-    // Corpul multipart e mai mare decât fișierul (câmpuri, separatori), deci progresul
-    // se raportează proporțional cu mărimea fișierului, ca să nu treacă de 100%.
+    // The multipart body is larger than the file (fields, boundaries), so progress is
+    // reported relative to the file size so it never goes past 100%.
     const fileProgress: ProgressFn | undefined = onProgress
       ? (loaded, total) => onProgress(scaleToFile(loaded, total, file.size))
       : undefined;
@@ -61,7 +61,7 @@ export class UploadApi implements ChunkTransport {
     return send(this.http.request(new HttpRequest('GET', this.uploadUrl(uploadId))), signal);
   }
 
-  /** PUT /uploads/{id}/chunks/{n}: corpul e bucata (Blob din File.slice), trimisă direct, fără copiere în memorie. */
+  /** PUT /uploads/{id}/chunks/{n}: the body is the chunk (Blob from File.slice), sent directly, no in-memory copy. */
   putChunk(uploadId: string, n: number, body: Blob, signal?: AbortSignal, onProgress?: ProgressFn): Promise<ChunkAck> {
     const req = new HttpRequest<Blob>('PUT', `${this.uploadUrl(uploadId)}/chunks/${n}`, body, {
       reportProgress: true,
@@ -83,7 +83,7 @@ export class UploadApi implements ChunkTransport {
   }
 }
 
-/** Octeții din corpul cererii, transformați în octeți din fișier (niciodată peste mărimea lui). */
+/** Request body bytes translated into file bytes (never above the file size). */
 export function scaleToFile(loaded: number, total: number | undefined, fileSize: number): number {
   if (!total || total <= 0) {
     return Math.min(loaded, fileSize);
@@ -92,8 +92,8 @@ export function scaleToFile(loaded: number, total: number | undefined, fileSize:
 }
 
 /**
- * Transformă cererea HTTP într-o promisiune: raportează progresul upload-ului și,
- * la abort, anulează cererea (unsubscribe oprește XHR-ul).
+ * Turns the HTTP request into a promise: reports upload progress and,
+ * on abort, cancels the request (unsubscribe stops the XHR).
  */
 function send<T>(events$: Observable<HttpEvent<T>>, signal?: AbortSignal, onProgress?: ProgressFn): Promise<T> {
   return new Promise<T>((resolve, reject) => {

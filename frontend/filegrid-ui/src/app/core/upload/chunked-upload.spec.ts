@@ -6,7 +6,7 @@ import { RetryOptions, RetryTimeoutError } from './retry';
 import { ChunkTransport } from './upload-api';
 import { ChunkAck, FileMetadata, UploadInit, UploadSession } from './upload.models';
 
-// ---------- ajutoare ----------
+// ---------- helpers ----------
 
 function apiError(status: number, code: string, extra: Partial<ApiError> = {}, headers: Record<string, string> = {}) {
   const body: ApiError = { status, code, message: code, traceId: 't', ...extra };
@@ -15,7 +15,7 @@ function apiError(status: number, code: string, extra: Partial<ApiError> = {}, h
 
 const networkError = () => new HttpErrorResponse({ status: 0, error: new ProgressEvent('error') });
 
-/** Ceas fals: `sleep` doar avansează timpul și ține minte cât s-a așteptat. */
+/** Fake clock: `sleep` only advances time and records how long was waited. */
 function fakeClock() {
   let now = 0;
   const sleeps: number[] = [];
@@ -25,14 +25,14 @@ function fakeClock() {
       sleeps.push(ms);
       now += ms;
     },
-    random: () => 0.5, // fără variație: backoff exact 1 s, 2 s, 4 s...
+    random: () => 0.5, // no jitter: backoff of exactly 1 s, 2 s, 4 s...
   };
   return { sleeps, retry };
 }
 
 type PutHook = (n: number, attempt: number) => unknown;
 
-/** Server fals, cu regulile din contract (secvențial, idempotent, CHUNK_OUT_OF_ORDER, UPLOAD_INCOMPLETE). */
+/** Fake server following the contract rules (sequential, idempotent, CHUNK_OUT_OF_ORDER, UPLOAD_INCOMPLETE). */
 class FakeServer implements ChunkTransport {
   readonly chunkSize = 10;
   session: UploadSession | null = null;
@@ -89,7 +89,7 @@ class FakeServer implements ChunkTransport {
     s.nextChunk = n + 1;
     s.receivedBytes += body.size;
     if (hook === 'lost-response') {
-      throw networkError(); // scris pe server, dar răspunsul s-a pierdut
+      throw networkError(); // written on the server, but the response was lost
     }
     return { n, size: body.size, sha256: `h${n}`, nextChunk: s.nextChunk, duplicate: false };
   }
@@ -132,10 +132,10 @@ class FakeServer implements ChunkTransport {
   }
 }
 
-/** 35 de octeți → 4 bucăți de 10, 10, 10 și 5. */
+/** 35 bytes -> 4 chunks of 10, 10, 10 and 5. */
 const video = () => new File([new Uint8Array(35)], 'drona.mp4', { type: 'video/mp4' });
 
-// ---------- teste ----------
+// ---------- tests ----------
 
 describe('runChunkedUpload', () => {
   let server: FakeServer;
@@ -200,7 +200,7 @@ describe('runChunkedUpload', () => {
   });
 
   it('la CHUNK_OUT_OF_ORDER continuă de la details.expectedChunk', async () => {
-    // Serverul „pierde” bucata 3 (de exemplu storage-ul a revenit la o stare anterioară).
+    // The server "loses" chunk 3 (e.g. storage rolled back to an earlier state).
     server.onPut = (n, attempt) => {
       if (n === 4 && attempt === 1) {
         server.session!.nextChunk = 3;
@@ -284,7 +284,7 @@ describe('runChunkedUpload', () => {
     const waited = clock.sleeps.reduce((a, b) => a + b, 0);
     expect(waited).toBeLessThanOrEqual(120_000);
     expect(waited).toBeGreaterThan(100_000);
-    // Sesiunea rămâne pe server, deci se poate relua.
+    // The session stays on the server, so it can be resumed.
     expect(server.session!.status).toBe('IN_PROGRESS');
   });
 

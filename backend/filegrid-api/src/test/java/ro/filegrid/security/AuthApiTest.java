@@ -29,7 +29,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import ro.filegrid.TestSecrets;
 
-/** Login minim (C4) cap-coadă, prin HTTP: contractul {@code /auth/login}, {@code /auth/refresh}, 401 și X-Trace-Id. */
+/** Minimal login (C4) end to end over HTTP: the {@code /auth/login}, {@code /auth/refresh} contract, 401 and X-Trace-Id. */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class AuthApiTest {
 
@@ -176,7 +176,7 @@ class AuthApiTest {
         assertThat(r.getStatusCode()).isEqualTo(HttpStatus.OK);
     }
 
-    // --- utilitare -------------------------------------------------------------------------------------------
+    // --- helpers ---------------------------------------------------------------------------------------------
 
     private ResponseEntity<Map<String, Object>> login(String username, String password) {
         return post("/api/v1/auth/login", Map.of("username", username, "password", password), null);

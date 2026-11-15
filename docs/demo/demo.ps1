@@ -1,17 +1,17 @@
 <#
 .SYNOPSIS
-  Comenzile scurte pentru demo-ul live F11 (docs/demo/demo-script.md). Fiecare pas e independent.
+  Short commands for the live demo (docs/demo/demo-script.md). Each step is independent.
 .DESCRIPTION
-  Refoloseste biblioteca testelor de haos (tests/chaos/lib/chaos.ps1): login cu parolele din .env (fara afisare),
-  curl.exe cu -k, SQL ca sa in containerul mssql (doar SELECT aici). Datele create au prefixul RO-DEMO / demo-.
+  Reuses the chaos test library (tests/chaos/lib/chaos.ps1): login with the .env passwords (never printed),
+  curl.exe with -k, SQL as sa inside the mssql container (SELECT only here). Created data is prefixed RO-DEMO / demo-.
 .EXAMPLE
-  .\docs\demo\demo.ps1 duplicat                       # pas 1: lot nou 201, acelasi lot 200 duplicate:true
+  .\docs\demo\demo.ps1 duplicat                       # step 1: new batch 201, same batch 200 duplicate:true
   .\docs\demo\demo.ps1 criptare -File .\sample-data\connection-docs\cerere-racordare-fictiv-001.pdf
-  .\docs\demo\demo.ps1 acces-interzis                 # pas 2: 403 + asteapta alerta 4 in alert-webhook
-  .\docs\demo\demo.ps1 advisor                        # pas 6: recomandarile storage-advisor
-  .\docs\demo\demo.ps1 advisor -RunBenchmark          # ruleaza intai benchmark-ul (sincron, 1-3 minute)
-  .\docs\demo\demo.ps1 trace -TraceId <X-Trace-Id>    # liniile de log din Loki pentru un trace
-  .\docs\demo\demo.ps1 retea-start | retea-taie | retea-reia | retea-stop   # pas 5, toxiproxy pe https://localhost:8443
+  .\docs\demo\demo.ps1 acces-interzis                 # step 2: 403 + waits for alert 4 in alert-webhook
+  .\docs\demo\demo.ps1 advisor                        # step 6: storage-advisor recommendations
+  .\docs\demo\demo.ps1 advisor -RunBenchmark          # runs the benchmark first (synchronous, 1-3 minutes)
+  .\docs\demo\demo.ps1 trace -TraceId <X-Trace-Id>    # Loki log lines for one trace
+  .\docs\demo\demo.ps1 retea-start | retea-taie | retea-reia | retea-stop   # step 5, toxiproxy on https://localhost:8443
 #>
 param(
   [Parameter(Mandatory = $true, Position = 0)]
@@ -20,7 +20,7 @@ param(
   [string]$File,
   [string]$TraceId,
   [switch]$RunBenchmark,
-  # Limita de banda pentru upload prin toxiproxy, KB/s (0 = fara limita).
+  # Upload bandwidth cap through toxiproxy, KB/s (0 = unlimited).
   [int]$RateKBps = 20480
 )
 
@@ -41,56 +41,56 @@ function Get-Hex([byte[]]$Bytes, [int]$Count = 16) {
 try {
   switch ($Pas) {
 
-    # ---- Pas 1: idempotenta loturilor de citiri ---------------------------------------------------------------------
+    # ---- Step 1: reading batch idempotency -------------------------------------------------------------------------
     'duplicat' {
       $meter = 'RO-MUN-DEMO' + (Get-Date -Format 'HHmmss')
       $day = [datetime]::SpecifyKind((Get-Date).ToUniversalTime().Date.AddDays(-1), 'Utc')
       $b = New-MeterBatch $meter $day 96 'Muntenia'
-      Write-Host "contor $meter, 96 citiri (o zi la 15 min), Idempotency-Key: $($b.Key)" -ForegroundColor Cyan
+      Write-Host "meter $meter, 96 readings (one day at 15 min), Idempotency-Key: $($b.Key)" -ForegroundColor Cyan
       $r1 = Send-MeterBatch $b
-      Show-Response 'POST /meter-readings (prima trimitere)' $r1
+      Show-Response 'POST /meter-readings (first send)' $r1
       $r2 = Send-MeterBatch $b
-      Show-Response 'POST /meter-readings (retrimis, aceeasi cheie)' $r2
+      Show-Response 'POST /meter-readings (resent, same key)' $r2
       $same = $r1.Json.fileId -and ($r1.Json.fileId -eq $r2.Json.fileId)
-      Write-Host "acelasi fileId: $same" -ForegroundColor $(if ($same) { 'Green' } else { 'Red' })
+      Write-Host "same fileId: $same" -ForegroundColor $(if ($same) { 'Green' } else { 'Red' })
       $row = (Invoke-Sql "SELECT COUNT(*), COUNT(DISTINCT reading_ts), COUNT(DISTINCT file_id) FROM dbo.meter_readings WHERE meter_id = '$meter';" 'FileGridMeta' | Select-Object -Last 1).Split(',')
-      Write-Host "FileGridMeta.dbo.meter_readings: $($row[0]) citiri, $($row[1]) momente distincte, $($row[2]) fisier(e)  (asteptat 96 / 96 / 1)" -ForegroundColor Cyan
+      Write-Host "FileGridMeta.dbo.meter_readings: $($row[0]) readings, $($row[1]) distinct timestamps, $($row[2]) file(s)  (expected 96 / 96 / 1)" -ForegroundColor Cyan
     }
 
-    # ---- Pas 2: documentul criptat in FileGridStorage, descarcat identic --------------------------------------------
+    # ---- Step 2: encrypted document in FileGridStorage, downloaded byte-identical ----------------------------------
     'criptare' {
-      if (-not $File -or -not (Test-Path $File)) { throw 'Da fisierul incarcat din UI: -File .\sample-data\connection-docs\<nume>.pdf' }
+      if (-not $File -or -not (Test-Path $File)) { throw 'Pass the file uploaded from the UI: -File .\sample-data\connection-docs\<name>.pdf' }
       $name = Split-Path $File -Leaf
       $local = Get-Sha256 $File
-      # La CONNECTION_DOC numele e criptat, deci `q` nu se aplica: se cauta in documentele din ultimele 2 ore.
+      # CONNECTION_DOC names are encrypted, so `q` does not apply: search documents from the last 2 hours instead.
       $from = (Get-Date).ToUniversalTime().AddHours(-2).ToString('yyyy-MM-ddTHH:mm:ssZ', $Inv)
       $s = Invoke-Api -Path "/files?category=CONNECTION_DOC&size=100&from=$from" -User 'racordari'
       $doc = @($s.Json.items | Where-Object { $_.originalName -eq $name } | Sort-Object createdAt -Descending) | Select-Object -First 1
-      if (-not $doc) { throw "Nu gasesc '$name' in documentele de racordare (l-ai incarcat din UI ca racordari?)" }
+      if (-not $doc) { throw "Cannot find '$name' among the connection documents (was it uploaded from the UI as racordari?)" }
       Write-Host "document $name  id $($doc.id)  storage $($doc.storage)  encrypted $($doc.encrypted)" -ForegroundColor Cyan
-      Write-Host "  sha256 local (original)      $local"
-      Write-Host "  sha256Plain din metadate     $($doc.sha256Plain)"
-      Write-Host "  sha256 stocat (criptat)      $($doc.sha256)"
+      Write-Host "  local sha256 (original)      $local"
+      Write-Host "  sha256Plain from metadata    $($doc.sha256Plain)"
+      Write-Host "  stored sha256 (encrypted)    $($doc.sha256)"
       $meta = (Invoke-Sql "SELECT storage_type, storage_key, encrypted, LEFT(original_filename, 32) FROM dbo.files WHERE id = '$($doc.id)';" 'FileGridMeta' | Select-Object -Last 1).Split(',')
-      Write-Host "FileGridMeta.dbo.files: storage $($meta[0]), encrypted $($meta[2]), original_filename in baza: $($meta[3])... (si numele e criptat)" -ForegroundColor Cyan
+      Write-Host "FileGridMeta.dbo.files: storage $($meta[0]), encrypted $($meta[2]), original_filename in the database: $($meta[3])... (the name is encrypted too)" -ForegroundColor Cyan
       $raw = (Invoke-Sql ("SELECT TOP 1 CONVERT(varchar(34), SUBSTRING(c.chunk_data, 1, 16), 2) FROM dbo.blob_versions v " +
           "JOIN dbo.blob_chunks c ON c.storage_key = v.version_key WHERE v.logical_key = N'$($meta[1])' AND v.published = 1 ORDER BY c.chunk_offset;") 'FileGridStorage' | Select-Object -Last 1)
       $head = [IO.File]::ReadAllBytes((Resolve-Path $File).Path)
-      Write-Host "primii 16 octeti, fisierul original : $(Get-Hex $head)   ($([Text.Encoding]::ASCII.GetString($head, 0, 8)))"
-      Write-Host "primii 16 octeti, FileGridStorage   : $raw   (AES-GCM, nu se vede antetul %PDF)" -ForegroundColor Yellow
+      Write-Host "first 16 bytes, original file   : $(Get-Hex $head)   ($([Text.Encoding]::ASCII.GetString($head, 0, 8)))"
+      Write-Host "first 16 bytes, FileGridStorage : $raw   (AES-GCM, no %PDF header visible)" -ForegroundColor Yellow
       $out = Join-Path $Work "descarcat-$name"
       $d = Invoke-Api -Path "/files/$($doc.id)/download" -User 'racordari' -OutFile $out
       $dl = Get-Sha256 $out
       Write-Host "GET /files/{id}/download (racordari) -> HTTP $($d.Status), X-Content-SHA256 $($d.Headers['X-Content-SHA256'])"
-      Write-Host "sha256 fisier descarcat = original: $($dl -eq $local)" -ForegroundColor $(if ($dl -eq $local) { 'Green' } else { 'Red' })
+      Write-Host "downloaded file sha256 = original: $($dl -eq $local)" -ForegroundColor $(if ($dl -eq $local) { 'Green' } else { 'Red' })
     }
 
-    # ---- Pas 2 (continuare): acces cu rol gresit -> 403 + alerta 4 ---------------------------------------------------
+    # ---- Step 2 (cont.): access with the wrong role -> 403 + alert 4 -----------------------------------------------
     'acces-interzis' {
       $since = (Get-Date).ToUniversalTime()
       $r = Invoke-Api -Path '/files?category=CONNECTION_DOC&size=1' -User 'dispecer'
       Show-Response 'dispecer: GET /files?category=CONNECTION_DOC' $r
-      Write-Host 'astept alerta 4 (FileGridUnexpectedDocumentAccess) in alert-webhook (maxim 90 s)...' -ForegroundColor Cyan
+      Write-Host 'waiting for alert 4 (FileGridUnexpectedDocumentAccess) in alert-webhook (up to 90 s)...' -ForegroundColor Cyan
       $sw = [Diagnostics.Stopwatch]::StartNew()
       $found = $null
       while ($sw.Elapsed.TotalSeconds -lt 90 -and -not $found) {
@@ -98,14 +98,14 @@ try {
         $logs = Invoke-Compose -Arguments @('logs', '--no-color', '-t', '--since', $since.ToString('yyyy-MM-ddTHH:mm:ssZ', $Inv), 'alert-webhook') -Quiet
         $found = $logs | Where-Object { $_ -match 'status=firing' -and $_ -match 'business_alerts=[0-9,]*4' } | Select-Object -First 1
       }
-      if ($found) { Write-Host "dupa $([math]::Round($sw.Elapsed.TotalSeconds)) s: $found" -ForegroundColor Green }
-      else { Write-Host 'nicio notificare noua in 90 s (alerta era deja firing din ultimele 5 minute? vezi docs/demo/demo-script.md)' -ForegroundColor Red }
+      if ($found) { Write-Host "after $([math]::Round($sw.Elapsed.TotalSeconds)) s: $found" -ForegroundColor Green }
+      else { Write-Host 'no new notification within 90 s (was the alert already firing in the last 5 minutes? see docs/demo/demo-script.md)' -ForegroundColor Red }
     }
 
-    # ---- Pas 6: benchmark + storage-advisor -------------------------------------------------------------------------
+    # ---- Step 6: benchmark + storage-advisor -----------------------------------------------------------------------
     'advisor' {
       if ($RunBenchmark) {
-        Write-Host 'POST /admin/benchmark/run (admin, sincron)...' -ForegroundColor Cyan
+        Write-Host 'POST /admin/benchmark/run (admin, synchronous)...' -ForegroundColor Cyan
         $b = Invoke-Api -Method POST -Path '/admin/benchmark/run' -User 'admin' -TimeoutSec 320
         Write-Host "benchmark -> HTTP $($b.Status) $(if ($b.Json.code) { $b.Json.code }) ($([math]::Round($b.Ms / 1000)) s)"
       }
@@ -116,16 +116,16 @@ try {
       Write-Host "interpretation: $($a.Json.interpretation)" -ForegroundColor Cyan
     }
 
-    # ---- Meniu: urmarirea unei operatii in Loki ---------------------------------------------------------------------
+    # ---- Menu: follow one operation in Loki ------------------------------------------------------------------------
     'trace' {
-      if (-not $TraceId) { throw 'Da -TraceId <valoarea header-ului X-Trace-Id>' }
+      if (-not $TraceId) { throw 'Pass -TraceId <value of the X-Trace-Id header>' }
       $q = '{job="filegrid-api"} | json | traceId="' + $TraceId + '"'
-      # Interogarea trece in base64 si printr-un fisier (PowerShell 5.1 strica ghilimelele din argumentele native).
+      # The query goes through base64 and a file (PowerShell 5.1 mangles quotes in native command arguments).
       $b64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($q))
       $out = Invoke-InContainer 'api' ("echo $b64 | base64 -d > /tmp/demo-loki.q && curl -sG http://loki:3100/loki/api/v1/query_range " +
           '--data-urlencode query@/tmp/demo-loki.q --data-urlencode since=1h --data-urlencode limit=20; rm -f /tmp/demo-loki.q')
       $json = ($out -join '') | ConvertFrom-Json
-      if (-not $json.data.result) { Write-Host 'nicio linie in Loki pentru acest trace (cererile reusite fara log nu apar)' -ForegroundColor Yellow }
+      if (-not $json.data.result) { Write-Host 'no Loki lines for this trace (successful requests that log nothing do not show up)' -ForegroundColor Yellow }
       foreach ($st in $json.data.result) {
         foreach ($v in $st.values) {
           $l = $v[1] | ConvertFrom-Json
@@ -134,30 +134,30 @@ try {
       }
     }
 
-    # ---- Pas 5: retea degradata intre browser si nginx (toxiproxy, profil chaos) ------------------------------------
+    # ---- Step 5: degraded network between browser and nginx (toxiproxy, chaos profile) -----------------------------
     'retea-start' {
       [void](Invoke-Compose -Arguments @('--profile', 'chaos', 'up', '-d', 'toxiproxy'))
-      if ((Wait-ServiceHealthy 'toxiproxy' 60) -lt 0) { throw 'toxiproxy nu a devenit healthy' }
+      if ((Wait-ServiceHealthy 'toxiproxy' 60) -lt 0) { throw 'toxiproxy did not become healthy' }
       [void](Invoke-Toxi DELETE '/proxies/nginx')
       $p = Invoke-Toxi POST '/proxies' '{"name":"nginx","listen":"0.0.0.0:8443","upstream":"nginx:443","enabled":true}'
       Write-Host "proxy nginx (127.0.0.1:8443 -> nginx:443): HTTP $($p.Status)"
       if ($RateKBps -gt 0) {
         Add-Toxic 'nginx' 'upload-lent' 'bandwidth' @{ rate = $RateKBps } 1.0 'upstream'
-        Write-Host "limita upload: $RateKBps KB/s (toxic bandwidth, sensul client -> nginx)"
+        Write-Host "upload cap: $RateKBps KB/s (bandwidth toxic, client -> nginx direction)"
       }
-      Write-Host 'deschide https://localhost:8443 (accepta certificatul), login teren, Upload video' -ForegroundColor Cyan
+      Write-Host 'open https://localhost:8443 (accept the certificate), log in as teren, upload a drone video' -ForegroundColor Cyan
     }
     'retea-taie' {
       Set-ProxyEnabled 'nginx' $false
-      Write-Host 'retea TAIATA (proxy nginx dezactivat: conexiunile se inchid, cele noi sunt refuzate)' -ForegroundColor Red
+      Write-Host 'network CUT (nginx proxy disabled: open connections close, new ones are refused)' -ForegroundColor Red
     }
     'retea-reia' {
       Set-ProxyEnabled 'nginx' $true
-      Write-Host 'retea REPORNITA (UI reia singur de la nextChunk)' -ForegroundColor Green
+      Write-Host 'network RESTORED (the UI resumes on its own from nextChunk)' -ForegroundColor Green
     }
     'retea-stop' {
       [void](Invoke-Compose -Arguments @('--profile', 'chaos', 'rm', '-sf', 'toxiproxy'))
-      Write-Host 'toxiproxy oprit si sters; https://localhost ramane neatins' -ForegroundColor Green
+      Write-Host 'toxiproxy stopped and removed; https://localhost is untouched' -ForegroundColor Green
     }
   }
 } finally {

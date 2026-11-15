@@ -1,13 +1,13 @@
-// Varf scurt (F8): demonstreaza izolarea pe categorie (bulkhead C9). O furtuna de citiri de contor, cu multe
-// cereri simultane (peste limita de 50 paralele a METER_READING), nu trebuie sa strice latenta pentru cautare si avarii.
-// Sondele (dispecer cauta, teren incarca avarii) ruleaza cu rata constanta: intai singure (baseline), apoi in timpul
-// furtunii (storm). Se compara p95 intre cele doua faze.
-//   SHORT=1     -> 15 s baseline + 30 s furtuna
-//   PEAK_RATE   -> VU-uri in furtuna (implicit 150; fiecare trimite loturi in bucla, fara pauza; la 429/503
-//                  asteapta Retry-After, ca meter-simulator)
-// Furtuna merge direct la api (METER_BASE_URL=http://api:8080/api/v1 pe storage-net, ca simulatorul); sondele trec
-// prin nginx, ca utilizatorii. Prin nginx, peste ~500 conexiuni noi/s se epuizeaza porturile efemere nginx -> api
-// (proxy_pass cu variabila, fara keepalive spre upstream) si apar 502 care nu tin de bulkhead.
+// Short spike (F8): shows per-category isolation (bulkhead C9). A meter reading storm with many concurrent
+// requests (above METER_READING's limit of 50) must not hurt search and outage latency.
+// The probes (dispatcher searching, field user uploading outages) run at a constant rate: first alone (baseline),
+// then during the storm. p95 is compared between the two phases.
+//   SHORT=1     -> 15 s baseline + 30 s storm
+//   PEAK_RATE   -> storm VUs (default 150; each sends batches in a tight loop; on 429/503 it waits for
+//                  Retry-After, like meter-simulator)
+// The storm goes straight to api (METER_BASE_URL=http://api:8080/api/v1 on storage-net, like the simulator); probes
+// go through nginx, like users. Through nginx, above ~500 new connections/s the nginx -> api ephemeral ports run out
+// (proxy_pass with a variable, no upstream keepalive) and 502s unrelated to the bulkhead appear.
 import { check } from 'k6';
 import {
   RUN_ID, ZONES, METER_URL, BASE_URL, ingest, honorRetryAfter, meterBatch, meterId, uploadOutage, search, download, pick, rnd,
@@ -15,8 +15,8 @@ import {
 import { makeSummary } from './lib/summary.js';
 
 const SHORT = !!__ENV.SHORT;
-const BASE = SHORT ? 15 : 30;   // secunde
-const STORM = SHORT ? 30 : 60;  // secunde
+const BASE = SHORT ? 15 : 30;   // seconds
+const STORM = SHORT ? 30 : 60;  // seconds
 const VUS = Number(__ENV.PEAK_RATE || 150);
 const SCEN = 'k6-peak';
 
@@ -46,18 +46,18 @@ export const options = {
     },
   },
   thresholds: {
-    // latenta sondelor in timpul furtunii ramane sub prag (si apar in rezumat si valorile de baseline)
+    // probe latency during the storm stays under the threshold (baseline values show up in the summary too)
     'http_req_duration{op:search,phase:baseline}': ['p(95)<800'],
     'http_req_duration{op:search,phase:storm}': ['p(95)<800'],
     'http_req_duration{op:outage_upload,phase:baseline}': ['p(95)<1500'],
     'http_req_duration{op:outage_upload,phase:storm}': ['p(95)<1500'],
     'http_req_duration{op:meter_ingest,phase:storm}': ['p(95)<3000'],
-    // sondele nu primesc erori si nici 429 (bulkhead-ul altei categorii nu le atinge)
+    // probes get no errors and no 429 (another category's bulkhead does not touch them)
     'filegrid_unexpected{op:search}': ['rate<0.01'],
     'filegrid_unexpected{op:outage_upload}': ['rate<0.01'],
     'filegrid_bulkhead_429{op:search}': ['count==0'],
     'filegrid_bulkhead_429{op:outage_upload}': ['count==0'],
-    // furtuna: 429 e asteptat si numarat separat; erorile reale (5xx, 4xx neasteptate) raman rare
+    // storm: 429 is expected and counted separately; real errors (5xx, unexpected 4xx) stay rare
     'filegrid_unexpected{op:meter_ingest}': ['rate<0.05'],
     'filegrid_bulkhead_429{op:meter_ingest}': ['count>=0'],
   },
@@ -73,7 +73,7 @@ export function probeSearch() {
 
 export function probeOutage() {
   const up = uploadOutage('teren', SCEN, 2048 + rnd(8192));
-  check(up.res, { 'avarie in timpul varfului -> 201': (r) => r.status === 201 });
+  check(up.res, { 'outage during the spike -> 201': (r) => r.status === 201 });
 }
 
 let meter = null;
@@ -92,17 +92,17 @@ function p95(data, name) {
 }
 
 export const handleSummary = makeSummary('peak', (data) => {
-  const out = ['Izolare pe categorie (p95, baseline -> furtuna):'];
+  const out = ['Per-category isolation (p95, baseline -> storm):'];
   for (const op of ['search', 'outage_upload']) {
     const b = p95(data, `http_req_duration{op:${op},phase:baseline}`);
     const s = p95(data, `http_req_duration{op:${op},phase:storm}`);
     if (b === undefined || s === undefined) continue;
     const ok = s <= Math.max(3 * b, b + 200);
-    out.push(`  ${op.padEnd(14)} ${b.toFixed(1)} ms -> ${s.toFixed(1)} ms (x${(s / b).toFixed(2)}) ${ok ? 'IZOLAT' : 'DEGRADAT'}`);
+    out.push(`  ${op.padEnd(14)} ${b.toFixed(1)} ms -> ${s.toFixed(1)} ms (x${(s / b).toFixed(2)}) ${ok ? 'ISOLATED' : 'DEGRADED'}`);
   }
   const m = data.metrics['http_req_duration{op:meter_ingest,phase:storm}'];
   const rej = data.metrics['filegrid_bulkhead_429{op:meter_ingest}'];
-  out.push(`  sonde prin ${BASE_URL}; citiri prin ${METER_URL}`);
-  out.push(`  citiri in furtuna: ${VUS} VU, p95=${m ? m.values['p(95)'].toFixed(1) : '-'} ms, 429=${rej ? rej.values.count : 0}`);
+  out.push(`  probes via ${BASE_URL}; readings via ${METER_URL}`);
+  out.push(`  storm readings: ${VUS} VU, p95=${m ? m.values['p(95)'].toFixed(1) : '-'} ms, 429=${rej ? rej.values.count : 0}`);
   return out;
 });

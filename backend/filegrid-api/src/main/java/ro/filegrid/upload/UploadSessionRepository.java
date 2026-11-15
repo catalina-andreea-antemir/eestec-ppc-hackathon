@@ -17,9 +17,9 @@ import ro.filegrid.domain.StorageType;
 import ro.filegrid.storage.ChunkReceipt;
 
 /**
- * Starea upload-urilor în bucăți (FileGridMeta: {@code upload_sessions}, {@code upload_chunks}). Toate comparațiile de
- * timp (lease, inactivitate) folosesc ceasul SQL Server ({@code SYSUTCDATETIME()}), ca instanțele {@code api} cu ceasuri
- * diferite să se înțeleagă. Tranzacțiile le deschide serviciul.
+ * Chunked upload state (FileGridMeta: {@code upload_sessions}, {@code upload_chunks}). Every time comparison (lease,
+ * idle) uses the SQL Server clock ({@code SYSUTCDATETIME()}) so {@code api} instances with different clocks agree.
+ * The service owns the transactions.
  */
 @Repository
 @Profile("db")
@@ -70,7 +70,7 @@ public class UploadSessionRepository {
                 id(id), SESSION).stream().findFirst();
     }
 
-    /** Lease per upload: {@code UPDATE} atomic cu condiție; {@code true} dacă acum îl deținem noi. */
+    /** Per-upload lease: conditional atomic {@code UPDATE}; {@code true} if we hold it now. */
     public boolean tryAcquireLease(UUID id, String owner, int leaseSeconds) {
         return jdbc.update("""
                 UPDATE dbo.upload_sessions
@@ -80,7 +80,7 @@ public class UploadSessionRepository {
                 id(id).addValue("owner", owner, Types.NVARCHAR).addValue("secs", leaseSeconds, Types.INTEGER)) == 1;
     }
 
-    /** Prelungește lease-ul cât timp cererea încă lucrează (bucată lentă, hash final pe un fișier mare). */
+    /** Extends the lease while the request is still working (slow chunk, final hash of a large file). */
     public boolean renewLease(UUID id, String owner, int leaseSeconds) {
         return jdbc.update("""
                 UPDATE dbo.upload_sessions SET lease_until = DATEADD(SECOND, :secs, SYSUTCDATETIME())
@@ -96,8 +96,8 @@ public class UploadSessionRepository {
     }
 
     /**
-     * Înregistrează bucata și avansează {@code next_chunk}, doar dacă lease-ul e încă al nostru și
-     * {@code next_chunk = n}. {@code false} → condiția nu mai e adevărată (apelantul face rollback).
+     * Records the chunk and advances {@code next_chunk}, only if we still hold the lease and {@code next_chunk = n}.
+     * {@code false} -> the condition no longer holds (the caller rolls back).
      */
     public boolean recordChunk(UUID id, String owner, ChunkReceipt receipt, byte[] sha256) {
         int advanced = jdbc.update("""
@@ -125,7 +125,7 @@ public class UploadSessionRepository {
                 id(id).addValue("n", n, Types.INTEGER), CHUNK).stream().findFirst();
     }
 
-    /** Bucățile primite, în ordine. */
+    /** Received chunks, in order. */
     public List<Chunk> chunks(UUID id) {
         return jdbc.query("""
                 SELECT n, size_bytes, sha256, etag FROM dbo.upload_chunks
@@ -139,7 +139,7 @@ public class UploadSessionRepository {
         return sum == null ? 0 : sum;
     }
 
-    /** Marchează începutul unei căderi de storage (păstrează momentul primei căderi). */
+    /** Marks the start of a storage outage (keeps the time of the first outage). */
     public void markStorageUnavailable(UUID id) {
         jdbc.update("""
                 UPDATE dbo.upload_sessions
@@ -147,7 +147,7 @@ public class UploadSessionRepository {
                  WHERE upload_id = CAST(:id AS UNIQUEIDENTIFIER) AND status = N'PENDING'""", id(id));
     }
 
-    /** Schimbă starea unei sesiuni {@code PENDING} și eliberează lease-ul. */
+    /** Changes the state of a {@code PENDING} session and releases the lease. */
     public boolean finish(UUID id, String status) {
         return jdbc.update("""
                 UPDATE dbo.upload_sessions SET status = :status, lease_owner = NULL, lease_until = NULL,
@@ -156,7 +156,7 @@ public class UploadSessionRepository {
                 id(id).addValue("status", status, Types.NVARCHAR)) == 1;
     }
 
-    /** Sesiunile de abandonat: inactive peste {@code inactiveSeconds} sau cu storage căzut peste {@code downSeconds}. */
+    /** Sessions to abandon: idle beyond {@code inactiveSeconds} or with storage down beyond {@code downSeconds}. */
     public List<UUID> abandonable(long inactiveSeconds, long downSeconds, int limit) {
         return jdbc.query("""
                 SELECT TOP (:limit) CONVERT(NVARCHAR(36), upload_id) FROM dbo.upload_sessions

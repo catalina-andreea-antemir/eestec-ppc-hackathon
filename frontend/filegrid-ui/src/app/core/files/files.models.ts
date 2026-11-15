@@ -1,51 +1,51 @@
-// Tipurile din contractul API pentru căutare, verificare și descărcare
-// (docs/api/openapi.yaml: FilePage, VerifyResult, DownloadLink) și matricea rolurilor 4.4.
+// API contract types for search, verification and download
+// (docs/api/openapi.yaml: FilePage, VerifyResult, DownloadLink) and role matrix 4.4.
 
 import { Role } from '../auth/auth.models';
 import { Category, FileMetadata } from '../upload/upload.models';
 
 export type { Category, FileMetadata } from '../upload/upload.models';
 
-/** Răspunsul de la GET /files (schema FilePage). */
+/** GET /files response (schema FilePage). */
 export interface FilePage {
   items: FileMetadata[];
-  /** De la 1. */
+  /** 1-based. */
   page: number;
   size: number;
   totalItems: number;
   totalPages: number;
 }
 
-/** Răspunsul 200 de la GET /files/{id}/verify (schema VerifyResult). La nepotrivire vine 409 FILE_CORRUPT. */
+/** GET /files/{id}/verify 200 response (schema VerifyResult). A mismatch returns 409 FILE_CORRUPT instead. */
 export interface VerifyResult {
   fileId: string;
-  /** Mereu true la 200. */
+  /** Always true on 200. */
   ok: boolean;
   algorithm: 'SHA-256';
   deep: boolean;
   expectedSha256: string;
   actualSha256: string;
-  /** Doar cu deep=true la CONNECTION_DOC. */
+  /** Only with deep=true on CONNECTION_DOC. */
   expectedSha256Plain?: string | null;
   actualSha256Plain?: string | null;
   verifiedAt: string;
 }
 
-/** Răspunsul de la POST /files/{id}/download-link (schema DownloadLink). */
+/** POST /files/{id}/download-link response (schema DownloadLink). */
 export interface DownloadLink {
-  /** Cale relativă `/api/v1/downloads/{token}`, valabilă 15 minute. */
+  /** Relative path `/api/v1/downloads/{token}`, valid for 15 minutes. */
   url: string;
   expiresAt: string;
 }
 
-/** Filtrele de căutare (parametrii lui GET /files). */
+/** Search filters (GET /files parameters). */
 export interface SearchFilters {
   category: Category | null;
-  /** Text în numele fișierului; nu se aplică la CONNECTION_DOC (nume criptat pe server). */
+  /** Text in the file name; does not apply to CONNECTION_DOC (name encrypted on the server). */
   q: string;
-  /** ISO-8601 UTC, inclusiv (după createdAt). */
+  /** ISO-8601 UTC, inclusive (on createdAt). */
   from: string | null;
-  /** ISO-8601 UTC, exclusiv (după createdAt). */
+  /** ISO-8601 UTC, exclusive (on createdAt). */
   to: string | null;
   page: number;
   size: number;
@@ -67,8 +67,8 @@ export const CATEGORY_LABELS: Record<Category, string> = {
 };
 
 /**
- * Cine poate căuta și descărca fiecare categorie (matricea 4.4, coloana „Poate căuta și descărca”).
- * ADMIN le poate pe toate (AuthService.hasRole îl lasă mereu); METER_SERVICE niciuna.
+ * Who can search and download each category (matrix 4.4, column "Can search and download").
+ * ADMIN can do all of them (AuthService.hasRole always lets it through); METER_SERVICE none.
  */
 export const SEARCH_ROLES: Record<Category, Role[]> = {
   METER_READING: ['DISPATCH'],
@@ -77,7 +77,7 @@ export const SEARCH_ROLES: Record<Category, Role[]> = {
   INSPECTION_VIDEO: ['FIELD'],
 };
 
-/** Categoriile pe care un rol le poate căuta (aceeași regulă ca pe server). */
+/** Categories a role may search (same rule as the server). */
 export function searchableCategories(role: Role | null | undefined): Category[] {
   if (!role) {
     return [];

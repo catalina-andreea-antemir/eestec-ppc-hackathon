@@ -5,8 +5,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /**
- * Beanul {@link S3Adapter} (C5), găsit de {@code StorageAdapterRegistry} ca {@code StorageAdapter} și
- * {@code ChunkedWriter} pentru {@code S3}. Clientul S3 se închide odată cu contextul ({@code close()}).
+ * The {@link S3Adapter} bean (C5), picked up by {@code StorageAdapterRegistry} as the {@code StorageAdapter} and
+ * {@code ChunkedWriter} for {@code S3}. The S3 client is closed together with the context ({@code close()}).
  */
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(S3Properties.class)

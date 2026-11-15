@@ -19,17 +19,17 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
 /**
- * Pune header-ul {@code X-Trace-Id} pe fiecare răspuns (inclusiv 401 / 403 din filtrele de securitate), cu traceId-ul
- * Micrometer Tracing al cererii, același din logurile JSON (Loki). Rulează după filtrul de observare al Spring Boot
- * (care creează span-ul) și înaintea Spring Security. Dacă tracing-ul nu e activ (de exemplu în teste), generează un
- * identificator și îl pune în MDC ca {@code traceId}.
+ * Adds the {@code X-Trace-Id} header to every response (including 401 / 403 from the security filters), using the
+ * request's Micrometer Tracing traceId, the same one found in the JSON logs (Loki). Runs after Spring Boot's
+ * observation filter (which creates the span) and before Spring Security. If tracing is off (e.g. in tests), it
+ * generates an id and puts it in the MDC as {@code traceId}.
  */
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE + 10)
 public class TraceIdFilter extends OncePerRequestFilter {
 
     public static final String HEADER = "X-Trace-Id";
-    /** Atributul cererii cu traceId-ul, citit de {@link #traceId(HttpServletRequest)}. */
+    /** Request attribute holding the traceId, read by {@link #traceId(HttpServletRequest)}. */
     public static final String ATTRIBUTE = TraceIdFilter.class.getName() + ".traceId";
 
     private static final SecureRandom RANDOM = new SecureRandom();
@@ -40,7 +40,7 @@ public class TraceIdFilter extends OncePerRequestFilter {
         this.tracer = tracer;
     }
 
-    /** TraceId-ul cererii (pentru câmpul {@code traceId} din corpul erorilor). */
+    /** The request's traceId (for the {@code traceId} field of error bodies). */
     public static String traceId(HttpServletRequest request) {
         Object value = request.getAttribute(ATTRIBUTE);
         return value == null ? null : value.toString();
@@ -75,7 +75,7 @@ public class TraceIdFilter extends OncePerRequestFilter {
             return null;
         }
         String id = span.context().traceId();
-        // Tracer-ul noop (tracing dezactivat) întoarce un id gol sau numai zerouri.
+        // The noop tracer (tracing disabled) returns an empty or all-zero id.
         return id == null || id.isEmpty() || id.chars().allMatch(c -> c == '0') ? null : id;
     }
 }

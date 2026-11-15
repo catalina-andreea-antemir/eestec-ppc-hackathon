@@ -13,7 +13,7 @@ BEGIN
         chunk_data VARBINARY(MAX) NOT NULL,
         chunk_size AS CONVERT(INT, DATALENGTH(chunk_data)) PERSISTED,
 
-        -- Offsetul în octeți pornește de la zero și permite căutări pe interval.
+        -- Byte offset starts at zero and allows range lookups.
         CONSTRAINT PK_blob_chunks PRIMARY KEY CLUSTERED (storage_key, chunk_offset),
         CONSTRAINT CK_blob_chunks_key CHECK (LEN(storage_key) > 0),
         CONSTRAINT CK_blob_chunks_offset CHECK (chunk_offset >= 0),
@@ -22,7 +22,7 @@ BEGIN
 END;
 GO
 
--- Opțiunile de sesiune cerute de indexul filtrat. Nu modifică setările bazei.
+-- Session options required by the filtered index. Database settings are not changed.
 SET ANSI_NULLS ON;
 SET ANSI_PADDING ON;
 SET ANSI_WARNINGS ON;
@@ -40,8 +40,8 @@ BEGIN
         size_bytes BIGINT NOT NULL,
         published BIT NOT NULL,
 
-        -- blob_chunks.storage_key folosește version_key pentru versiunile gestionate de adaptor.
-        -- Rândurile preexistente rămân intacte și nu sunt publicate implicit.
+        -- blob_chunks.storage_key uses version_key for adapter-managed versions.
+        -- Pre-existing rows stay intact and are not published by default.
         CONSTRAINT PK_blob_versions PRIMARY KEY CLUSTERED (version_key),
         CONSTRAINT CK_blob_versions_key CHECK (LEN(logical_key) > 0),
         CONSTRAINT CK_blob_versions_size CHECK (size_bytes > 0)
@@ -49,11 +49,11 @@ BEGIN
 END;
 GO
 
--- NULL în upload_chunk_size identifică versiunile create prin put().
+-- NULL upload_chunk_size marks versions created through put().
 IF COL_LENGTH(N'dbo.blob_versions', N'upload_chunk_size') IS NULL
     ALTER TABLE dbo.blob_versions ADD upload_chunk_size INT NULL;
 
--- Pentru o sesiune multipart înlocuită se păstrează confirmarea finish(), fără datele binare.
+-- For a replaced multipart session, the finish() confirmation is kept without the binary data.
 IF COL_LENGTH(N'dbo.blob_versions', N'retired_at') IS NULL
     ALTER TABLE dbo.blob_versions ADD retired_at DATETIME2(7) NULL;
 GO

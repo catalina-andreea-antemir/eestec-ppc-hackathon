@@ -3,9 +3,9 @@ package ro.filegrid.storage;
 import ro.filegrid.domain.StorageType;
 
 /**
- * Eroare de storage (necontrolată, ca să treacă prin lambda-uri și prin Resilience4j). Subclase:
- * {@link StorageUnavailableException} (storage-ul nu răspunde: 503 + {@code Retry-After}, se numără în circuit
- * breaker) și {@link StorageObjectNotFoundException} (cheie inexistentă). Mesajul nu conține secrete sau date personale.
+ * Storage error (unchecked, so it passes through lambdas and Resilience4j). Subclasses:
+ * {@link StorageUnavailableException} (storage not responding: 503 + {@code Retry-After}, counted by the circuit
+ * breaker) and {@link StorageObjectNotFoundException} (missing key). The message contains no secrets or personal data.
  */
 public class StorageException extends RuntimeException {
 
@@ -21,7 +21,7 @@ public class StorageException extends RuntimeException {
         this.storage = storage;
     }
 
-    /** Storage-ul care a produs eroarea (eticheta {@code storage} din metrici). */
+    /** The storage that produced the error (the {@code storage} metric label). */
     public StorageType storage() {
         return storage;
     }

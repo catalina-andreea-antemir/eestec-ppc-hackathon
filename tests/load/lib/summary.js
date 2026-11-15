@@ -1,5 +1,5 @@
-// handleSummary comun: scrie results/<scenariu>-<moment>.json si .txt si afiseaza rezumatul text.
-// Fara dependinte externe (jslib), ca testele sa mearga si fara internet.
+// Shared handleSummary: writes results/<scenario>-<timestamp>.json and .txt and prints the text summary.
+// No external dependencies (jslib), so the tests also run offline.
 
 function fmt(v) {
   if (v === undefined || v === null) return '-';
@@ -47,21 +47,21 @@ export function makeSummary(scenario, extra) {
     const failed = thr.filter((l) => l.indexOf('FAIL') >= 0).length;
     const lines = [
       `FileGrid k6 - ${scenario} - ${new Date().toISOString()}`,
-      `Rezultat: ${failed === 0 ? 'TRECUT' : `ESUAT (${failed} praguri depasite)`}`,
+      `Result: ${failed === 0 ? 'PASSED' : `FAILED (${failed} thresholds exceeded)`}`,
       '',
-      `Cereri HTTP: ${reqs}   iteratii: ${counter(data, 'iterations')}`,
-      `Latenta totala: avg=${fmt(dur.avg)} p90=${fmt(dur['p(90)'])} p95=${fmt(dur['p(95)'])} max=${fmt(dur.max)} ms`,
-      `http_req_failed: ${fmt((rate(data, 'http_req_failed') || 0) * 100)}%   erori neasteptate (filegrid_unexpected): ${fmt((rate(data, 'filegrid_unexpected') || 0) * 100)}%`,
-      `Verificari (checks): ${checks.passes} trecute, ${checks.fails} picate`,
-      `429 bulkhead (CATEGORY_SATURATED, nu sunt erori): ${counter(data, 'filegrid_bulkhead_429')}`,
-      `403 asteptate (securitate): ${counter(data, 'filegrid_forbidden_403')}`,
-      `Loturi duplicate confirmate (200): ${counter(data, 'filegrid_meter_duplicates')}`,
-      `Nepotriviri de hash la descarcare: ${counter(data, 'filegrid_integrity_mismatch')}`,
+      `HTTP requests: ${reqs}   iterations: ${counter(data, 'iterations')}`,
+      `Overall latency: avg=${fmt(dur.avg)} p90=${fmt(dur['p(90)'])} p95=${fmt(dur['p(95)'])} max=${fmt(dur.max)} ms`,
+      `http_req_failed: ${fmt((rate(data, 'http_req_failed') || 0) * 100)}%   unexpected errors (filegrid_unexpected): ${fmt((rate(data, 'filegrid_unexpected') || 0) * 100)}%`,
+      `Checks: ${checks.passes} passed, ${checks.fails} failed`,
+      `429 bulkhead (CATEGORY_SATURATED, not errors): ${counter(data, 'filegrid_bulkhead_429')}`,
+      `403 expected (security): ${counter(data, 'filegrid_forbidden_403')}`,
+      `Confirmed duplicate batches (200): ${counter(data, 'filegrid_meter_duplicates')}`,
+      `Download hash mismatches: ${counter(data, 'filegrid_integrity_mismatch')}`,
     ];
     if (extra) lines.push('', ...extra(data));
-    lines.push('', 'Praguri:', ...(thr.length ? thr : ['  (niciunul)']));
+    lines.push('', 'Thresholds:', ...(thr.length ? thr : ['  (none)']));
     const trends = trendLines(data);
-    if (trends.length) lines.push('', 'Latente pe operatie:', ...trends.map((l) => l.replace(' n/a ', ' ')));
+    if (trends.length) lines.push('', 'Latency per operation:', ...trends.map((l) => l.replace(' n/a ', ' ')));
     const text = lines.join('\n') + '\n';
     return {
       stdout: '\n' + text,

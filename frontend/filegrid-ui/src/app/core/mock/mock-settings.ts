@@ -1,11 +1,11 @@
 /**
- * Setările mock-ului pentru upload, păstrate în localStorage ca să rămână după refresh.
- * Se schimbă din panoul „Mock” al paginii Upload (vizibil doar cu environment.useMocks).
+ * Upload mock settings, kept in localStorage so they survive a refresh.
+ * Changed from the simulation panel on the Upload page (only visible with environment.useMocks).
  */
 export interface MockSettings {
-  /** Probabilitatea (0..1) ca o cerere de upload să primească o eroare trecătoare. */
+  /** Probability (0..1) that an upload request gets a transient error. */
   failureRate: number;
-  /** Viteza simulată a rețelei, în MB/s. */
+  /** Simulated network speed, in MB/s. */
   speedMBps: number;
 }
 
@@ -25,6 +25,6 @@ export function setMockSettings(settings: MockSettings): void {
   try {
     localStorage.setItem(KEY, JSON.stringify(settings));
   } catch {
-    /* ignorat */
+    /* ignored */
   }
 }

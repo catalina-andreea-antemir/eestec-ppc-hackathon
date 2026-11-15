@@ -1,17 +1,16 @@
-# FileGrid PPC - stack-ul Docker Compose (planul v4, sectiunile 4 si 4.1, ADR-001, ADR-002).
+# FileGrid PPC - Docker Compose stack (ADR-001, ADR-002).
 #
-# Nu se porneste direct de aici: docker-compose.yml din radacina repo-ului face include la acest fisier, iar
-# scripts/start.sh / scripts/start.ps1 creeaza .env (secrete aleatorii) si ruleaza `docker compose up -d --build`.
-# Caile relative din acest fisier sunt relative la infra/docker/.
+# Not started directly: the root docker-compose.yml includes this file, and scripts/start.sh / scripts/start.ps1
+# create .env (random secrets) and run `docker compose up -d --build`. Relative paths here are relative to infra/docker/.
 #
-# Retele: storage-net este interna (fara porturi publicate, fara iesire in exterior); public este doar pentru nginx,
-# singurul serviciu cu porturi publicate (80 -> redirect HTTPS, 443).
+# Networks: storage-net is internal (no published ports, no egress); public is only for nginx,
+# the single service with published ports (80 -> HTTPS redirect, 443).
 #
-# Memorie (4.1, 8 GB in Docker): mssql 2,5 GB, api 3 x 512 MB, minio 512 MB, prometheus 512 MB, loki 512 MB,
-# grafana 256 MB, simulator 256 MB, restul ~600 MB (total ~7,1 GB). Se verifica la ora 8 cu `docker stats`.
+# Memory budget (8 GB for Docker): mssql 2.5 GB, api 3 x 512 MB, minio 512 MB, prometheus 512 MB, loki 512 MB,
+# grafana 256 MB, simulator 256 MB, the rest ~600 MB (total ~7.1 GB). Check with `docker stats`.
 
 x-sqlcmd-healthcheck: &sqlcmd-healthcheck
-  # Parola trece prin SQLCMDPASSWORD, nu prin linia de comanda (-P).
+  # The password goes through SQLCMDPASSWORD, not the command line (-P), so it never shows in the process list.
   test: ["CMD-SHELL", "SQLCMDPASSWORD=\"$$MSSQL_SA_PASSWORD\" /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -C -l 3 -b -Q 'SET NOCOUNT ON; SELECT 1' -o /dev/null"]
   interval: 10s
   timeout: 10s
@@ -21,7 +20,7 @@ x-sqlcmd-healthcheck: &sqlcmd-healthcheck
 
 services:
   # ---------------------------------------------------------------------------------------------------------------
-  # Intrarea: TLS, build-ul Angular, proxy catre api (si /grafana cand exista Grafana).
+  # Entry point: TLS, the Angular build, proxy to api (and /grafana).
   nginx:
     build:
       context: ../..
@@ -40,7 +39,7 @@ services:
       api:
         condition: service_started
     healthcheck:
-      # Contract (/health): drumul complet nginx -> api -> FileGridMeta.
+      # Contract /health: full path nginx -> api -> FileGridMeta.
       test: ["CMD", "curl", "-fsk", "-o", "/dev/null", "https://localhost/api/v1/health"]
       interval: 15s
       timeout: 5s
@@ -49,7 +48,7 @@ services:
     mem_limit: 128m
 
   # ---------------------------------------------------------------------------------------------------------------
-  # Aplicatia Spring Boot. Fara container_name si fara porturi publicate, ca `--scale api=3` sa mearga (C14).
+  # Spring Boot app. No container_name and no published ports, so `--scale api=3` works (C14).
   api:
     build:
       context: ../..
@@ -59,39 +58,39 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: db
       SERVER_PORT: "8080"
-      # FileGridMeta: Flyway (db/migrations copiat in imagine, FLYWAY_LOCATIONS setat in Dockerfile).
+      # FileGridMeta: Flyway (db/migrations baked into the image, FLYWAY_LOCATIONS set in the Dockerfile).
       META_DB_URL: "jdbc:sqlserver://mssql:1433;databaseName=FileGridMeta;encrypt=true;trustServerCertificate=true"
       META_DB_USER: filegrid_meta_app
       META_DB_PASSWORD: ${META_DB_PASSWORD}
-      # FileGridStorage (folosit de DbStorageAdapter, O3). STORAGE_DB_HOST=mssql-storage in profilul split.
+      # FileGridStorage (used by DbStorageAdapter, O3). STORAGE_DB_HOST=mssql-storage in the split profile.
       STORAGE_DB_URL: "jdbc:sqlserver://${STORAGE_DB_HOST:-mssql}:1433;databaseName=FileGridStorage;encrypt=true;trustServerCertificate=true;responseBuffering=adaptive"
       STORAGE_DB_USER: filegrid_storage_app
       STORAGE_DB_PASSWORD: ${STORAGE_DB_PASSWORD}
-      # S3 (MinIO), cu utilizatorul aplicatiei creat de minio-init (nu contul root).
+      # S3 (MinIO) with the app user created by minio-init (not the root account).
       S3_ENDPOINT: http://minio:9000
       S3_REGION: us-east-1
       S3_BUCKET: ${MINIO_BUCKET:-filegrid}
       S3_ACCESS_KEY: ${S3_ACCESS_KEY}
       S3_SECRET_KEY: ${S3_SECRET_KEY}
-      # FTP, mod pasiv, pe reteaua interna.
+      # FTP, passive mode, on the internal network.
       FTP_HOST: ftp
       FTP_PORT: "21"
       FTP_USER: ${FTP_USER}
       FTP_PASSWORD: ${FTP_PASSWORD}
-      # Securitate (C4, C10): cheia JWT, cheia AES-GCM pentru CONNECTION_DOC, cheia HMAC a link-urilor semnate (C8).
+      # Security (C4, C10): JWT key, AES-GCM key for CONNECTION_DOC, HMAC key for signed links (C8).
       JWT_SECRET: ${JWT_SECRET}
       DOC_ENCRYPTION_KEY: ${DOC_ENCRYPTION_KEY}
       DOWNLOAD_LINK_SECRET: ${DOWNLOAD_LINK_SECRET}
-      # Utilizatorii de test (unul per rol), cu parolele generate in .env (login minim, C4).
+      # Test users (one per role) with the passwords generated in .env (minimal login, C4).
       FILEGRID_USER_DISPECER_PASSWORD: ${FILEGRID_USER_DISPECER_PASSWORD:-}
       FILEGRID_USER_TEREN_PASSWORD: ${FILEGRID_USER_TEREN_PASSWORD:-}
       FILEGRID_USER_RACORDARI_PASSWORD: ${FILEGRID_USER_RACORDARI_PASSWORD:-}
       FILEGRID_USER_CONTOR_PASSWORD: ${FILEGRID_USER_CONTOR_PASSWORD:-}
       FILEGRID_USER_ADMIN_PASSWORD: ${FILEGRID_USER_ADMIN_PASSWORD:-}
-      # Politica per categorie (4.2): directorul din repo, montat read-only; PolicyEngine il reciteste fara restart.
+      # Per-category policy (4.2): repo directory mounted read-only; PolicyEngine reloads it without restart.
       FILEGRID_POLICY_DIR: /app/policies
       LOGGING_CONFIG: /etc/filegrid/logback-spring.xml
-      # Heap-ul din procent, ca limita containerului (512 MB) sa ramana sub control.
+      # Heap sized as a percentage so the container limit (512 MB) is respected.
       JAVA_OPTS: "-XX:MaxRAMPercentage=60 -XX:+ExitOnOutOfMemoryError"
     volumes:
       - ../../backend/filegrid-api/src/main/resources/policies:/app/policies:ro
@@ -109,7 +108,7 @@ services:
       api-logs-init:
         condition: service_completed_successfully
     healthcheck:
-      # GET /api/v1/health (contract): UP doar cand api si FileGridMeta raspund (storage-urile nu intra aici).
+      # GET /api/v1/health (contract): UP only when api and FileGridMeta respond (storage backends are not included).
       test: ["CMD", "curl", "-fs", "-o", "/dev/null", "http://localhost:8080/api/v1/health"]
       interval: 10s
       timeout: 5s
@@ -119,7 +118,7 @@ services:
     mem_limit: 512m
 
   # ---------------------------------------------------------------------------------------------------------------
-  # SQL Server 2022: un singur container cu FileGridMeta si FileGridStorage (ADR-001).
+  # SQL Server 2022: a single container holding FileGridMeta and FileGridStorage (ADR-001).
   mssql:
     image: mcr.microsoft.com/mssql/server:2022-latest
     restart: unless-stopped
@@ -135,8 +134,8 @@ services:
     healthcheck: *sqlcmd-healthcheck
     mem_limit: 2560m
 
-  # Ruleaza o singura data scripturile lui Ovidiu (infra/mssql): baze, utilizatori cu drepturi minime, blob_chunks.
-  # Idempotent, iese cu cod 0. Aceeasi imagine ca mssql (are bash, iconv, od si sqlcmd din mssql-tools18).
+  # One-shot run of infra/mssql: databases, least-privilege users, blob_chunks.
+  # Idempotent, exits 0. Same image as mssql (it ships bash, iconv, od and sqlcmd from mssql-tools18).
   mssql-init:
     image: mcr.microsoft.com/mssql/server:2022-latest
     restart: "no"
@@ -146,7 +145,7 @@ services:
       META_DB_PASSWORD: ${META_DB_PASSWORD}
       STORAGE_DB_PASSWORD: ${STORAGE_DB_PASSWORD}
       STORAGE_DB_HOST: ${STORAGE_DB_HOST:-mssql}
-      # Gol = aceeasi parola sa ca la mssql (init.sh o ia implicit din MSSQL_SA_PASSWORD).
+      # Empty = same sa password as mssql (init.sh defaults to MSSQL_SA_PASSWORD).
       STORAGE_DB_SA_PASSWORD: ${STORAGE_DB_SA_PASSWORD:-}
     volumes:
       - ../mssql:/init:ro
@@ -160,8 +159,8 @@ services:
         required: false
     mem_limit: 256m
 
-  # Profil split (ADR-001): al doilea SQL Server, doar pentru FileGridStorage. Se activeaza cu
-  # STORAGE_DB_HOST=mssql-storage in .env si `docker compose --profile split up -d`.
+  # Split profile (ADR-001): a second SQL Server just for FileGridStorage. Enabled with
+  # STORAGE_DB_HOST=mssql-storage in .env and `docker compose --profile split up -d`.
   mssql-storage:
     image: mcr.microsoft.com/mssql/server:2022-latest
     profiles: ["split"]
@@ -179,8 +178,8 @@ services:
     mem_limit: 2560m
 
   # ---------------------------------------------------------------------------------------------------------------
-  # S3: MinIO. Imaginea minio/minio nu se mai publica pe Docker Hub/quay.io; chainguard/minio are doar tag-ul latest
-  # gratuit, deci e fixata pe digest (MinIO RELEASE.2026-11-12T01-15-23Z).
+  # S3: MinIO. minio/minio is no longer published on Docker Hub/quay.io; chainguard/minio only offers a free
+  # `latest` tag, so it is pinned by digest (MinIO RELEASE.2026-11-12T01-15-23Z).
   minio:
     image: chainguard/minio:latest@sha256:0f9fda72fbc6bd3560ea903aec2ceefa20f6ba82628d67656f37fb370c39ae9c
     restart: unless-stopped
@@ -189,7 +188,7 @@ services:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
       MINIO_PROMETHEUS_AUTH_TYPE: jwt
-      # Tine runtime-ul Go sub mem_limit.
+      # Keeps the Go runtime below mem_limit.
       GOMEMLIMIT: 400MiB
     volumes:
       - minio:/data
@@ -205,7 +204,7 @@ services:
       start_interval: 2s
     mem_limit: 512m
 
-  # Creeaza bucket-ul si utilizatorul aplicatiei (politica limitata la bucket). Idempotent, iese cu cod 0.
+  # Creates the bucket and the app user (policy scoped to that bucket). Idempotent, exits 0.
   minio-init:
     image: chainguard/minio:latest@sha256:0f9fda72fbc6bd3560ea903aec2ceefa20f6ba82628d67656f37fb370c39ae9c
     restart: "no"
@@ -226,7 +225,7 @@ services:
     mem_limit: 128m
 
   # ---------------------------------------------------------------------------------------------------------------
-  # Provisioning separat pentru identitatea Prometheus, fara acces la bucketul aplicatiei.
+  # Separate provisioning for the Prometheus identity, with no access to the app bucket.
   minio-metrics-init:
     image: chainguard/minio:latest@sha256:0f9fda72fbc6bd3560ea903aec2ceefa20f6ba82628d67656f37fb370c39ae9c
     user: "0:0"
@@ -246,13 +245,13 @@ services:
     mem_limit: 128m
 
   # ---------------------------------------------------------------------------------------------------------------
-  # FTP: vsftpd (infra/ftp), mod pasiv; porturile pasive 21000-21049 exista doar in storage-net.
+  # FTP: vsftpd (infra/ftp), passive mode; passive ports 21000-21049 exist only on storage-net.
   ftp:
     build:
       context: ../ftp
     image: filegrid/ftp:local
     restart: unless-stopped
-    # vsftpd ca PID 1 se prabuseste (SIGSEGV, exit 139) dupa cateva sute de conexiuni; cu init (tini) rezista.
+    # vsftpd as PID 1 crashes (SIGSEGV, exit 139) after a few hundred connections; it is stable under an init (tini).
     init: true
     environment:
       FTP_USER: ${FTP_USER}
@@ -271,12 +270,12 @@ services:
     mem_limit: 128m
 
   # ---------------------------------------------------------------------------------------------------------------
-  # Prometheus (O8): scrape separat pentru fiecare replica api, prin DNS-ul Docker.
+  # Prometheus (O8): one scrape target per api replica, discovered through Docker DNS.
   prometheus:
     image: prom/prometheus:v3.13.5
     restart: unless-stopped
-    # Pe reteaua interna, ndots explicit face Docker sa raspunda fara inregistrari pentru numele local absent.
-    # Astfel DNS SD elimina tinta simulatorului in loc sa pastreze ultima adresa dupa SERVFAIL.
+    # On the internal network an explicit ndots makes Docker answer NXDOMAIN for the absent local name, so DNS SD
+    # drops the simulator target instead of keeping its last address after a SERVFAIL.
     dns_opt: ["ndots:1"]
     volumes:
       - ../../observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
@@ -298,7 +297,7 @@ services:
     mem_limit: 512m
 
   # ---------------------------------------------------------------------------------------------------------------
-  # Notificarile O8 raman in reteaua interna.
+  # O8 notifications stay on the internal network.
   alertmanager:
     image: prom/alertmanager:v0.35.0
     restart: unless-stopped
@@ -337,7 +336,7 @@ services:
     mem_limit: 64m
 
   # ---------------------------------------------------------------------------------------------------------------
-  # Pregateste volumele noi pentru UID-ul neprivilegiat folosit de api si promtail.
+  # Prepares fresh volumes for the unprivileged UID used by api and promtail.
   api-logs-init:
     image: busybox:1.37.0-musl
     restart: "no"
@@ -397,9 +396,9 @@ services:
     mem_limit: 128m
 
   # ---------------------------------------------------------------------------------------------------------------
-  # Grafana (F7): dashboard-uri si alerte provisionate din observability/grafana (apar singure la pornire). Fara port
-  # publicat: se vede doar prin nginx, la https://localhost/grafana/ (utilizator admin, parola din .env). Datasource-ul
-  # Prometheus foloseste serviciul intern `prometheus` pe portul 9090.
+  # Grafana (F7): dashboards and alerts provisioned from observability/grafana. No published port:
+  # reachable only through nginx at https://localhost/grafana/ (user admin, password in .env). The Prometheus
+  # datasource uses the internal `prometheus` service on port 9090.
   grafana:
     image: grafana/grafana:12.1.1
     restart: unless-stopped
@@ -411,7 +410,7 @@ services:
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_SERVER_ROOT_URL: "%(protocol)s://%(domain)s/grafana/"
       GF_SERVER_SERVE_FROM_SUB_PATH: "true"
-      # storage-net nu are iesire in exterior: fara verificari de update si telemetrie.
+      # storage-net has no egress: disable update checks and telemetry.
       GF_ANALYTICS_REPORTING_ENABLED: "false"
       GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
       GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
@@ -432,7 +431,7 @@ services:
       start_period: 20s
       start_interval: 3s
     mem_limit: 256m
-  meter-simulator:   # O5 - profil sim: docker compose --profile sim up meter-simulator
+  meter-simulator:   # O5 - sim profile: docker compose --profile sim up meter-simulator
     profiles: ["sim"]
     build:
       context: ../../simulator/meter-simulator
@@ -449,14 +448,14 @@ services:
         condition: service_healthy
     mem_limit: 256m
   # ---------------------------------------------------------------------------------------------------------------
-  # Toxiproxy (F9, profil chaos): retea degradata. Porneste doar cu
+  # Toxiproxy (F9, chaos profile): degraded network. Starts only with
   #   docker compose --profile chaos up -d toxiproxy
-  # Fara profil, stack-ul ramane identic (api vorbeste direct cu storage-urile). Porturi DOAR pe 127.0.0.1:
-  #   8474 = API-ul de control; 8443 = proxy client -> nginx (creat la rulare prin API, numele "nginx":
-  #   listen 0.0.0.0:8443 -> upstream nginx:443; browserul/k6 folosesc https://localhost:8443).
-  # Proxy-urile spre storage (tests/chaos/toxiproxy.json): s3 -> minio:9000 (19000) si storage-db -> mssql:1433
-  # (11433), doar pe storage-net; api trece prin ele numai cu infra/docker/docker-compose.chaos.yml.
-  # Fara depends_on: nu porneste si nu modifica restul stack-ului.
+  # Without the profile the stack is unchanged (api talks to storage directly). Ports ONLY on 127.0.0.1:
+  #   8474 = control API; 8443 = client -> nginx proxy (created at runtime through the API, name "nginx":
+  #   listen 0.0.0.0:8443 -> upstream nginx:443; the browser/k6 use https://localhost:8443).
+  # Storage proxies (tests/chaos/toxiproxy.json): s3 -> minio:9000 (19000) and storage-db -> mssql:1433
+  # (11433), on storage-net only; api goes through them only with infra/docker/docker-compose.chaos.yml.
+  # No depends_on: it never starts or changes the rest of the stack.
   toxiproxy:
     image: ghcr.io/shopify/toxiproxy:2.12.0
     profiles: ["chaos"]
@@ -471,7 +470,7 @@ services:
       - public
       - storage-net
     healthcheck:
-      # Imaginea nu are shell; toxiproxy-cli list interogheaza API-ul local (localhost:8474).
+      # The image has no shell; toxiproxy-cli list queries the local API (localhost:8474).
       test: ["CMD", "/toxiproxy-cli", "list"]
       interval: 5s
       timeout: 3s
@@ -480,10 +479,10 @@ services:
     mem_limit: 64m
 
 networks:
-  # Interna: storage-urile, api si (mai tarziu) observabilitatea. Fara porturi publicate si fara iesire in exterior.
+  # Internal: storage backends, api and observability. No published ports and no egress.
   storage-net:
     internal: true
-  # Publica: doar nginx (si toxiproxy in profilul chaos, pe 127.0.0.1).
+  # Public: only nginx (and toxiproxy in the chaos profile, on 127.0.0.1).
   public: {}
 
 volumes:

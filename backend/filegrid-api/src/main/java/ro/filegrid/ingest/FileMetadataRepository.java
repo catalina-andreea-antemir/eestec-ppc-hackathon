@@ -14,8 +14,8 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 /**
- * Metadatele fișierelor în FileGridMeta: {@code files} și {@code outage_records} (C7). Rândul se scrie abia după
- * confirmarea storage-ului, direct cu stare {@code CONFIRMED}; tranzacția o deschide apelantul.
+ * File metadata in FileGridMeta: {@code files} and {@code outage_records} (C7). The row is written only after
+ * storage confirmed the write, directly as {@code CONFIRMED}; the caller owns the transaction.
  */
 @Repository
 @Profile("db")
@@ -41,7 +41,7 @@ public class FileMetadataRepository {
         this.jdbc = jdbc;
     }
 
-    /** Inserează rândul din {@code files} și, la avarii, pe cel din {@code outage_records}. */
+    /** Inserts the {@code files} row and, for outages, the {@code outage_records} row. */
     public void insert(FileRecord file) {
         jdbc.update(INSERT_FILE, id(file.id())
                 .addValue("category", file.category().name(), Types.NVARCHAR)
@@ -69,7 +69,7 @@ public class FileMetadataRepository {
         return rows.stream().findFirst();
     }
 
-    /** Rândul din {@code files} (fără detaliile de avarie), pentru {@code complete} repetat la upload în bucăți. */
+    /** The {@code files} row (without outage details), for a repeated {@code complete} on chunked uploads. */
     public Optional<FileRecord> find(UUID fileId) {
         return jdbc.query("""
                 SELECT category, original_filename, content_type, size_bytes, sha256, sha256_plain, storage_type,
@@ -91,16 +91,15 @@ public class FileMetadataRepository {
               FROM dbo.files f LEFT JOIN dbo.outage_records o ON o.file_id = f.id
             """;
 
-    /** Rândul din {@code files} cu detaliile de avarie (C8: {@code GET /files/{id}}); orice stare. */
+    /** The {@code files} row with outage details (C8: {@code GET /files/{id}}); any status. */
     public Optional<FileRecord> findWithOutage(UUID fileId) {
         return jdbc.query(SELECT_WITH_OUTAGE + " WHERE f.id = CAST(:id AS UNIQUEIDENTIFIER)", id(fileId),
                 FileMetadataRepository::withOutage).stream().findFirst();
     }
 
     /**
-     * Căutarea {@code GET /files} (C8): doar fișierele {@code CONFIRMED}, cele mai noi întâi. {@code q} (substring în
-     * numele fișierului) nu se aplică la {@code CONNECTION_DOC}: numele lor e criptat, deci documentele trec de filtrul
-     * {@code q}.
+     * {@code GET /files} search (C8): {@code CONFIRMED} files only, newest first. {@code q} (substring of the file
+     * name) does not apply to {@code CONNECTION_DOC}: their names are encrypted, so documents bypass the {@code q} filter.
      */
     public FileSearch.Result search(FileSearch s) {
         if (s.categories().isEmpty()) {

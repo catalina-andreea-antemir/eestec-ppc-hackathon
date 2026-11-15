@@ -15,16 +15,16 @@ import ro.filegrid.storage.StorageHealth;
 import ro.filegrid.storage.StorageKeys;
 import ro.filegrid.storage.StorageUnavailableException;
 
-/** Fără MinIO (rulează mereu): storage oprit sau neconfigurat → down / 503, rapid și fără secrete în mesaje. */
+/** No MinIO (always runs): storage stopped or unconfigured -> down / 503, fast and with no secrets in messages. */
 class S3AdapterUnavailableTest {
 
-    /** Valori de test, nu credențiale reale. */
+    /** Test values, not real credentials. */
     private static final String ACCESS = "test-access-key";
     private static final String SECRET = "test-secret-value-not-real";
 
     @Test
     void stoppedMinioIsReportedDownQuicklyAndAsUnavailable() {
-        // Portul 1 pe 127.0.0.1: conexiune refuzată imediat, ca un container minio oprit.
+        // Port 1 on 127.0.0.1: connection refused immediately, like a stopped minio container.
         try (S3Adapter s3 = S3Adapter.fromProperties(
                 S3Properties.of("http://127.0.0.1:1", null, "filegrid", ACCESS, SECRET))) {
             StorageHealth health = s3.health();

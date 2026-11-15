@@ -4,27 +4,27 @@ import { ChunkTransport } from './upload-api';
 import { FileMetadata, UploadSession } from './upload.models';
 
 /**
- * Upload în bucăți, strict secvențial, după contract:
- *   POST /uploads → PUT /uploads/{id}/chunks/{n} (n = 1..totalChunks) → POST /uploads/{id}/complete
+ * Strictly sequential chunked upload, per the contract:
+ *   POST /uploads -> PUT /uploads/{id}/chunks/{n} (n = 1..totalChunks) -> POST /uploads/{id}/complete
  *
- * - Fiecare bucată se citește din File cu `slice` (fără să încărcăm fișierul în memorie).
- * - Erorile trecătoare (rețea, 429, 503, 409 UPLOAD_BUSY) se reîncearcă cu backoff, până la 2 minute.
- * - 409 CHUNK_OUT_OF_ORDER: continuăm de la bucata cerută de server (`details.expectedChunk`
- *   sau, dacă lipsește, `nextChunk` din GET /uploads/{id}).
- * - Retrimiterea unei bucăți deja primite e sigură (serverul răspunde `duplicate: true`).
- * - Cu `uploadId` dat, se reia o sesiune existentă (după refresh de pagină): GET /uploads/{id}
- *   spune de unde continuăm.
+ * - Each chunk is read from the File with `slice` (the file is never loaded into memory).
+ * - Transient errors (network, 429, 503, 409 UPLOAD_BUSY) are retried with backoff, for up to 2 minutes.
+ * - 409 CHUNK_OUT_OF_ORDER: continue from the chunk the server asks for (`details.expectedChunk`
+ *   or, if missing, `nextChunk` from GET /uploads/{id}).
+ * - Resending an already received chunk is safe (the server answers `duplicate: true`).
+ * - With a given `uploadId`, an existing session is resumed (after a page refresh): GET /uploads/{id}
+ *   tells us where to continue.
  */
 export interface ChunkedUploadOptions {
-  /** Sesiune de reluat; lipsă = upload nou. */
+  /** Session to resume; absent = new upload. */
   uploadId?: string;
   signal?: AbortSignal;
   retry?: Partial<RetryOptions>;
-  /** Apelat când avem sesiunea (pentru a păstra uploadId-ul în sessionStorage). */
+  /** Called once we have the session (to keep the uploadId in sessionStorage). */
   onSession?: (session: UploadSession) => void;
   onProgress?: (progress: ChunkedProgress) => void;
   onRetry?: (info: RetryInfo, operation: string) => void;
-  /** Câte resincronizări (CHUNK_OUT_OF_ORDER / UPLOAD_INCOMPLETE) la rând acceptăm. */
+  /** How many consecutive resyncs (CHUNK_OUT_OF_ORDER / UPLOAD_INCOMPLETE) we accept. */
   maxResyncs?: number;
 }
 
@@ -32,13 +32,13 @@ export interface ChunkedProgress {
   uploadId: string;
   sentBytes: number;
   totalBytes: number;
-  /** Bucata în curs (de la 1). */
+  /** Chunk in progress (1-based). */
   chunk: number;
   totalChunks: number;
   phase: 'uploading' | 'completing';
 }
 
-/** Fișierul re-selectat nu e cel din sesiune (nume sau mărime diferite). */
+/** The re-selected file is not the session's file (different name or size). */
 export class FileMismatchError extends Error {
   constructor(readonly session: UploadSession) {
     super(
@@ -48,7 +48,7 @@ export class FileMismatchError extends Error {
   }
 }
 
-/** Sesiunea nu mai poate primi bucăți (anulată, abandonată sau inexistentă). */
+/** The session can no longer accept chunks (cancelled, abandoned or missing). */
 export class UploadNotActiveError extends Error {
   constructor(readonly session: UploadSession | null) {
     super('Sesiunea de încărcare nu mai este activă; începe o încărcare nouă.');
@@ -83,7 +83,7 @@ export async function runChunkedUpload(
       onRetry: (info) => options.onRetry?.(info, operation),
     });
 
-  // 1. Sesiunea: nouă sau reluată.
+  // 1. The session: new or resumed.
   let session = options.uploadId
     ? await retry('stare', () => api.getUpload(options.uploadId!, signal))
     : await retry('inițializare', () =>
@@ -110,7 +110,7 @@ export async function runChunkedUpload(
       phase,
     });
 
-  /** Bucata următoare, după cum o vede serverul (GET /uploads/{id}). */
+  /** The next chunk, as the server sees it (GET /uploads/{id}). */
   const askServer = async () => {
     session = await retry('stare', () => api.getUpload(id, signal));
     if (session.status === 'ABORTED' || session.status === 'ABANDONED') {
@@ -123,7 +123,7 @@ export async function runChunkedUpload(
   let resyncs = 0;
 
   for (;;) {
-    // 2. Bucățile, strict secvențial.
+    // 2. The chunks, strictly sequential.
     while (n <= totalChunks) {
       throwIfAborted(signal);
       const start = (n - 1) * chunkSize;
@@ -136,7 +136,7 @@ export async function runChunkedUpload(
         const ack = await retry(`bucata ${current}`, () =>
           api.putChunk(id, current, blob, signal, (loaded) => report(current, start + loaded, 'uploading')),
         );
-        // Serverul spune care e următoarea; de obicei current + 1.
+        // The server says which one is next; usually current + 1.
         n = ack.nextChunk > current ? ack.nextChunk : current + 1;
         resyncs = 0;
         report(n, (n - 1) * chunkSize, 'uploading');
@@ -156,7 +156,7 @@ export async function runChunkedUpload(
       }
     }
 
-    // 3. Finalizarea (repetată pe o sesiune deja finalizată întoarce aceleași metadate).
+    // 3. Completion (repeating it on an already completed session returns the same metadata).
     report(totalChunks, file.size, 'completing');
     try {
       return await retry('finalizare', () => api.completeUpload(id, signal));

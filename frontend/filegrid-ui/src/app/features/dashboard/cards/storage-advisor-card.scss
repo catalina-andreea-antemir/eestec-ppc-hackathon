@@ -106,7 +106,7 @@ td.recommended {
   clip: rect(0 0 0 0);
 }
 
-/* Telefon: matricea încape în lățime, fără derulare; rămân scorul, p95 și etichetele. */
+/* Phone: the matrix fits the width without scrolling; score, p95 and badges remain. */
 @media (max-width: 600px) {
   table {
     min-width: 0;

@@ -19,13 +19,13 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * {@code GET /api/v1/health}, fără autentificare (contract: {@code getHealth}): {@code {"status":"UP"}} când api și
- * FileGridMeta răspund, altfel 503 {@code {"status":"DOWN"}} cu {@code Retry-After}. Îl folosesc healthcheck-ul
- * containerelor api și nginx și scripturile de start. Starea fiecărui storage este la {@code /admin/health} (C11).
+ * {@code GET /api/v1/health}, unauthenticated (contract {@code getHealth}): {@code {"status":"UP"}} when api and
+ * FileGridMeta respond, otherwise 503 {@code {"status":"DOWN"}} with {@code Retry-After}. Used by the api and nginx
+ * container healthchecks and the start scripts. Per-storage state lives at {@code /admin/health} (C11).
  *
- * <p>FileGridMeta se verifică cu {@link Connection#isValid(int)} (2 s), iar rezultatul se refolosește 1 s, ca un val
- * de cereri pe acest endpoint public să nu ocupe pool-ul JDBC. Fără baza de date configurată (profilul implicit, fără
- * {@code db}) răspunde UP dacă aplicația rulează.
+ * <p>FileGridMeta is checked with {@link Connection#isValid(int)} (2 s) and the result is reused for 1 s, so a burst
+ * of requests on this public endpoint cannot exhaust the JDBC pool. Without a configured database (default profile,
+ * no {@code db}) it reports UP as long as the app is running.
  */
 @RestController
 public class HealthController {
@@ -79,9 +79,9 @@ public class HealthController {
             if (connection.isValid(VALIDATION_TIMEOUT_SECONDS)) {
                 return true;
             }
-            log.warn("Health: FileGridMeta nu răspunde (conexiune invalidă)");
+            log.warn("Health: FileGridMeta is not responding (invalid connection)");
         } catch (SQLException | RuntimeException e) {
-            log.warn("Health: FileGridMeta nu răspunde: {}", e.getMessage());
+            log.warn("Health: FileGridMeta is not responding: {}", e.getMessage());
         }
         return false;
     }

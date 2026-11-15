@@ -5,7 +5,7 @@ import { provideRouter, Router } from '@angular/router';
 
 import { authInterceptor } from './auth.interceptor';
 
-/** JWT nesemnat cu payload-ul dat (backend-ul verifică semnătura, interfața doar citește). */
+/** Unsigned JWT with the given payload (the backend verifies the signature, the UI only reads it). */
 function fakeJwt(payload: object): string {
   const part = (value: object) => btoa(JSON.stringify(value)).replace(/=+$/, '');
   return `${part({ alg: 'none' })}.${part(payload)}.x`;
@@ -14,7 +14,7 @@ function fakeJwt(payload: object): string {
 describe('authInterceptor', () => {
   let http: HttpClient;
   let backend: HttpTestingController;
-  // Claim-urile din contract: `sub` și `role` (un singur șir).
+  // The contract claims: `sub` and `role` (a single string).
   const oldToken = fakeJwt({ sub: 'teren1', role: 'FIELD' });
   const newToken = fakeJwt({ sub: 'teren1', role: 'FIELD', v: 2 });
 

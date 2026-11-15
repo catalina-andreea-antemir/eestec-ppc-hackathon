@@ -1,13 +1,13 @@
-// Tipurile din contractul API pentru statistici (docs/api/openapi.yaml: StorageAdvisor, StorageScore,
+// API contract types for statistics (docs/api/openapi.yaml: StorageAdvisor, StorageScore,
 // PeakVsNormal, ScenarioWindow, ScenarioStats, Anomalies, OutageZones, Requirements).
-// Fiecare răspuns are o propoziție în română pentru oameni care iau decizii, în câmpul `interpretation`.
+// Every response carries a Romanian sentence for decision makers in its `interpretation` field.
 
 import { Role } from '../auth/auth.models';
 import { Category, StorageType, Zone } from '../upload/upload.models';
 
 export type { Category, StorageType, Zone } from '../upload/upload.models';
 
-/** Cine vede statisticile (x-roles: [DISPATCH, ADMIN] pe toate căile /stats/*). */
+/** Who sees the statistics (x-roles: [DISPATCH, ADMIN] on every /stats/* path). */
 export const STATS_ROLES: readonly Role[] = ['DISPATCH', 'ADMIN'];
 
 export function canViewStats(role: Role | null | undefined): boolean {
@@ -18,18 +18,18 @@ export const ALL_STORAGES: readonly StorageType[] = ['FTP', 'S3', 'DB'];
 
 // ---------- GET /stats/storage-advisor ----------
 
-/** O celulă din matricea 4 × 3 (schema StorageScore). */
+/** One cell of the 4 x 3 matrix (schema StorageScore). */
 export interface StorageScore {
   category: Category;
   storage: StorageType;
-  /** 0–100: combină latența, erorile și costul relativ. */
+  /** 0-100: combines latency, errors and relative cost. */
   score: number;
   latencyP50Ms: number;
   latencyP95Ms: number;
   errorRatePercent: number;
   relativeCostPerGb: number;
   samples: number;
-  /** true dacă celula are date din benchmark. */
+  /** true if the cell has benchmark data. */
   benchmarked: boolean;
 }
 
@@ -48,9 +48,9 @@ export interface StorageAdvisor {
     benchmarkSamples?: number;
     liveSamples?: number;
   };
-  /** Presupunerea de cost relativ per GB, din YAML: `unit` (text) și câte un număr per storage. */
+  /** Relative cost per GB assumption from the YAML: `unit` (text) and one number per storage. */
   costAssumption: Record<string, unknown>;
-  /** Exact 12 celule (4 categorii × 3 storage-uri). */
+  /** Exactly 12 cells (4 categories x 3 storage backends). */
   matrix: StorageScore[];
   recommendations: StorageRecommendation[];
   interpretation: string;
@@ -71,7 +71,7 @@ export interface ScenarioStats {
   latencyP95Ms: number;
   latencyP99Ms: number;
   errorRatePercent: number;
-  /** Cereri respinse de bulkhead. */
+  /** Requests rejected by the bulkhead. */
   rejected: number;
 }
 
@@ -90,7 +90,7 @@ export interface PeakVsNormal {
   interpretation: string;
 }
 
-/** Scenariile de vârf din X-Scenario (contract, punctul 11). Implicit: storm. */
+/** Peak scenarios from X-Scenario (contract, item 11). Default: storm. */
 export const PEAK_SCENARIOS: readonly { value: string; label: string }[] = [
   { value: 'storm', label: 'Furtună (storm)' },
   { value: 'peak', label: 'Vârf de consum (peak)' },
@@ -105,9 +105,9 @@ export interface MeterAnomaly {
   kwh: number;
   median: number;
   stddev: number;
-  /** mediană + 3 × abatere standard. */
+  /** median + 3 x standard deviation. */
   threshold: number;
-  /** Câte abateri standard peste mediană. */
+  /** How many standard deviations above the median. */
   deviations: number;
 }
 
@@ -120,7 +120,7 @@ export interface SilentMeter {
 
 export interface ZoneHourReadings {
   zone: Zone;
-  /** Începutul orei, UTC. */
+  /** Start of the hour, UTC. */
   hour: string;
   readings: number;
   totalKwh: number;
@@ -155,11 +155,11 @@ export interface ZoneRank {
   rank: number;
   zone: Zone;
   outages: number;
-  /** null când tot intervalul n-are avarii (procentul nu e definit). 0 = zonă fără avarii într-un interval cu avarii. */
+  /** null when the whole interval has no outages (the percentage is undefined). 0 = a zone without outages in an interval with outages. */
   sharePercent: number | null;
-  /** Raport față de media pe zone; null când tot intervalul n-are avarii. */
+  /** Ratio to the per-zone average; null when the whole interval has no outages. */
   vsAverageRatio: number | null;
-  /** Ora (UTC) cu cele mai multe avarii; null când zona n-are avarii. */
+  /** Hour (UTC) with the most outages; null when the zone had no outages. */
   peakHour: number | null;
 }
 
@@ -187,7 +187,7 @@ export interface Requirement {
   id: 'R1' | 'R2' | 'R3' | 'R4';
   category: Category;
   title: string;
-  /** OK = plăcuță verde, AT_RISK = roșie. */
+  /** OK = green tile, AT_RISK = red. */
   status: RequirementStatus;
   message: string;
   thresholds: Record<string, unknown>;
@@ -198,8 +198,8 @@ export interface Requirements {
   generatedAt: string;
   requirements: Requirement[];
   /**
-   * Schema Requirements din contract NU are (încă) acest câmp, deși planul cere interpretare pe fiecare răspuns.
-   * Dacă lipsește, interfața compune propoziția din plăcuțe (requirementsInterpretation).
+   * The contract's Requirements schema does NOT have this field (yet), although every response should carry an
+   * interpretation. When missing, the UI composes the sentence from the tiles (requirementsInterpretation).
    */
   interpretation?: string;
 }

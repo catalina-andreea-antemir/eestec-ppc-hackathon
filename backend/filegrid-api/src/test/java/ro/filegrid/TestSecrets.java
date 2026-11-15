@@ -7,8 +7,8 @@ import java.util.HexFormat;
 import org.springframework.test.context.DynamicPropertyRegistry;
 
 /**
- * Secrete aleatorii pentru testele Spring (niciun secret în repo): cheia JWT și parolele utilizatorilor de test,
- * generate o dată per rulare.
+ * Random secrets for the Spring tests (no secret in the repo): the JWT key and the test users' passwords,
+ * generated once per run.
  */
 public final class TestSecrets {
 

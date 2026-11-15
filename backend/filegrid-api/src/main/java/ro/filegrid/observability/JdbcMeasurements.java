@@ -7,8 +7,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 /**
- * Măsurătorile pentru {@code /stats/requirements}, din FileGridMeta (comune tuturor instanțelor api): ferestrele
- * (R2–R4) se calculează din {@code operation_metrics} (numai {@code source = 'live'}) și {@code audit_log}.
+ * Measurements for {@code /stats/requirements}, from FileGridMeta (shared by every api instance): the windows
+ * (R2-R4) are computed from {@code operation_metrics} ({@code source = 'live'} only) and {@code audit_log}.
  */
 @Component
 @Profile("db")

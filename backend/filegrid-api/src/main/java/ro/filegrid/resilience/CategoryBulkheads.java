@@ -15,16 +15,16 @@ import ro.filegrid.observability.OperationMetrics;
 import ro.filegrid.policy.PolicyEngine;
 
 /**
- * Izolare per categorie (C9, planul 4.1): câte un {@link Bulkhead} pe categorie, dimensionat din
- * {@code maxConcurrentRequests} al politicii (per instanță, recitit fără restart). Saturația dă 429
- * {@code CATEGORY_SATURATED} cu {@code Retry-After}, doar pentru categoria saturată, incrementează
- * {@code filegrid_bulkhead_rejected_total{category}} și scrie un rând {@code rejected} în {@code operation_metrics}
- * (cu scenariul din {@code X-Scenario}), din care {@code /stats/peak-vs-normal} numără respingerile.
+ * Per-category isolation (C9): one {@link Bulkhead} per category, sized from the policy's
+ * {@code maxConcurrentRequests} (per instance, hot-reloaded). Saturation returns 429 {@code CATEGORY_SATURATED} with
+ * {@code Retry-After} for the saturated category only, increments {@code filegrid_bulkhead_rejected_total{category}}
+ * and writes a {@code rejected} row to {@code operation_metrics} (with the {@code X-Scenario} value), which
+ * {@code /stats/peak-vs-normal} uses to count rejections.
  */
 @Component
 public class CategoryBulkheads {
 
-    /** Secunde până la reîncercare; permisele se eliberează în ordinul secundelor. */
+    /** Seconds until retry; permits free up within seconds. */
     static final int RETRY_AFTER_SECONDS = 1;
 
     private final PolicyEngine policies;
@@ -32,7 +32,7 @@ public class CategoryBulkheads {
     private final Map<Category, Bulkhead> bulkheads = new EnumMap<>(Category.class);
     private final Map<Category, Counter> rejected = new EnumMap<>(Category.class);
 
-    /** Fără rânduri în {@code operation_metrics} (teste unitare). */
+    /** Without {@code operation_metrics} rows (unit tests). */
     public CategoryBulkheads(PolicyEngine policies, MeterRegistry registry) {
         this(policies, registry, OperationMetrics.noop());
     }
@@ -50,8 +50,8 @@ public class CategoryBulkheads {
     }
 
     /**
-     * Permisul categoriei sau {@link ApiException} 429. Se folosește în {@code try-with-resources}, înainte de
-     * citirea corpului; la streaming se închide abia după ce răspunsul s-a terminat.
+     * The category's permit, or an {@link ApiException} 429. Use it in {@code try-with-resources} before reading the
+     * body; when streaming, it is closed only after the response has finished.
      */
     public Bulkhead.Permit acquire(Category category) {
         Bulkhead.Permit permit = bulkheads.get(category).tryAcquire();

@@ -18,14 +18,14 @@ import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.MultipartUpload;
 
 /**
- * Legătura testelor de integrare cu MinIO-ul real din stack. Pornire: {@code ./scripts/start.sh}, apoi porturile de
- * dezvoltare ({@code docker compose -f docker-compose.yml -f infra/docker/docker-compose.dev.yml up -d}: S3 API pe
+ * Glue between the integration tests and the stack's real MinIO. Start: {@code ./scripts/start.sh}, then the
+ * development ports ({@code docker compose -f docker-compose.yml -f infra/docker/docker-compose.dev.yml up -d}: S3 API on
  * {@code 127.0.0.1:9000}).
  *
- * <p>Credențialele sunt ale utilizatorului aplicației ({@code S3_ACCESS_KEY} / {@code S3_SECRET_KEY}), din variabilele
- * de mediu sau din {@code .env} din rădăcina repo-ului (nu se afișează niciodată). Endpoint-ul: {@code S3_TEST_ENDPOINT}
- * sau {@code http://127.0.0.1:9000}; bucket-ul: {@code MINIO_BUCKET} sau {@code filegrid}. Dacă lipsesc credențialele
- * sau MinIO nu răspunde, testele se <b>sar</b> (assumption), nu pică: {@code ./mvnw test} merge și fără stack.
+ * <p>Credentials belong to the app user ({@code S3_ACCESS_KEY} / {@code S3_SECRET_KEY}), from environment variables or
+ * the repo-root {@code .env} (never printed). Endpoint: {@code S3_TEST_ENDPOINT} or {@code http://127.0.0.1:9000};
+ * bucket: {@code MINIO_BUCKET} or {@code filegrid}. If credentials are missing or MinIO does not answer, the tests are
+ * <b>skipped</b> (assumption) instead of failing: {@code ./mvnw test} works without the stack.
  */
 final class S3TestSupport {
 
@@ -34,7 +34,7 @@ final class S3TestSupport {
     private S3TestSupport() {
     }
 
-    /** Adaptorul conectat la MinIO, sau sare testele clasei dacă MinIO nu e disponibil. */
+    /** Adapter connected to MinIO, or skips the class's tests if MinIO is not available. */
     static TrackingS3Adapter connectOrSkip() {
         Map<String, String> env = environment();
         String endpoint = env.getOrDefault("S3_TEST_ENDPOINT", DEFAULT_ENDPOINT);
@@ -54,7 +54,7 @@ final class S3TestSupport {
         return adapter;
     }
 
-    /** Variabilele de mediu, completate cu {@code .env} din rădăcina repo-ului (mediul are prioritate). */
+    /** Environment variables, completed from the repo-root {@code .env} (the environment wins). */
     static Map<String, String> environment() {
         Map<String, String> values = new HashMap<>();
         Path dotEnv = findDotEnv();
@@ -72,7 +72,7 @@ final class S3TestSupport {
                     }
                 }
             } catch (IOException e) {
-                // Fără .env lizibil: rămân variabilele de mediu.
+                // Without a readable .env, only the environment variables remain.
             }
         }
         for (String name : List.of("S3_TEST_ENDPOINT", "MINIO_BUCKET", "S3_ACCESS_KEY", "S3_SECRET_KEY")) {
@@ -94,8 +94,8 @@ final class S3TestSupport {
     }
 
     /**
-     * {@link S3Adapter} care ține minte cheile create de teste (ca să le șteargă la final) și dă acces la clientul S3
-     * pentru verificări (upload-uri multipart neterminate, ETag).
+     * {@link S3Adapter} that remembers the keys created by tests (to delete them at the end) and exposes the S3 client
+     * for checks (unfinished multipart uploads, ETag).
      */
     static final class TrackingS3Adapter extends S3Adapter {
 
@@ -121,21 +121,21 @@ final class S3TestSupport {
             return super.open(key, totalSize, chunkSize);
         }
 
-        /** Upload-urile multipart neterminate pentru exact această cheie. */
+        /** Unfinished multipart uploads for exactly this key. */
         List<MultipartUpload> pendingUploads(String key) {
             return client.listMultipartUploadsPaginator(b -> b.bucket(bucket).prefix(key)).uploads().stream()
                     .filter(u -> key.equals(u.key()))
                     .toList();
         }
 
-        /** Șterge obiectele și upload-urile neterminate create de teste, apoi închide clientul. */
+        /** Deletes the objects and unfinished uploads created by tests, then closes the client. */
         void cleanupAndClose() {
             try {
                 for (String key : keys) {
                     try {
                         delete(key);
                     } catch (RuntimeException e) {
-                        // Curățare cât se poate; nu ascunde rezultatul testelor.
+                        // Best-effort cleanup; must not hide the test outcome.
                     }
                 }
             } finally {

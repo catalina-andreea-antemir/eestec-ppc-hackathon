@@ -13,9 +13,9 @@ import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 
 /**
- * {@code filegrid_meter_unconfirmed}: rândurile din {@code meter_readings} fără {@code file_id} mai vechi de 60 s
- * (citiri neconfirmate, alerta 1 / R1). Valoarea se reîmprospătează periodic din FileGridMeta, nu la fiecare scrape;
- * dacă baza nu răspunde, rămâne ultima valoare cunoscută.
+ * {@code filegrid_meter_unconfirmed}: {@code meter_readings} rows without {@code file_id} older than 60 s
+ * (unconfirmed readings, alert 1 / R1). Refreshed periodically from FileGridMeta rather than on every scrape;
+ * if the database does not respond, the last known value is kept.
  */
 @Component
 @Profile("db")
@@ -44,7 +44,7 @@ public class MeterUnconfirmedGauge {
             Long count = jdbc.queryForObject(SQL, Long.class);
             value.set(count == null ? 0 : count);
         } catch (RuntimeException e) {
-            log.warn("filegrid_meter_unconfirmed nu s-a putut actualiza: {}", e.getMessage());
+            log.warn("filegrid_meter_unconfirmed could not be refreshed: {}", e.getMessage());
         }
     }
 }

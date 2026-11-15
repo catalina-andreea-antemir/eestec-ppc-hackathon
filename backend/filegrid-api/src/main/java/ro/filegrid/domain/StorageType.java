@@ -1,14 +1,14 @@
 package ro.filegrid.domain;
 
 /**
- * Cele 3 storage-uri (contract: schema {@code StorageType}). Numele constantelor sunt exact valorile din API, din
- * YAML-ul de politică și din coloanele {@code storage_type} ({@code CK_files_storage_type}).
+ * The 3 storage backends (contract schema {@code StorageType}). Constant names are exactly the values used by the
+ * API, the policy YAML and the {@code storage_type} columns ({@code CK_files_storage_type}).
  */
 public enum StorageType {
-    /** Serviciul {@code ftp} (vsftpd, mod pasiv). */
+    /** The {@code ftp} service (vsftpd, passive mode). */
     FTP,
-    /** MinIO, prin AWS SDK v2. */
+    /** MinIO, through AWS SDK v2. */
     S3,
-    /** SQL Server, baza FileGridStorage, tabela {@code blob_chunks}. */
+    /** SQL Server, FileGridStorage database, {@code blob_chunks} table. */
     DB
 }

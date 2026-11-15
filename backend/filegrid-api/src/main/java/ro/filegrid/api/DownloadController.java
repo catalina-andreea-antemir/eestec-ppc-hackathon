@@ -25,8 +25,8 @@ import ro.filegrid.ingest.IngestErrors;
 import ro.filegrid.resilience.CategoryBulkheads;
 
 /**
- * {@code /verify}, {@code /download}, {@code /download-link} și {@code GET /downloads/{token}} (C8). Corpul se scrie
- * direct pe răspuns, în streaming; link-ul semnat se comportă ca {@code /download}, dar fără {@code Authorization}.
+ * {@code /verify}, {@code /download}, {@code /download-link} and {@code GET /downloads/{token}} (C8). The body is
+ * streamed straight to the response; the signed link behaves like {@code /download} but needs no {@code Authorization}.
  */
 @RestController
 public class DownloadController {
@@ -71,7 +71,7 @@ public class DownloadController {
             throws IOException {
         RequestScenario.read(request);
         FileRecord file = queryService().get(authentication, FileReadController.fileId(id), "DOWNLOAD");
-        // Permisul se eliberează abia când send() se întoarce: stream terminat, sau închis de un client căzut.
+        // The permit is released only when send() returns: stream finished, or closed by a dropped client.
         try (var permit = bulkheads.acquire(file.category())) {
             access.audit(authentication, file, "DOWNLOAD");
             contentService().send(file, range, response);
@@ -106,7 +106,7 @@ public class DownloadController {
         }
     }
 
-    /** Eșec propriu-zis (5xx, transfer întrerupt, fișier corupt) după ce accesul a fost permis: metrica {@code error}. */
+    /** Genuine failure (5xx, interrupted transfer, corrupt file) after access was granted: {@code error} metric. */
     private void failed(FileRecord file, String action, RuntimeException e) {
         boolean clientError = e instanceof ApiException api && api.status().value() < 500 && !"FILE_CORRUPT".equals(api.code());
         if (!clientError) {

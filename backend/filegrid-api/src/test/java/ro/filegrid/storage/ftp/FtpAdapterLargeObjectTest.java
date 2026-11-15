@@ -26,10 +26,10 @@ import ro.filegrid.storage.StorageKeys;
 import ro.filegrid.storage.StorageUnavailableException;
 
 /**
- * Criteriile de acceptanță C6 pe serverul FTP real (se sare fără server): fișier de 200 MB urcat și descărcat în
- * streaming cu hash identic (rulat și cu {@code -DargLine=-Xmx256m}), descărcare parțială exactă, upload în bucăți de
- * 16 MiB cu o bucată retrimisă, una întreruptă de sursă și una cu conexiunea tăiată în timpul scrierii, abort fără
- * fișiere rămase. Datele se generează din {@link GeneratedData}, deci nimic de dimensiunea fișierului nu stă în memorie.
+ * C6 acceptance criteria on the real FTP server (skipped without a server): a 200 MB file uploaded and downloaded as
+ * a stream with an identical hash (also run with {@code -DargLine=-Xmx256m}), exact partial download, a chunked upload
+ * of 16 MiB chunks with one resent chunk, one cut off by the source and one whose connection drops mid-write, and an
+ * abort that leaves no files behind. Data comes from {@link GeneratedData}, so nothing file-sized is held in memory.
  */
 class FtpAdapterLargeObjectTest {
 
@@ -68,7 +68,7 @@ class FtpAdapterLargeObjectTest {
         log.info("200 MB: SHA-256 trimis {} / citit {}", expected, actual);
         assertThat(actual).isEqualTo(expected);
 
-        // Descărcare parțială (REST): exact octeții ceruți, inclusiv la sfârșit.
+        // Partial download (REST): exactly the requested bytes, including at the end.
         assertRange(key, seed, ByteRange.of(123_456_789, 1_000), 1_000);
         assertRange(key, seed, ByteRange.from(size - 777), 777);
         assertRange(key, seed, ByteRange.of(size - 5, 1_000), 5);
@@ -89,7 +89,7 @@ class FtpAdapterLargeObjectTest {
 
         List<ChunkReceipt> receipts = new ArrayList<>();
         receipts.add(append(upload, 1, seed));
-        // Bucata 2: prima trimitere are alt conținut (retrimisă ulterior), a doua e întreruptă de sursă la jumătate.
+        // Chunk 2: the first send has different content (resent later), the second is cut off by the source midway.
         append(upload, 2, seed + 1);
         assertThatThrownBy(() -> ftp.append(upload, 2, GeneratedData.interrupted(
                 GeneratedData.stream(seed, upload.offsetOf(2), chunk), chunk / 2), chunk))
@@ -97,7 +97,7 @@ class FtpAdapterLargeObjectTest {
                 .isNotInstanceOf(StorageUnavailableException.class)
                 .hasMessageContaining("întreruptă");
         receipts.add(append(upload, 2, seed));
-        // Bucata 3: conexiunea de date e tăiată brusc la jumătate (rețea căzută), apoi bucata se retrimite.
+        // Chunk 3: the data connection is cut abruptly midway (network down), then the chunk is resent.
         ftp.cutNextDataConnectionAfter(chunk / 2);
         assertThatThrownBy(() -> ftp.append(upload, 3, GeneratedData.stream(seed, upload.offsetOf(3), chunk), chunk))
                 .isInstanceOf(StorageUnavailableException.class);
@@ -116,7 +116,7 @@ class FtpAdapterLargeObjectTest {
         log.info("Upload în bucăți 3 x 16 MiB + 3000001: SHA-256 așteptat {} / citit {}", expected, actual);
         assertThat(actual).isEqualTo(expected);
 
-        // Range exact, inclusiv peste granițele dintre bucăți (și peste mai multe bucăți deodată).
+        // Exact Range, including across chunk boundaries (and across several chunks at once).
         assertRange(key, seed, ByteRange.of(chunk - 50, 100), 100);
         assertRange(key, seed, ByteRange.of(2L * chunk - 50, 100), 100);
         assertRange(key, seed, ByteRange.of(chunk - 10, 2L * chunk + 20), (int) (2L * chunk + 20));
@@ -127,7 +127,7 @@ class FtpAdapterLargeObjectTest {
             assertThat(in.readAllBytes()).isEmpty();
         }
 
-        // Pe server: doar cele 4 bucăți și manifestul; bucata parțială nu a rămas nicăieri.
+        // On the server: only the 4 chunks and the manifest; the partial chunk was not left anywhere.
         assertThat(FtpTestSupport.filesOf(ftp.props, key)).hasSize(5).noneMatch(p -> p.contains(".part"))
                 .noneMatch(p -> p.contains("~tmp"));
     }
@@ -139,7 +139,7 @@ class FtpAdapterLargeObjectTest {
         String key = StorageKeys.newKey();
         ChunkedUpload upload = new ChunkedUpload(key, ftp.open(key, size, chunk), size, chunk);
         append(upload, 1, 5);
-        // O bucată rămasă parțială, sub nume temporar.
+        // A chunk left partial, under a temp name.
         assertThatThrownBy(() -> ftp.append(upload, 2, GeneratedData.interrupted(
                 GeneratedData.stream(5, chunk, chunk), 1_000), chunk)).isInstanceOf(StorageException.class);
         assertThat(FtpTestSupport.filesOf(ftp.props, key)).isNotEmpty();
@@ -189,7 +189,7 @@ class FtpAdapterLargeObjectTest {
         int size = 2 * MIB;
         ftp.put(key, GeneratedData.stream(3, 0, size), size, null);
 
-        // vsftpd are max_clients=200: dacă închiderea timpurie ar lăsa conexiuni agățate, ar pica pe parcurs.
+        // vsftpd has max_clients=200: if an early close left connections hanging, this would fail along the way.
         for (int i = 0; i < 230; i++) {
             try (InputStream in = ftp.get(key, ByteRange.full())) {
                 assertThat(in.readNBytes(100)).isEqualTo(GeneratedData.bytes(3, 0, 100));
@@ -205,7 +205,7 @@ class FtpAdapterLargeObjectTest {
         assertThat(sha256(ftp.get(key, ByteRange.full()))).isEqualTo(sha256(GeneratedData.stream(3, 0, size)));
     }
 
-    // --- utilitare -------------------------------------------------------------------------------------------
+    // --- helpers ---------------------------------------------------------------------------------------------
 
     private static ChunkReceipt append(ChunkedUpload upload, int n, long seed) {
         long length = upload.expectedLength(n);

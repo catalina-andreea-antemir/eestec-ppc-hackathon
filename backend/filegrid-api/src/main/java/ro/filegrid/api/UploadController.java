@@ -23,10 +23,9 @@ import ro.filegrid.upload.UploadService;
 import ro.filegrid.upload.UploadStatus;
 
 /**
- * Upload în bucăți (C7, ADR-003): {@code POST /uploads}, {@code PUT /uploads/{id}/chunks/{n}} (corpul binar se citește
- * direct din cerere, în streaming), {@code GET /uploads/{id}}, {@code POST /uploads/{id}/complete} și
- * {@code POST /uploads/{id}/abort}. Rolurile pe categorii vin la C10; acum e nevoie doar de un token valid, iar
- * sesiunea o poate folosi cel care a inițiat-o sau ADMIN.
+ * Chunked upload (C7, ADR-003): {@code POST /uploads}, {@code PUT /uploads/{id}/chunks/{n}} (the binary body is
+ * streamed straight from the request), {@code GET /uploads/{id}}, {@code POST /uploads/{id}/complete} and
+ * {@code POST /uploads/{id}/abort}. A session can only be used by whoever started it, or by ADMIN.
  */
 @RestController
 public class UploadController {
@@ -41,7 +40,7 @@ public class UploadController {
         this.service = service;
     }
 
-    /** Corpul {@code UploadInit}. */
+    /** Body of {@code UploadInit}. */
     public record UploadInit(String category, String fileName, Long totalSize) {
     }
 
@@ -74,7 +73,7 @@ public class UploadController {
         RequestScenario.read(request);
         UploadService.Caller caller = caller(authentication);
         UUID uploadId = uploadId(id);
-        try (var permit = bulkheads.acquire(uploads().categoryOf(uploadId, caller))) { // înainte de citirea corpului
+        try (var permit = bulkheads.acquire(uploads().categoryOf(uploadId, caller))) { // before reading the body
             return uploads().putChunk(uploadId, n, caller, request.getInputStream(), request.getContentLengthLong());
         }
     }

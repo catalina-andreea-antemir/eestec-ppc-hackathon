@@ -10,8 +10,8 @@ export const appConfig: ApplicationConfig = {
   providers: [
     provideBrowserGlobalErrorListeners(),
     provideRouter(routes),
-    // Ordinea contează: authInterceptor pune token-ul, apoi mock-ul (doar dacă
-    // environment.useMocks e true) răspunde în locul backend-ului.
+    // Order matters: authInterceptor adds the token, then the mock (only when
+    // environment.useMocks is true) answers instead of the backend.
     provideHttpClient(withInterceptors([authInterceptor, mockApiInterceptor])),
   ],
 };

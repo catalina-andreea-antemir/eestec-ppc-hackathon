@@ -1,5 +1,5 @@
-// Securitate (F8, C10): matricea de roluri 4.4. Fiecare rol care incearca o operatie nepermisa primeste 403,
-// cererile fara token sau cu token nepotrivit primesc 401. O singura iteratie; toate verificarile trebuie sa treaca.
+// Security (F8, C10): role matrix 4.4. Every role attempting a forbidden operation gets 403;
+// requests without a token or with a mismatched token get 401. Single iteration; every check must pass.
 import { group } from 'k6';
 import {
   BASE_URL, RUN_ID, ZONES, auth, track, forbiddenOk, uploadOutage, uploadDoc, meterBatch, meterId, http, check, csv, bytes,
@@ -57,7 +57,7 @@ export default function (d) {
   const b = meterBatch(meterId(`${RUN_ID}x`, ZONES[1], 1), ZONES[1], Date.UTC(2026, 0, 1), 4);
   const meterH = Object.assign({ 'Idempotency-Key': b.key }, JSON_H);
 
-  group('DISPATCH: nu incarca, nu vede documente', () => {
+  group('DISPATCH: no uploads, no documents', () => {
     deny('dispecer', 'DISPATCH', 'POST', '/files', outageForm());
     deny('dispecer', 'DISPATCH', 'POST', '/uploads', videoInit, JSON_H);
     deny('dispecer', 'DISPATCH', 'POST', '/meter-readings', b.body, meterH);
@@ -71,7 +71,7 @@ export default function (d) {
     deny('dispecer', 'DISPATCH', 'GET', '/admin/health');
   });
 
-  group('FIELD: fara documente, statistici, admin, citiri', () => {
+  group('FIELD: no documents, stats, admin or readings', () => {
     deny('teren', 'FIELD', 'POST', '/files', docForm());
     deny('teren', 'FIELD', 'GET', '/files?category=CONNECTION_DOC');
     deny('teren', 'FIELD', 'GET', '/files?category=METER_READING');
@@ -82,7 +82,7 @@ export default function (d) {
     deny('teren', 'FIELD', 'GET', '/admin/health');
   });
 
-  group('CONNECTIONS: doar documente', () => {
+  group('CONNECTIONS: documents only', () => {
     deny('racordari', 'CONNECTIONS', 'POST', '/files', outageForm());
     deny('racordari', 'CONNECTIONS', 'POST', '/uploads', videoInit, JSON_H);
     deny('racordari', 'CONNECTIONS', 'GET', '/files?category=OUTAGE_RECORD');
@@ -93,7 +93,7 @@ export default function (d) {
     deny('racordari', 'CONNECTIONS', 'GET', '/stats/anomalies');
   });
 
-  group('METER_SERVICE: doar POST /meter-readings', () => {
+  group('METER_SERVICE: POST /meter-readings only', () => {
     deny('contor', 'METER_SERVICE', 'GET', '/files');
     deny('contor', 'METER_SERVICE', 'POST', '/files', outageForm());
     deny('contor', 'METER_SERVICE', 'POST', '/uploads', videoInit, JSON_H);
@@ -102,19 +102,19 @@ export default function (d) {
     deny('contor', 'METER_SERVICE', 'GET', '/admin/health');
   });
 
-  group('401: fara token, token nepotrivit, link semnat modificat', () => {
-    unauthorized('GET /files fara token', 'GET', '/files');
-    unauthorized('POST /meter-readings fara token', 'POST', '/meter-readings', b.body, meterH);
-    unauthorized('GET /files cu token invalid', 'GET', '/files', undefined, { Authorization: 'Bearer abc.def.ghi' });
+  group('401: no token, mismatched token, tampered signed link', () => {
+    unauthorized('GET /files without token', 'GET', '/files');
+    unauthorized('POST /meter-readings without token', 'POST', '/meter-readings', b.body, meterH);
+    unauthorized('GET /files with invalid token', 'GET', '/files', undefined, { Authorization: 'Bearer abc.def.ghi' });
     const login = http.post(`${BASE_URL}/auth/login`, JSON.stringify({ username: 'dispecer', password: 'k6-parola-gresita' }), {
-      headers: JSON_H, tags: { op: 'security', name: 'POST /auth/login (parola gresita)' }, responseCallback: http.expectedStatuses(401),
+      headers: JSON_H, tags: { op: 'security', name: 'POST /auth/login (wrong password)' }, responseCallback: http.expectedStatuses(401),
     });
     track(login, [401], 'security');
-    check(login, { 'login cu parola gresita -> 401': (r) => r.status === 401 });
-    unauthorized('GET /downloads/{token} modificat', 'GET', '/downloads/k6-token-invalid.AAAA');
+    check(login, { 'login with wrong password -> 401': (r) => r.status === 401 });
+    unauthorized('GET /downloads/{token} tampered', 'GET', '/downloads/k6-token-invalid.AAAA');
   });
 
-  group('ADMIN: acces la tot (control pozitiv)', () => {
+  group('ADMIN: full access (positive control)', () => {
     const h = req('admin', 'GET', '/admin/health');
     track(h, [200], 'security_admin');
     check(h, { 'ADMIN GET /admin/health -> 200': (r) => r.status === 200 });

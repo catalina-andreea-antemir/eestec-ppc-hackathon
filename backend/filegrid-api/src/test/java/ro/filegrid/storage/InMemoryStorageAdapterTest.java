@@ -9,7 +9,7 @@ import org.junit.jupiter.api.Test;
 
 import ro.filegrid.domain.StorageType;
 
-/** Adaptorul în memorie respectă contractul (și arată cum se extinde {@link StorageAdapterContractTest}). */
+/** The in-memory adapter honours the contract (and shows how to extend {@link StorageAdapterContractTest}). */
 class InMemoryStorageAdapterTest extends StorageAdapterContractTest {
 
     private final InMemoryStorageAdapter storage = new InMemoryStorageAdapter(StorageType.DB);

@@ -35,7 +35,7 @@ import ro.filegrid.ingest.FileRecord;
 import ro.filegrid.security.Role;
 import ro.filegrid.security.TokenService;
 
-/** Contractul HTTP al căutării / metadatelor / link-ului semnat (serviciile sunt simulate): parametri, paginare, 401. */
+/** HTTP contract of search / metadata / signed link (services are mocked): parameters, paging, 401. */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class FileReadApiTest {
 
@@ -144,7 +144,7 @@ class FileReadApiTest {
 
         HttpHeaders range = new HttpHeaders();
         range.set("Range", "bytes=0-2");
-        range.setBearerAuth("token-expirat-ignorat"); // pe ruta publică Authorization se ignoră
+        range.setBearerAuth("token-expirat-ignorat"); // Authorization is ignored on the public route
         ResponseEntity<byte[]> download = rest.exchange(url, HttpMethod.GET, new HttpEntity<>(range), byte[].class);
         assertThat(download.getStatusCode().value()).isEqualTo(206);
         assertThat(download.getBody()).containsExactly(1, 2, 3);

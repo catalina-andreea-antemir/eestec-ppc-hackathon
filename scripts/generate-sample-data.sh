@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# Genereaza datele de test FileGrid in sample-data/ (taskul F3). Echivalentul bash al lui generate-sample-data.ps1.
+# Generates the FileGrid test data in sample-data/ (task F3). Bash equivalent of generate-sample-data.ps1.
 #
-#   meter-readings/     loturi JSON {meterId, zone, readings:[{ts,kwh}]} de 1-50 KB + anomalies-expected.csv
-#   outage-records/     fisiere CSV de avarie de 1-10 MB + manifest.json (zone, stationId, occurredAt)
-#   connection-docs/    PDF-uri si PNG-uri mici, cu date personale EXCLUSIV FICTIVE
-#   inspection-videos/  .mp4 de 100 MiB, 500 MiB si 1,1 GiB (ignorate de Git), scrise in streaming
+#   meter-readings/     JSON batches {meterId, zone, readings:[{ts,kwh}]} of 1-50 KB + anomalies-expected.csv
+#   outage-records/     outage CSV files of 1-10 MB + manifest.json (zone, stationId, occurredAt)
+#   connection-docs/    small PDFs and PNGs with STRICTLY FICTIONAL personal data
+#   inspection-videos/  .mp4 files of 100 MiB, 500 MiB and 1.1 GiB (ignored by Git), written as a stream
 #
-# Datele (in afara de continutul video-urilor) sunt deterministe si identice octet cu octet cu cele din
-# varianta PowerShell. Idempotent: fisierele existente sunt sarite; --force le regenereaza.
+# Everything except the video payload is deterministic and byte-identical to the PowerShell version.
+# Idempotent: existing files are skipped; --force regenerates them.
 #
-# Utilizare:
+# Usage:
 #   bash scripts/generate-sample-data.sh [--out DIR] [--force] [--skip-large-videos] [--skip-videos] [--seed N]
 set -euo pipefail
 export LC_ALL=C
@@ -26,22 +26,22 @@ while [ $# -gt 0 ]; do
     --skip-videos) SKIP_VIDEOS=1; shift ;;
     --seed) SEED="$2"; shift 2 ;;
     -h|--help) sed -n '2,14p' "$0"; exit 0 ;;
-    *) echo "Parametru necunoscut: $1 (vezi --help)" >&2; exit 2 ;;
+    *) echo "Unknown parameter: $1 (see --help)" >&2; exit 2 ;;
   esac
 done
 
 CREATED=0; SKIPPED=0
 
-# ---------------------------------------------------------------- utilitare
+# ---------------------------------------------------------------- helpers
 
-# Generator MINSTD (Park-Miller), acelasi ca in varianta PowerShell.
+# MINSTD (Park-Miller) generator, same as the PowerShell version, so both produce identical data.
 RNG=1
 rng_seed() { RNG=$(( ($1 % 2147483646) + 1 )); }
-rand() { RNG=$(( RNG * 48271 % 2147483647 )); R=$(( RNG % $1 )); }   # rezultatul in $R
+rand() { RNG=$(( RNG * 48271 % 2147483647 )); R=$(( RNG % $1 )); }   # result in $R
 
 file_size() { wc -c < "$1" | tr -d ' '; }
 
-# need_file CALE [MARIME_EXACTA] -> 0 daca fisierul trebuie (re)generat
+# need_file PATH [EXACT_SIZE] -> 0 if the file must be (re)generated
 need_file() {
   local path="$1" expected="${2:-0}" len
   [ "$FORCE" = 1 ] && return 0
@@ -55,31 +55,31 @@ need_file() {
 tmp_path() { echo "$(dirname "$1")/.tmp-$(basename "$1")"; }
 commit_file() { mv -f "$1" "$2"; CREATED=$((CREATED + 1)); }
 write_text() { local tmp; tmp=$(tmp_path "$1"); printf '%s' "$2" > "$tmp"; commit_file "$tmp" "$1"; }
-fmt_milli() { printf -v M '%d.%03d' $(( $1 / 1000 )) $(( $1 % 1000 )); }   # rezultatul in $M
+fmt_milli() { printf -v M '%d.%03d' $(( $1 / 1000 )) $(( $1 % 1000 )); }   # result in $M
 
-# ---------------------------------------------------------------- pregatire
+# ---------------------------------------------------------------- setup
 
 mkdir -p "$OUT"
 OUT="$(cd "$OUT" && pwd)"
 D_METER="$OUT/meter-readings"; D_OUTAGE="$OUT/outage-records"; D_DOCS="$OUT/connection-docs"; D_VIDEO="$OUT/inspection-videos"
 for d in "$D_METER" "$D_OUTAGE" "$D_DOCS" "$D_VIDEO"; do
   mkdir -p "$d"
-  rm -f "$d"/.tmp-*    # resturi de la o rulare intrerupta
+  rm -f "$d"/.tmp-*    # leftovers from an interrupted run
 done
-echo "Generez date de test in $OUT (samanta $SEED)"
+echo "Generating test data in $OUT (seed $SEED)"
 
-# ---------------------------------------------------------------- 1. citiri contoare
+# ---------------------------------------------------------------- 1. meter readings
 
 HOUR_FACTOR=(60 60 60 60 60 60 80 115 115 100 100 100 100 100 100 100 100 110 125 125 125 125 90 90)
 METERS=(RO-MUN-0004821:Muntenia RO-MUN-0009920:Muntenia RO-MUN-0012345:Muntenia RO-MUN-0020417:Muntenia
         RO-BAN-0001377:Banat RO-BAN-0003051:Banat RO-BAN-0007712:Banat RO-BAN-0010458:Banat
         RO-DOB-0000412:Dobrogea RO-DOB-0002290:Dobrogea RO-DOB-0005538:Dobrogea RO-DOB-0008804:Dobrogea)
-# Loturi: meterId:zona:ziua din noiembrie 2026 (start 00:00 UTC):numar de citiri
+# Batches: meterId:zone:day of November 2026 (starting 00:00 UTC):number of readings
 BATCHES=()
 for day in 13 14; do
   for m in "${METERS[@]}"; do
     count=96
-    # Contorul "tacut" din contract: ultima citire la 10:30 (43 de citiri), apoi nimic.
+    # The "silent" meter from the contract: last reading at 10:30 (43 readings), then nothing.
     [ "${m%%:*}" = RO-DOB-0000412 ] && [ "$day" = 14 ] && count=43
     BATCHES+=("$m:$day:$count")
   done
@@ -87,11 +87,11 @@ done
 BATCHES+=(RO-MUN-0030001:Muntenia:14:15 RO-BAN-0030002:Banat:14:15 RO-DOB-0030003:Dobrogea:14:15
           RO-MUN-0040001:Muntenia:7:700 RO-DOB-0040002:Dobrogea:7:700)
 
-# Consumuri anormale (kWh * 1000) puse intentionat: "meterId_zi_indexCitire" => valoare.
+# Deliberate consumption anomalies (kWh * 1000): "meterId_day_readingIndex" => value.
 spike_for() {
   case "$1" in
-    RO-BAN-0001377_14_13) S=6840 ;;   # 2026-11-14T03:15Z, exact ca exemplul din contract
-    RO-MUN-0009920_14_35) S=4120 ;;   # 2026-11-14T08:45Z, exact ca exemplul din contract
+    RO-BAN-0001377_14_13) S=6840 ;;   # 2026-11-14T03:15Z, matches the contract example
+    RO-MUN-0009920_14_35) S=4120 ;;   # 2026-11-14T08:45Z, matches the contract example
     RO-DOB-0002290_13_8)  S=5310 ;;   # 2026-11-13T02:00Z
     RO-BAN-0007712_13_79) S=4960 ;;   # 2026-11-13T19:45Z
     RO-MUN-0040001_7_300) S=7250 ;;   # 2026-11-10T03:00Z
@@ -130,12 +130,12 @@ for b in "${BATCHES[@]}"; do
   k=$(( k + 1 ))
 done
 if need_file "$D_METER/anomalies-expected.csv"; then write_text "$D_METER/anomalies-expected.csv" "$ANOM"; fi
-echo "  meter-readings:    ${#BATCHES[@]} loturi JSON"
+echo "  meter-readings:    ${#BATCHES[@]} JSON batches"
 
-# ---------------------------------------------------------------- 2. avarii (1-10 MB)
+# ---------------------------------------------------------------- 2. outages (1-10 MB)
 
-# Distributie intentionat inegala: Muntenia 7, Dobrogea 4, Banat 2 (varfuri la 8-9 in Muntenia/Dobrogea, 14 in Banat).
-# idx:zona:stationId (gol = fara statie):ziua:ora:minutul:marimea tinta in KiB
+# Deliberately uneven distribution: Muntenia 7, Dobrogea 4, Banat 2 (peaks at 8-9 in Muntenia/Dobrogea, 14 in Banat).
+# idx:zone:stationId (empty = no station):day:hour:minute:target size in KiB
 OUTAGES=(
   1:Muntenia:ST-BRASOV-114:14:9:32:4608
   2:Muntenia:ST-PLOIESTI-031:14:8:47:9600
@@ -162,10 +162,10 @@ for o in "${OUTAGES[@]}"; do
 
   if need_file "$file"; then
     rng_seed $(( SEED + 1000003 * idx ))
-    rand 4800; out_rows=$(( 2400 + R ))     # avaria dureaza 10-30 de minute (randuri la 250 ms)
+    rand 4800; out_rows=$(( 2400 + R ))     # the outage lasts 10-30 minutes (one row every 250 ms)
     t0=$(( ((day * 24 + hour) * 60 + minute) * 60000 - 600000 ))
     tmp=$(tmp_path "$file")
-    # awk scrie rapid sute de mii de randuri; aritmetica e exacta (valori < 2^53).
+    # awk writes hundreds of thousands of rows fast; arithmetic stays exact (values < 2^53).
     awk -v rng="$RNG" -v out_rows="$out_rows" -v t0="$t0" -v target=$(( kib * 1024 )) \
         -v station="$station" -v feeder="F0$(( idx % 6 + 1 ))" 'BEGIN {
       header = "ts,stationId,feeder,voltageKv,currentA,frequencyHz,event"
@@ -193,14 +193,14 @@ for o in "${OUTAGES[@]}"; do
   [ -n "$MANIFEST" ] && MANIFEST+=",$NL"
   MANIFEST+="    {$NL      \"fileName\": \"$name\",$NL      \"category\": \"OUTAGE_RECORD\",$NL      \"zone\": \"$zone\",$NL      \"stationId\": $sj,$NL      \"occurredAt\": \"$occurred\",$NL      \"sizeBytes\": $size$NL    }"
 done
-# Manifestul se rescrie mereu (e mic si reflecta marimile reale de pe disc).
+# The manifest is always rewritten (it is small and reflects the actual sizes on disk).
 write_text "$D_OUTAGE/manifest.json" "{$NL  \"files\": [$NL$MANIFEST$NL  ]$NL}$NL"
-echo "  outage-records:    ${#OUTAGES[@]} fisiere CSV + manifest.json"
+echo "  outage-records:    ${#OUTAGES[@]} CSV files + manifest.json"
 
-# ---------------------------------------------------------------- 3. documente de racordare (fictive)
+# ---------------------------------------------------------------- 3. connection documents (fictional)
 
-# PDF 1.4 minimal, o pagina A4, Helvetica, doar ASCII (offset-urile xref = numar de caractere).
-new_pdf() {   # new_pdf FISIER linie1 linie2 ...
+# Minimal PDF 1.4, one A4 page, Helvetica, ASCII only (so xref offsets = character counts).
+new_pdf() {   # new_pdf FILE line1 line2 ...
   local file="$1"; shift
   local content=$'BT\n/F1 11 Tf\n50 790 Td\n16 TL\n' l esc pdf xref n
   for l in "$@"; do
@@ -236,14 +236,14 @@ for (( n = 0; n < 256; n++ )); do
   done
   CRC_TABLE[n]=$c
 done
-# crc32 peste elementele tabloului BYTES (octeti ca numere) -> $CRC
+# crc32 over the BYTES array (bytes as numbers) -> $CRC
 crc32_bytes() {
   local c=0xFFFFFFFF x
   for x in "${BYTES[@]}"; do c=$(( CRC_TABLE[(c ^ x) & 255] ^ (c >> 8) )); done
   CRC=$(( c ^ 0xFFFFFFFF ))
 }
 be32() { BE=($(( ($1 >> 24) & 255 )) $(( ($1 >> 16) & 255 )) $(( ($1 >> 8) & 255 )) $(( $1 & 255 ))); }
-# png_chunk TIP -> adauga in PNG (tablou) chunk-ul cu datele din DATA (tablou)
+# png_chunk TYPE -> appends to PNG (array) a chunk holding the DATA array
 png_chunk() {
   local t="$1" i
   be32 ${#DATA[@]}; PNG+=("${BE[@]}")
@@ -253,7 +253,7 @@ png_chunk() {
   PNG+=("${BYTES[@]}")
   crc32_bytes; be32 "$CRC"; PNG+=("${BE[@]}")
 }
-# new_png FISIER LATIME INALTIME FUNCTIE_PIXEL (functia primeste x y si pune valoarea in $PX)
+# new_png FILE WIDTH HEIGHT PIXEL_FN (the function receives x y and stores the value in $PX)
 new_png() {
   local file="$1" w="$2" h="$3" fn="$4" x y a=1 bb=0 v len esc tmp
   local raw=()
@@ -273,7 +273,7 @@ new_png() {
   tmp=$(tmp_path "$file"); printf '%b' "$esc" > "$tmp"; commit_file "$tmp" "$file"
 }
 
-# Plan de situatie fictiv: chenar, grila, o "cladire" si o linie de racord.
+# Fictional site plan: border, grid, a "building" and a connection line.
 px_plan() {
   local x=$1 y=$2
   if (( x < 2 || y < 2 || x >= 158 || y >= 98 )); then PX=0; return; fi
@@ -285,7 +285,7 @@ px_plan() {
   if (( x % 20 == 0 || y % 20 == 0 )); then PX=200; return; fi
   PX=255
 }
-# "Semnatura" fictiva: o curba in zigzag pe fundal alb.
+# Fictional "signature": a zigzag curve on a white background.
 px_sign() {
   local x=$1 y=$2 p yc dy
   p=$(( x % 24 ))
@@ -317,12 +317,12 @@ need_file "$f" && new_pdf "$f" "$FICT" '' 'CERTIFICAT DE RACORDARE' 'Nr. certifi
   'Contor montat: RO-MUN-0004821' 'Putere maxima simultan absorbita: 7 kW'
 f="$D_DOCS/plan-situatie-fictiv-005.png"; need_file "$f" && new_png "$f" 160 100 px_plan
 f="$D_DOCS/semnatura-fictiv-006.png";     need_file "$f" && new_png "$f" 120 40 px_sign
-echo "  connection-docs:   4 PDF + 2 PNG (date fictive)"
+echo "  connection-docs:   4 PDF + 2 PNG (fictional data)"
 
-# ---------------------------------------------------------------- 4. video-uri de inspectie
+# ---------------------------------------------------------------- 4. inspection videos
 
-# Antet "ftyp" ca fisierul sa fie recunoscut ca MP4; restul sunt octeti aleatori din /dev/urandom,
-# copiati in streaming de head (fisierul nu e tinut in memorie).
+# An "ftyp" header so the file is recognized as MP4; the rest is random bytes from /dev/urandom,
+# streamed by head (the file is never held in memory).
 write_video() {
   local file="$1" size="$2" tmp
   tmp=$(tmp_path "$file")
@@ -334,17 +334,17 @@ write_video() {
 VIDEOS=(
   drona-inspectie-100MB.mp4:104857600:0
   drona-inspectie-500MB.mp4:524288000:1
-  drona-linie-110kV-tronson-7.mp4:1181116006:1    # 1,1 GiB, numele si marimea din exemplul contractului
+  drona-linie-110kV-tronson-7.mp4:1181116006:1    # 1.1 GiB, name and size from the contract example
 )
 for v in "${VIDEOS[@]}"; do
   IFS=: read -r name size large <<< "$v"
   if [ "$SKIP_VIDEOS" = 1 ] || { [ "$SKIP_LARGE" = 1 ] && [ "$large" = 1 ]; }; then
-    echo "  inspection-videos: sar peste $name"; continue
+    echo "  inspection-videos: skipping $name"; continue
   fi
   if need_file "$D_VIDEO/$name" "$size"; then
-    echo "  inspection-videos: scriu $name ($size octeti)..."
+    echo "  inspection-videos: writing $name ($size bytes)..."
     write_video "$D_VIDEO/$name" "$size"
   fi
 done
 
-echo "Gata: $CREATED fisiere create, $SKIPPED existau deja (folositi --force ca sa le regenerati)."
+echo "Done: $CREATED files created, $SKIPPED already existed (use --force to regenerate them)."

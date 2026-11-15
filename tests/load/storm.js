@@ -1,9 +1,9 @@
-// Furtuna de avarii (F8, planul echipei): faza `normal` pe toate categoriile, apoi faza `storm`, in care avariile
-// (OUTAGE_RECORD, POST /files) cresc de 10 ori, iar celelalte categorii continua la rata normala.
-// Header-ul X-Scenario = `normal`, apoi `storm` (valorile din contract), deci /stats/peak-vs-normal si Grafana
-// (filegrid_operation_seconds pe categorie) arata ca doar avariile cresc.
-//   SHORT=1      -> 45 s normal + 45 s furtuna (altfel 2 min + 2 min)
-//   STORM_FACTOR -> multiplicatorul avariilor in furtuna (implicit 10)
+// Outage storm (F8): a `normal` phase across all categories, then a `storm` phase in which outages
+// (OUTAGE_RECORD, POST /files) increase 10x while the other categories keep their normal rate.
+// The X-Scenario header is `normal`, then `storm` (contract values), so /stats/peak-vs-normal and Grafana
+// (filegrid_operation_seconds per category) show that only outages grow.
+//   SHORT=1      -> 45 s normal + 45 s storm (otherwise 2 min + 2 min)
+//   STORM_FACTOR -> outage multiplier during the storm (default 10)
 import { check, sleep } from 'k6';
 import {
   RUN_ID, ZONES, ingest, meterBatch, meterId, uploadOutage, uploadDoc, uploadVideo, search, download, verify, pick, rnd,
@@ -11,9 +11,9 @@ import {
 import { makeSummary } from './lib/summary.js';
 
 const SHORT = !!__ENV.SHORT;
-const PHASE = SHORT ? 45 : 120; // secunde per faza
+const PHASE = SHORT ? 45 : 120; // seconds per phase
 const FACTOR = Number(__ENV.STORM_FACTOR || 10);
-const OUTAGE_RATE = 2;           // avarii/s in faza normala
+const OUTAGE_RATE = 2;           // outages/s in the normal phase
 
 function arrival(exec, perSec, phase, vus) {
   return {
@@ -41,7 +41,7 @@ export const options = {
     both('video', 'video', 0.2, 2),
   ),
   thresholds: {
-    // celelalte categorii isi pastreaza latenta si in furtuna
+    // the other categories keep their latency during the storm too
     'http_req_duration{op:search,phase:normal}': ['p(95)<800'],
     'http_req_duration{op:search,phase:storm}': ['p(95)<800'],
     'http_req_duration{op:doc_upload,phase:normal}': ['p(95)<1500'],
@@ -50,12 +50,12 @@ export const options = {
     'http_req_duration{op:meter_ingest,phase:storm}': ['p(95)<500'],
     'http_req_duration{op:video_chunk,phase:normal}': ['p(95)<3000'],
     'http_req_duration{op:video_chunk,phase:storm}': ['p(95)<3000'],
-    // ...si nu primesc erori
+    // ...and get no errors
     'filegrid_unexpected{op:search}': ['rate<0.01'],
     'filegrid_unexpected{op:doc_upload}': ['rate<0.01'],
     'filegrid_unexpected{op:meter_ingest}': ['rate<0.01'],
     'filegrid_unexpected{op:video_chunk}': ['rate<0.01'],
-    // avariile: 429 (bulkhead OUTAGE_RECORD) numarate separat; erorile reale raman rare
+    // outages: 429s (OUTAGE_RECORD bulkhead) counted separately; real errors stay rare
     'http_req_duration{op:outage_upload,phase:normal}': ['p(95)<1500'],
     'http_req_duration{op:outage_upload,phase:storm}': ['p(95)<3000'],
     'filegrid_unexpected{op:outage_upload}': ['rate<0.05'],
@@ -65,9 +65,9 @@ export const options = {
 };
 
 export function outage() {
-  // fisiere mici (2-32 KB): furtuna inseamna numar de cereri, nu volum pe disc
+  // small files (2-32 KB): the storm is about request count, not disk volume
   const up = uploadOutage('teren', __ENV.XSCEN, 2048 + rnd(30 * 1024));
-  check(up.res, { 'avarie -> 201 (sau 429)': (r) => r.status === 201 || r.status === 429 });
+  check(up.res, { 'outage -> 201 (or 429)': (r) => r.status === 201 || r.status === 429 });
 }
 
 export function dispatchSearch() {
@@ -92,12 +92,12 @@ export function meters() {
 
 export function video() {
   const r = uploadVideo('teren', __ENV.XSCEN, 128 * 1024 + rnd(256 * 1024));
-  check(r.res, { 'video confirmat (sau 429)': () => r.ok });
+  check(r.res, { 'video confirmed (or 429)': () => r.ok });
   sleep(0.5);
 }
 
 export const handleSummary = makeSummary('storm', (data) => {
-  const out = ['Furtuna de avarii (p95 normal -> storm; cereri):'];
+  const out = ['Outage storm (p95 normal -> storm; requests):'];
   for (const op of ['outage_upload', 'search', 'doc_upload', 'meter_ingest', 'video_chunk']) {
     const n = data.metrics[`http_req_duration{op:${op},phase:normal}`];
     const s = data.metrics[`http_req_duration{op:${op},phase:storm}`];
@@ -105,6 +105,6 @@ export const handleSummary = makeSummary('storm', (data) => {
     out.push(`  ${op.padEnd(14)} ${n.values['p(95)'].toFixed(1)} ms -> ${s.values['p(95)'].toFixed(1)} ms`);
   }
   const rej = data.metrics['filegrid_bulkhead_429{op:outage_upload}'];
-  out.push(`  avarii respinse de bulkhead (429): ${rej ? rej.values.count : 0}; factor furtuna: x${FACTOR}`);
+  out.push(`  outages rejected by the bulkhead (429): ${rej ? rej.values.count : 0}; storm factor: x${FACTOR}`);
   return out;
 });

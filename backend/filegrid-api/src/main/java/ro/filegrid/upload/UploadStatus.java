@@ -5,7 +5,7 @@ import java.util.UUID;
 import ro.filegrid.domain.Category;
 import ro.filegrid.domain.StorageType;
 
-/** Schema {@code UploadSession} din contract. */
+/** Contract schema {@code UploadSession}. */
 public record UploadStatus(UUID uploadId, Category category, String fileName, StorageType storage, long totalSize,
                            int chunkSize, int totalChunks, int nextChunk, long receivedBytes, String status,
                            Instant createdAt, Instant lastActivityAt) {

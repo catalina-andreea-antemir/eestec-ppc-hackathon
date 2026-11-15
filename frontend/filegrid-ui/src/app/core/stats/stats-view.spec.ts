@@ -28,7 +28,7 @@ function cell(category: StorageScore['category'], storage: StorageScore['storage
 }
 
 function fullMatrix(): StorageScore[] {
-  // Ordine amestecată intenționat: interfața trebuie să le pună singură la locul lor.
+  // Deliberately shuffled order: the UI has to put cells in place itself.
   return ALL_CATEGORIES.flatMap((c) => [cell(c, 'DB', 50), cell(c, 'FTP', 70), cell(c, 'S3', 60)]);
 }
 
@@ -286,7 +286,7 @@ describe('stats-view', () => {
         { rank: 2, zone: 'Banat', outages: 0, sharePercent: 0, vsAverageRatio: 0, peakHour: null },
       ]);
       expect(hasOutageData(res)).toBe(true);
-      // Zona fără avarii rămâne în clasament, cu bara goală și nicio oră de vârf marcată.
+      // The zone without outages stays in the ranking, with an empty bar and no peak hour marked.
       const banat = zoneBars(res.ranking, res.byHour).find((b) => b.zone.zone === 'Banat')!;
       expect(banat.width).toBe(0);
       expect(banat.hours.every((h) => h === 0)).toBe(true);

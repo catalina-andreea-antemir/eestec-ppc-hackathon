@@ -101,7 +101,7 @@ class RequirementsServiceTest {
     @Test
     void r2OneAndFourSamplesAreInsufficientEvenWhenSlow() {
         for (long n : new long[] {1, 4}) {
-            Requirement r = r2(n, 9.0); // mult peste 2 s, dar prea puține cereri
+            Requirement r = r2(n, 9.0); // far above 2 s, but too few requests
             assertThat(r.status()).as("n=" + n).isEqualTo("OK");
             assertThat(r.message()).contains("Date insuficiente: " + n + " din minim 5");
             assertThat(r.current()).containsEntry("samples", n).containsEntry("sufficientData", false);
@@ -116,7 +116,7 @@ class RequirementsServiceTest {
                 .containsEntry("p95Seconds", 2.4);
         assertThat(slow.message()).doesNotContain("insuficiente");
         assertThat(r2(5, 1.99).status()).isEqualTo("OK");
-        assertThat(r2(5, 2.0).status()).isEqualTo("AT_RISK"); // pragul e exclusiv
+        assertThat(r2(5, 2.0).status()).isEqualTo("AT_RISK"); // the threshold is exclusive
         assertThat(r2(5, 1.99).current()).containsEntry("sufficientData", true);
     }
 
@@ -152,7 +152,7 @@ class RequirementsServiceTest {
 
     @Test
     void r4OneFailureOutOfFourIsInsufficientDataAndOk() {
-        Requirement r = r4(4, 1); // 25%, dar sub minim
+        Requirement r = r4(4, 1); // 25%, but below the minimum sample count
         assertThat(r.status()).isEqualTo("OK");
         assertThat(r.message()).contains("Date insuficiente: 4 din minim 5");
         assertThat(r.current()).containsEntry("samples", 4L).containsEntry("sufficientData", false)
@@ -185,7 +185,7 @@ class RequirementsServiceTest {
     @Test
     void r4FiveFailuresOutOfOneHundredIsAtRiskAndFourIsOk() {
         assertThat(r4(100, 4).status()).isEqualTo("OK");
-        assertThat(r4(100, 5).status()).isEqualTo("AT_RISK"); // pragul de 5% e exclusiv
+        assertThat(r4(100, 5).status()).isEqualTo("AT_RISK"); // the 5% threshold is exclusive
     }
 
     @Test

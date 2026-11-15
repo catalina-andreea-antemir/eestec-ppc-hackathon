@@ -6,25 +6,25 @@ import { environment } from '../../../environments/environment';
 import { Anomalies, AnomaliesQuery, OutageZones, PeakVsNormal, Requirements, StorageAdvisor } from './stats.models';
 
 /**
- * Apelurile HTTP pentru dashboard (contractul: /stats/*, permise doar pentru DISPATCH și ADMIN).
- * Token-ul și reînnoirea lui le pune authInterceptor.
+ * HTTP calls for the dashboard (contract: /stats/*, allowed only for DISPATCH and ADMIN).
+ * authInterceptor adds the token and handles its refresh.
  */
 @Injectable({ providedIn: 'root' })
 export class StatsApi {
   private readonly http = inject(HttpClient);
   private readonly base = `${environment.apiBaseUrl}/stats`;
 
-  /** GET /stats/storage-advisor: matricea 4 × 3 cu scor și recomandările. */
+  /** GET /stats/storage-advisor: the 4 x 3 score matrix and the recommendations. */
   storageAdvisor(): Observable<StorageAdvisor> {
     return this.http.get<StorageAdvisor>(`${this.base}/storage-advisor`);
   }
 
-  /** GET /stats/peak-vs-normal: zi normală vs. zi de vârf, doar date live. */
+  /** GET /stats/peak-vs-normal: normal day vs. peak day, live data only. */
   peakVsNormal(peakScenario = 'storm', normalScenario = 'normal'): Observable<PeakVsNormal> {
     return this.http.get<PeakVsNormal>(`${this.base}/peak-vs-normal`, { params: { normalScenario, peakScenario } });
   }
 
-  /** GET /stats/anomalies: consumuri anormale (paginate), contoare tăcute, citiri pe zonă și oră. */
+  /** GET /stats/anomalies: abnormal consumption (paged), silent meters, readings per zone and hour. */
   anomalies(query: AnomaliesQuery = {}): Observable<Anomalies> {
     const params: Record<string, string> = {};
     for (const [key, value] of Object.entries(query)) {
@@ -35,12 +35,12 @@ export class StatsApi {
     return this.http.get<Anomalies>(`${this.base}/anomalies`, { params });
   }
 
-  /** GET /stats/outage-zones: clasamentul zonelor după numărul de avarii. */
+  /** GET /stats/outage-zones: zones ranked by number of outages. */
   outageZones(): Observable<OutageZones> {
     return this.http.get<OutageZones>(`${this.base}/outage-zones`);
   }
 
-  /** GET /stats/requirements: cele 4 cerințe de business (verde/roșu). */
+  /** GET /stats/requirements: the 4 business requirements (green/red). */
   requirements(): Observable<Requirements> {
     return this.http.get<Requirements>(`${this.base}/requirements`);
   }

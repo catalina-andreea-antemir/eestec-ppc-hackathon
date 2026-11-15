@@ -1,8 +1,8 @@
-// Ingestie de citiri (F8): loturi ca simulatorul (rolul contor / METER_SERVICE), cu duplicate intentionate.
-// 429 CATEGORY_SATURATED (bulkhead C9) se numara separat in filegrid_bulkhead_429, nu ca eroare.
-//   SHORT=1      -> 20 s, 20 loturi/s
-//   METER_RATE   -> loturi pe secunda in palier (implicit 40)
-//   DURATION     -> durata palierului (implicit 1m)
+// Reading ingestion (F8): simulator-like batches (role contor / METER_SERVICE), with deliberate duplicates.
+// 429 CATEGORY_SATURATED (bulkhead C9) is counted separately in filegrid_bulkhead_429, not as an error.
+//   SHORT=1      -> 20 s, 20 batches/s
+//   METER_RATE   -> batches per second at the plateau (default 40)
+//   DURATION     -> plateau duration (default 1m)
 import { check } from 'k6';
 import { RUN_ID, ZONES, ingest, meterBatch, meterId, rnd } from './lib/common.js';
 import { makeSummary } from './lib/summary.js';
@@ -38,7 +38,7 @@ export const options = {
   },
 };
 
-// Stare per VU: un contor propriu, care avanseaza in timp sintetic (o zi per lot), ca la simulator.
+// Per-VU state: its own meter, advancing in synthetic time (one day per batch), like the simulator.
 let mine = null;
 let day = 0;
 let last = null;
@@ -48,18 +48,18 @@ export default function () {
     const zone = ZONES[__VU % ZONES.length];
     mine = { zone, id: meterId(RUN_ID, zone, __VU) };
   }
-  // duplicat intentionat: retrimite ultimul lot confirmat, cu aceeasi cheie -> 200 duplicate:true
+  // deliberate duplicate: resend the last confirmed batch with the same key -> 200 duplicate:true
   if (last && rnd(100) < DUP_PCT) {
     const res = ingest('contor', last, 'k6-normal');
-    check(res, { 'duplicat -> 200 duplicate:true (sau 429)': (r) => r.status === 429 || (r.status === 200 && r.json('duplicate') === true) });
+    check(res, { 'duplicate -> 200 duplicate:true (or 429)': (r) => r.status === 429 || (r.status === 200 && r.json('duplicate') === true) });
     return;
   }
-  const n = 48 + rnd(240); // 48..287 citiri, ~3–20 KB
+  const n = 48 + rnd(240); // 48..287 readings, ~3-20 KB
   const batch = meterBatch(mine.id, mine.zone, Date.UTC(2026, 0, 1) + day * 86400000 * 3, n);
   const res = ingest('contor', batch, 'k6-normal');
-  check(res, { 'lot nou -> 201 (sau 429)': (r) => r.status === 201 || r.status === 429 });
+  check(res, { 'new batch -> 201 (or 429)': (r) => r.status === 201 || r.status === 429 });
   if (res.status === 201) { last = batch; day++; }
-  // la 429 lotul nu avanseaza: urmatoarea iteratie a VU-ului retrimite alt lot in aceeasi zi (cheie noua, fara suprapunere)
+  // on 429 the batch does not advance: the VU's next iteration sends another batch for the same day (new key, no overlap)
 }
 
 export const handleSummary = makeSummary('meter-readings', (data) => {

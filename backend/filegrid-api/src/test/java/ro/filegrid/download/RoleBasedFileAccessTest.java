@@ -29,7 +29,7 @@ import ro.filegrid.ingest.FileRecord;
 import ro.filegrid.security.AuditLog;
 import ro.filegrid.security.Role;
 
-/** Matricea rolurilor 4.4: fiecare rol × fiecare categorie × încărcare / căutare-descărcare; audit și metrică la documente. */
+/** Role matrix 4.4: every role x every category x upload / search-download; audit and metric for documents. */
 class RoleBasedFileAccessTest {
 
     private static final Map<Role, Set<Category>> UPLOAD = Map.of(
@@ -156,7 +156,7 @@ class RoleBasedFileAccessTest {
                 .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.status().value()).isEqualTo(503));
         assertThat(count("ok")).isZero();
         assertThat(count("error")).isEqualTo(1);
-        // un refuz rămâne 403 chiar dacă auditul nu se poate scrie
+        // a denial stays 403 even if the audit cannot be written
         assertThatThrownBy(() -> access.requireRole(user(Role.DISPATCH), Category.CONNECTION_DOC, "DOWNLOAD", null))
                 .isInstanceOfSatisfying(ApiException.class, e -> assertThat(e.status().value()).isEqualTo(403));
     }

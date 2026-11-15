@@ -7,7 +7,7 @@ import org.springframework.http.HttpStatus;
 import ro.filegrid.api.ApiException;
 import ro.filegrid.domain.Category;
 
-/** Erorile ingestiei în formatul {@code Error} din contract (coduri stabile). */
+/** Ingest errors in the contract's {@code Error} format (stable codes). */
 public final class IngestErrors {
 
     public static final int STORAGE_RETRY_AFTER_SECONDS = 10;

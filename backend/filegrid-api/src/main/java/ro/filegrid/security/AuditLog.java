@@ -13,10 +13,10 @@ import org.springframework.stereotype.Repository;
 import ro.filegrid.integrity.Sha256;
 
 /**
- * Jurnalul de audit ({@code dbo.audit_log}, FileGridMeta). Fiecare rând poartă un lanț de hash-uri
- * ({@code hash = SHA-256(prev_hash | id | ts | actor | action | file_id)}, {@code prev_hash} = {@code hash} rândului
- * anterior): o modificare sau ștergere ulterioară a unui rând rupe lanțul. Scrierile se serializează cu
- * {@code sp_getapplock} (lacăt de sesiune), deci lanțul rămâne corect cu mai multe instanțe ale aplicației.
+ * Audit log ({@code dbo.audit_log}, FileGridMeta). Every row carries a hash chain
+ * ({@code hash = SHA-256(prev_hash | id | ts | actor | action | file_id)}, {@code prev_hash} = the previous row's
+ * {@code hash}): later tampering with or deleting a row breaks the chain. Writes are serialized with
+ * {@code sp_getapplock} (session lock), so the chain stays correct across several app instances.
  */
 @Repository
 @Profile("db")
@@ -32,8 +32,8 @@ public class AuditLog {
     }
 
     /**
-     * Adaugă un rând în lanț. Lacătul {@code sp_getapplock} (la nivel de sesiune, eliberat explicit; dispare și dacă
-     * conexiunea cade) ține laolaltă citirea ultimului hash și inserarea, pe aceeași conexiune.
+     * Appends a row to the chain. The {@code sp_getapplock} lock (session scoped, released explicitly; also gone if the
+     * connection drops) keeps reading the last hash and the insert together, on the same connection.
      */
     public void append(String actor, String action, UUID fileId) {
         jdbc.getJdbcOperations().execute((java.sql.Connection connection) -> {
@@ -58,7 +58,7 @@ public class AuditLog {
                     unlock.setString(3, "Session");
                     unlock.execute();
                 } catch (java.sql.SQLException e) {
-                    // lacătul dispare oricum când conexiunea se închide / se reciclează
+                    // the lock disappears anyway when the connection closes / is recycled
                 }
             }
             return null;
@@ -97,7 +97,7 @@ public class AuditLog {
         }
     }
 
-    /** Parcurge lanțul în ordine; întoarce numărul de rânduri verificate sau aruncă la primul rând care nu se potrivește. */
+    /** Walks the chain in order; returns the number of verified rows or throws at the first row that does not match. */
     public int verifyChain() {
         record Row(String id, String ts, String actor, String action, String fileId, byte[] prev, byte[] hash) {
         }

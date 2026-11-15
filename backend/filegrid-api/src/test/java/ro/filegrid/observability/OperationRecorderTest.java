@@ -54,12 +54,12 @@ class OperationRecorderTest {
             }
             written.addAll(batch);
         }, registry, 3, 1, 10);
-        recorder.record(metric(0)); // preluat de fir, care se blochează în sink
+        recorder.record(metric(0)); // taken by the thread, which blocks in the sink
         await().atMost(2, TimeUnit.SECONDS).until(() -> recorder.queueSize() == 0);
 
         long start = System.nanoTime();
         for (int i = 1; i <= 10; i++) {
-            recorder.record(metric(i)); // 3 încap în coadă, 7 se aruncă
+            recorder.record(metric(i)); // 3 fit in the queue, 7 are dropped
         }
         assertThat(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start)).isLessThan(500);
         assertThat(dropped()).isEqualTo(7);

@@ -3,7 +3,7 @@ package ro.filegrid.resilience;
 import ro.filegrid.domain.StorageType;
 import ro.filegrid.storage.StorageUnavailableException;
 
-/** Circuitul storage-ului e deschis: operația eșuează imediat, fără apel către storage și fără retry. */
+/** The storage circuit is open: the operation fails immediately, with no storage call and no retry. */
 public class StorageCircuitOpenException extends StorageUnavailableException {
 
     public StorageCircuitOpenException(StorageType storage, Throwable cause) {

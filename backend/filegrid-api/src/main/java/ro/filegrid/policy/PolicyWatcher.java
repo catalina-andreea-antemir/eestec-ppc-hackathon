@@ -12,9 +12,9 @@ import org.springframework.context.SmartLifecycle;
 import org.springframework.stereotype.Component;
 
 /**
- * Verifică fișierele de politică în fundal, la {@code filegrid.policies.reload-interval}, ca o schimbare din YAML să
- * fie preluată (și logată) imediat, chiar dacă nicio cerere nu întreabă de politică. {@link PolicyEngine} recitește
- * oricum și la cerere; acest fir doar grăbește lucrurile. Un fir daemon, oprit la închiderea aplicației.
+ * Checks the policy files in the background every {@code filegrid.policies.reload-interval}, so a YAML change is
+ * picked up (and logged) immediately even if no request asks for a policy. {@link PolicyEngine} also reloads on
+ * demand; this thread only speeds things up. A daemon thread, stopped on application shutdown.
  */
 @Component
 public class PolicyWatcher implements SmartLifecycle {
@@ -60,8 +60,8 @@ public class PolicyWatcher implements SmartLifecycle {
         try {
             engine.reload();
         } catch (RuntimeException e) {
-            // Firul trebuie să supraviețuiască oricărei erori, altfel recitirea în fundal s-ar opri.
-            log.error("Verificarea politicii a eșuat: {}", e.getMessage(), e);
+            // The thread must survive any error, otherwise background reloading would stop for good.
+            log.error("Policy check failed: {}", e.getMessage(), e);
         }
     }
 }

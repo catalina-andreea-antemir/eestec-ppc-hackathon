@@ -57,9 +57,10 @@ import ro.filegrid.storage.s3.S3Adapter;
 import ro.filegrid.storage.s3.S3Properties;
 
 /**
- * Ingestia pe stack-ul real (C7): SQL Server (FileGridMeta + FileGridStorage) și MinIO, prin porturile de dezvoltare
- * ({@code docker compose -f docker-compose.yml -f infra/docker/docker-compose.dev.yml up -d}: 1433 și 9000 pe
- * 127.0.0.1). Parolele vin din mediu sau din {@code .env} (nu se afișează). Fără stack, testele se <b>sar</b>.
+ * Ingestion on the real stack (C7): SQL Server (FileGridMeta + FileGridStorage) and MinIO, through the development
+ * ports ({@code docker compose -f docker-compose.yml -f infra/docker/docker-compose.dev.yml up -d}: 1433 and 9000 on
+ * 127.0.0.1). Passwords come from the environment or {@code .env} (never printed). Without the stack, the tests are
+ * <b>skipped</b>.
  */
 class IngestionStackTest {
 
@@ -190,7 +191,7 @@ class IngestionStackTest {
                             outcomes.get(r.duplicate()).incrementAndGet();
                             return r.fileId();
                         } catch (ApiException e) {
-                            // Clientul retrimite cu aceeași cheie, ca simulatorul (503 BATCH_IN_PROGRESS).
+                            // The client resends with the same key, like the simulator (503 BATCH_IN_PROGRESS).
                             assertThat(e.code()).isEqualTo("BATCH_IN_PROGRESS");
                             inProgress.incrementAndGet();
                             Thread.sleep(20);
@@ -289,7 +290,7 @@ class IngestionStackTest {
         return pool;
     }
 
-    /** Variabilele de mediu, completate cu {@code .env} din rădăcina repo-ului (mediul are prioritate). */
+    /** Environment variables, completed from the repo-root {@code .env} (the environment wins). */
     private static Map<String, String> environment() {
         Map<String, String> values = new HashMap<>();
         for (Path dir = Path.of("").toAbsolutePath(); dir != null; dir = dir.getParent()) {
@@ -303,7 +304,7 @@ class IngestionStackTest {
                         }
                     }
                 } catch (IOException e) {
-                    // Fără .env lizibil rămân variabilele de mediu.
+                    // Without a readable .env, only the environment variables remain.
                 }
                 break;
             }
@@ -316,7 +317,7 @@ class IngestionStackTest {
         return values;
     }
 
-    /** Un storage real care poate fi „oprit”: health down și orice operație → indisponibil. */
+    /** A real storage that can be "switched off": health down and every operation -> unavailable. */
     private static final class Switchable implements StorageAdapter {
         private final StorageAdapter target;
         volatile boolean up = true;

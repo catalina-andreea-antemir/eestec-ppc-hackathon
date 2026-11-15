@@ -1,13 +1,13 @@
 package ro.filegrid.storage;
 
 /**
- * Confirmarea unei bucăți scrise de {@link ChunkedWriter#append}; apelantul o salvează în {@code upload_chunks}
- * ({@code n}, {@code size_bytes}, {@code etag}) și o dă înapoi la {@link ChunkedWriter#finish}.
+ * Confirmation of a chunk written by {@link ChunkedWriter#append}; the caller stores it in {@code upload_chunks}
+ * ({@code n}, {@code size_bytes}, {@code etag}) and passes it back to {@link ChunkedWriter#finish}.
  *
- * @param n    numărul bucății, de la 1
- * @param size octeții scriși
- * @param etag ETag-ul S3 al părții (obligatoriu la S3, pentru {@code CompleteMultipartUpload}); {@code null} la FTP și
- *             DB, dacă nu au nevoie de el (maxim 255 de caractere, {@code upload_chunks.etag})
+ * @param n    chunk number, starting at 1
+ * @param size bytes written
+ * @param etag S3 part ETag (required for S3 {@code CompleteMultipartUpload}); {@code null} for FTP and DB if they
+ *             do not need it (at most 255 characters, {@code upload_chunks.etag})
  */
 public record ChunkReceipt(int n, long size, String etag) {
 

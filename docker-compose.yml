@@ -1,10 +1,10 @@
-# FileGrid PPC - punctul de intrare Docker Compose (ADR-002). Porneste-l cu ./scripts/start.sh sau
-# .\scripts\start.ps1 (creeaza .env cu secrete aleatorii, apoi `docker compose up -d --build`).
-# Necesita Docker Compose >= 2.20 (pentru include). Stack-ul este in infra/docker/docker-compose.yml.
+# FileGrid PPC - Docker Compose entry point (ADR-002). Start it with ./scripts/start.sh or
+# .\scripts\start.ps1 (creates .env with random secrets, then runs `docker compose up -d --build`).
+# Requires Docker Compose >= 2.20 (for `include`). The stack itself is in infra/docker/docker-compose.yml.
 #
-# Dezvoltare (porturi doar pe 127.0.0.1, de exemplu SQL Server 1433 pentru SSMS):
+# Development (ports bound to 127.0.0.1 only, e.g. SQL Server 1433 for SSMS):
 #   docker compose -f docker-compose.yml -f infra/docker/docker-compose.dev.yml up -d
-# Resetarea demo-ului (sterge volumele numite):
+# Reset the demo (removes the named volumes):
 #   docker compose down -v
 name: filegrid
 

@@ -28,10 +28,10 @@ import ro.filegrid.storage.StorageKeys;
 import ro.filegrid.storage.db.OperationMetric;
 
 /**
- * Benchmark storage × categorie (planul 4.1): cele 12 combinații prin {@link StorageAdapter}, direct (fără criptare și
- * fără rânduri în {@code files}), cu dimensiunile reprezentative per categorie. Fiecare măsurătoare (încărcare și
- * descărcare completă) intră în {@code operation_metrics} cu {@code source=benchmark, scenario=benchmark}; fișierele
- * de test se șterg la final, chiar dacă o combinație eșuează. Rulează sincron, câte unul odată pe instanță.
+ * Storage x category benchmark: all 12 combinations through {@link StorageAdapter} directly (no encryption and no
+ * {@code files} rows), with representative sizes per category. Each measurement (full upload and download) goes to
+ * {@code operation_metrics} with {@code source=benchmark, scenario=benchmark}; test objects are deleted at the end,
+ * even if a combination fails. Runs synchronously, one at a time per instance.
  */
 @Service
 @Profile("db")
@@ -41,7 +41,7 @@ public class BenchmarkService {
     static final String SOURCE = "benchmark";
     private static final double MIB = 1024.0 * 1024.0;
 
-    /** Dimensiunea și numărul de eșantioane per categorie (planul 4.1). */
+    /** Size and sample count per category. */
     record Plan(long sizeBytes, int samples) {
     }
 
@@ -122,7 +122,7 @@ public class BenchmarkService {
                     errors++;
                 }
             }
-        } catch (RuntimeException e) { // storage fără adaptor: toate eșantioanele rămase sunt erori
+        } catch (RuntimeException e) { // storage without an adapter: every remaining sample counts as an error
             log.warn("Benchmark {} × {}: {}", category, storage, e.getMessage());
             errors = plan.samples() - uploadMs.size();
         } finally {
@@ -146,7 +146,7 @@ public class BenchmarkService {
         try (InputStream in = adapter.get(key, ByteRange.full())) {
             byte[] buffer = new byte[64 * 1024];
             while (in.read(buffer) >= 0) {
-                // doar citim, pentru a măsura durata
+                // read only to measure the duration
             }
         } catch (IOException e) {
             throw new IllegalStateException(e);
@@ -170,12 +170,12 @@ public class BenchmarkService {
             try {
                 adapter.delete(key);
             } catch (RuntimeException e) {
-                log.error("Benchmark: obiectul de test {} a rămas în {}: {}", key, storage, e.getMessage());
+                log.error("Benchmark: test object {} was left in {}: {}", key, storage, e.getMessage());
             }
         }
     }
 
-    /** Percentila prin „nearest rank”; 0 fără eșantioane. */
+    /** Nearest-rank percentile; 0 when there are no samples. */
     static double percentile(List<Double> values, int p) {
         if (values.isEmpty()) {
             return 0;
@@ -189,7 +189,7 @@ public class BenchmarkService {
         return Math.round(v * 100.0) / 100.0;
     }
 
-    /** {@code length} octeți generați pe loc (fără alocare proporțională cu mărimea), pentru fișiere de până la sute de MB. */
+    /** {@code length} bytes generated on the fly (no allocation proportional to size), for files up to hundreds of MB. */
     static final class GeneratedStream extends InputStream {
         private static final byte[] BLOCK = new byte[64 * 1024];
 

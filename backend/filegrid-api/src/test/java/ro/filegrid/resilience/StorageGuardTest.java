@@ -40,7 +40,7 @@ class StorageGuardTest {
     void setUp() {
         when(raw.type()).thenReturn(T);
         when(raw.health()).thenReturn(StorageHealth.up(T, Duration.ZERO));
-        // interval de health foarte mare: verificările se rulează manual cu checkNow
+        // very long health interval: checks are run manually with checkNow
         ResilienceProperties p = new ResilienceProperties(3, Duration.ofMillis(1), 2, 0.5, 50, 4, 4,
                 Duration.ofMillis(200), 1, Duration.ofHours(1), Duration.ofSeconds(2), 2);
         guard = new StorageGuard(p, meters);
@@ -90,15 +90,15 @@ class StorageGuardTest {
         }
         assertThat(guard.circuitState(T)).isEqualTo("OPEN");
         assertThat(wrapped.health().up()).isFalse();
-        // deschis: eșec imediat, fără apel către storage
+        // open: immediate failure, no call to the storage
         assertThatThrownBy(() -> wrapped.put("k", null, 1, "a/b")).isInstanceOf(StorageCircuitOpenException.class);
         assertThatThrownBy(() -> wrapped.exists("k")).isInstanceOf(StorageCircuitOpenException.class);
         verify(raw, times(4)).put(anyString(), any(), anyLong(), any());
         verify(raw, times(0)).exists(anyString());
 
-        Thread.sleep(300); // openWait 200 ms -> HALF_OPEN automat
+        Thread.sleep(300); // openWait 200 ms -> HALF_OPEN automatically
         assertThat(guard.circuitState(T)).isEqualTo("HALF_OPEN");
-        guard.checkNow(T); // health OK în HALF_OPEN = apel de probă reușit
+        guard.checkNow(T); // health OK in HALF_OPEN = successful probe call
         assertThat(guard.circuitState(T)).isEqualTo("CLOSED");
         assertThat(wrapped.health().up()).isTrue();
     }
@@ -107,7 +107,7 @@ class StorageGuardTest {
     void failedProbeInHalfOpenReopens() throws Exception {
         when(raw.health()).thenReturn(StorageHealth.down(T, Duration.ZERO, "refuzat"));
         guard.checkNow(T);
-        assertThat(guard.circuitState(T)).isEqualTo("CLOSED"); // o singură verificare căzută nu deschide
+        assertThat(guard.circuitState(T)).isEqualTo("CLOSED"); // a single failed check does not open the circuit
         assertThat(wrapped.health().up()).isFalse();
         guard.checkNow(T);
         assertThat(guard.circuitState(T)).isEqualTo("OPEN");
@@ -122,7 +122,7 @@ class StorageGuardTest {
         org.mockito.Mockito.clearInvocations(raw);
         wrapped.health();
         wrapped.health();
-        verify(raw, times(0)).health(); // cererile nu apelează storage-ul; doar verificarea periodică
+        verify(raw, times(0)).health(); // requests do not call the storage; only the periodic check does
         guard.checkNow(T);
         guard.checkNow(T);
         verify(raw, times(2)).health();

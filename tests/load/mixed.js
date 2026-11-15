@@ -1,8 +1,8 @@
-// Incarcare mixta pe roluri (F8): avarii (POST /files), video chunked (/uploads/*), documente CONNECTION_DOC
-// criptate, cautare/descarcare/verify si /stats/* pentru dispecer, cu ingestie de citiri in fundal.
+// Mixed per-role load (F8): outages (POST /files), chunked video (/uploads/*), encrypted CONNECTION_DOC
+// documents, search/download/verify and /stats/* for the dispatcher, with background reading ingestion.
 //   SHORT=1     -> 30 s
-//   MIXED_RATE  -> multiplicator al ratelor (implicit 1)
-//   DURATION    -> durata (implicit 2m)
+//   MIXED_RATE  -> rate multiplier (default 1)
+//   DURATION    -> duration (default 2m)
 import { check, sleep } from 'k6';
 import {
   RUN_ID, ZONES, ingest, meterBatch, meterId, uploadOutage, uploadDoc, uploadVideo, search, download, verify,
@@ -26,12 +26,12 @@ export const options = {
   insecureSkipTLSVerify: true,
   summaryTrendStats: ['avg', 'min', 'med', 'max', 'p(90)', 'p(95)', 'p(99)'],
   scenarios: {
-    field_outage: rate('fieldOutage', 2, 5),         // teren: avarii mici + verificare
+    field_outage: rate('fieldOutage', 2, 5),         // teren: small outages + verification
     field_video: { executor: 'constant-vus', exec: 'fieldVideo', vus: 2, duration: DUR },
-    connections_docs: rate('connectionsDocs', 1, 4), // racordari: documente criptate
-    dispatch_search: rate('dispatchSearch', 4, 8),   // dispecer: cautare + descarcare + verify
+    connections_docs: rate('connectionsDocs', 1, 4), // racordari: encrypted documents
+    dispatch_search: rate('dispatchSearch', 4, 8),   // dispecer: search + download + verify
     dispatch_stats: rate('dispatchStats', 0.5, 2),   // dispecer: /stats/*
-    meters_bg: rate('meters', 10, 10),               // contor: citiri in fundal
+    meters_bg: rate('meters', 10, 10),               // contor: background readings
   },
   thresholds: {
     'http_req_duration{op:search}': ['p(95)<800'],
@@ -63,7 +63,7 @@ export function fieldOutage() {
 
 export function fieldVideo() {
   const r = uploadVideo('teren', SCEN, 128 * 1024 + rnd(512 * 1024));
-  check(r.res, { 'video confirmat (sau 429)': () => r.ok });
+  check(r.res, { 'video confirmed (or 429)': () => r.ok });
   if (r.ok && r.res.json('id')) verify('teren', r.res.json('id'));
   sleep(1);
 }
@@ -73,7 +73,7 @@ export function connectionsDocs() {
   if (up.res.status !== 201) return;
   const id = up.res.json('id');
   const d = download('racordari', id);
-  check(d.res, { 'document descarcat = original': (r) => r.status === 429 || r.headers['X-Content-Sha256'] === up.res.json('sha256Plain') });
+  check(d.res, { 'downloaded document = original': (r) => r.status === 429 || r.headers['X-Content-Sha256'] === up.res.json('sha256Plain') });
   verify('racordari', id, true);
 }
 

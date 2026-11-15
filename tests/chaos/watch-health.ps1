@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
-  Afiseaza starea storage-urilor (GET /admin/health, rol ADMIN) o data pe secunda, pentru al doilea terminal la demo
-  (interfata nu are inca o pagina pentru /admin/health). Ctrl+C pentru oprire.
+  Prints storage health (GET /admin/health, ADMIN role) once per second, for a second terminal during the demo
+  (the UI has no page for /admin/health). Ctrl+C to stop.
 .EXAMPLE
   .\tests\chaos\watch-health.ps1
 #>

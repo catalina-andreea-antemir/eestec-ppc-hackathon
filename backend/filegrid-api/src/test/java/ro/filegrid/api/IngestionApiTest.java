@@ -40,7 +40,7 @@ import ro.filegrid.security.Role;
 import ro.filegrid.security.TokenService;
 import ro.filegrid.storage.db.MeterReadingBatch;
 
-/** Contractul HTTP al ingestiei (validări, coduri, forma răspunsurilor); serviciile sunt simulate. */
+/** HTTP contract of ingestion (validation, status codes, response shapes); services are mocked. */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class IngestionApiTest {
 
