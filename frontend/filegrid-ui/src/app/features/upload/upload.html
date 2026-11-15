@@ -1,10 +1,10 @@
 <app-topbar />
 
 <main class="content">
-  <h1>Upload</h1>
+  <h1>Încărcare fișiere</h1>
 
   @if (categories().length === 0) {
-    <p class="card">Rolul tău nu poate încărca fișiere. Upload-ul e permis rolurilor FIELD, CONNECTIONS și ADMIN.</p>
+    <p class="card">Rolul tău nu poate încărca fișiere. Încărcarea e permisă rolurilor Echipă teren, Racordări și Administrator.</p>
   } @else {
     @let s = state();
 
@@ -12,7 +12,7 @@
     @if (pending(); as p) {
       @if (!manager.busy() && s.phase !== 'paused') {
         <section class="card pending" aria-live="polite">
-          <h2>Upload video neterminat</h2>
+          <h2>Încărcare video neterminată</h2>
           <p>
             <strong>{{ p.fileName }}</strong> ({{ formatBytes(p.totalSize) }}), primit pe server
             {{ formatBytes(p.receivedBytes) }}.
@@ -20,19 +20,19 @@
           @if (manager.canContinueWithoutFile()) {
             <div class="actions">
               <button type="button" (click)="manager.resume()">Continuă</button>
-              <button type="button" class="secondary" (click)="manager.cancel()">Renunță la upload</button>
+              <button type="button" class="secondary" (click)="manager.cancel()">Renunță la încărcare</button>
             </div>
           } @else {
             <p class="hint">
               După refresh, browserul nu mai are acces la fișier. Alege din nou același fișier
-              (verificăm numele și mărimea), iar upload-ul continuă de unde a rămas.
+              (verificăm numele și mărimea), iar încărcarea continuă de unde a rămas.
             </p>
             <div class="actions">
               <label class="file-button">
                 Alege fișierul și continuă
                 <input type="file" [accept]="rules.INSPECTION_VIDEO.accept" (change)="onResumeFileChange($event)" />
               </label>
-              <button type="button" class="secondary" (click)="manager.cancel()">Renunță la upload</button>
+              <button type="button" class="secondary" (click)="manager.cancel()">Renunță la încărcare</button>
             </div>
           }
         </section>
@@ -106,7 +106,7 @@
           }
 
           @if (blockedByPending()) {
-            <p class="field-error">Continuă sau renunță întâi la upload-ul video neterminat de mai sus.</p>
+            <p class="field-error">Continuă sau renunță întâi la încărcarea video neterminată de mai sus.</p>
           }
 
           <button type="submit" [disabled]="submitted() && !canSubmit()">Încarcă</button>
@@ -125,7 +125,7 @@
         <div
           class="bar"
           role="progressbar"
-          aria-label="Progres upload"
+          aria-label="Progresul încărcării"
           [attr.aria-valuenow]="percent()"
           aria-valuemin="0"
           aria-valuemax="100"
@@ -160,7 +160,7 @@
             <button type="button" (click)="manager.resume()">Continuă</button>
           }
           @if (s.category === 'INSPECTION_VIDEO' && (manager.busy() || pending())) {
-            <button type="button" class="secondary danger" (click)="manager.cancel()">Anulează upload-ul</button>
+            <button type="button" class="secondary danger" (click)="manager.cancel()">Anulează încărcarea</button>
           }
           @if (s.phase === 'done' || (s.phase === 'error' && !manager.canContinueWithoutFile())) {
             <button type="button" (click)="newUpload()">Încarcă alt fișier</button>
@@ -171,8 +171,8 @@
           <dl class="result">
             <dt>ID</dt>
             <dd><code>{{ r.id }}</code></dd>
-            <dt>Storage</dt>
-            <dd>{{ r.storage }}{{ r.encrypted ? ' (criptat AES-GCM)' : '' }}</dd>
+            <dt>Stocare</dt>
+            <dd>{{ storageLabels[r.storage] }}{{ r.encrypted ? ' (criptat AES-GCM)' : '' }}</dd>
             <dt>Mărime</dt>
             <dd>{{ formatBytes(r.size) }} ({{ r.size.toLocaleString('ro-RO') }} octeți)</dd>
             @if (r.sha256Plain) {
@@ -197,9 +197,9 @@
 
     @if (useMocks) {
       <details class="card mock">
-        <summary>Mock: rețea și erori simulate</summary>
+        <summary>Simulare: rețea și erori</summary>
         <p class="hint">
-          Doar în <code>ng serve</code> cu mock. Pentru întreruperea rețelei: DevTools → Network → Offline,
+          Doar în <code>ng serve</code> în modul simulare. Pentru întreruperea rețelei: DevTools → Network → Offline,
           apoi înapoi la „No throttling”.
         </p>
         <div class="grid">

@@ -32,7 +32,7 @@ export function describeFileError(error: unknown): string {
   }
   const api = toApiError(error);
   const status = api?.status ?? (error instanceof HttpErrorResponse ? error.status : -1);
-  const trace = api?.traceId ? ` (trace ${api.traceId})` : '';
+  const trace = api?.traceId ? ` (cod de urmărire ${api.traceId})` : '';
   switch (status) {
     case 0:
       return 'Serverul nu răspunde (rețea căzută sau API oprit). Încearcă din nou.';
@@ -52,7 +52,7 @@ export function describeFileError(error: unknown): string {
       return `${api?.message ?? 'Conflict'}${trace}`;
     case 429:
     case 503:
-      return `Serviciul e ocupat sau un storage e indisponibil; reîncearcă${api?.retryAfterSeconds ? ` peste ${api.retryAfterSeconds} s` : ''}.${trace}`;
+      return `Serviciul e ocupat sau o stocare e indisponibilă; reîncearcă${api?.retryAfterSeconds ? ` peste ${api.retryAfterSeconds} s` : ''}.${trace}`;
     default:
       return api?.message ? `${api.message}${trace}` : `Eroare neașteptată (${status}).`;
   }

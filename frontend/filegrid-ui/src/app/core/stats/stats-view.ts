@@ -309,7 +309,7 @@ export const UNAVAILABLE_REASONS: Readonly<Record<string, string>> = {
   REQUEST_METRICS_UNAVAILABLE:
     'Statistica nu este încă disponibilă: lipsesc măsurătorile de performanță. Va apărea automat după ce sistemul strânge date.',
   STORAGE_MEASUREMENTS_INCOMPLETE:
-    'Recomandarea nu este încă disponibilă: lipsesc măsurătorile de performanță pentru unele combinații categorie–storage. ' +
+    'Recomandarea nu este încă disponibilă: lipsesc măsurătorile de performanță pentru unele combinații categorie–stocare. ' +
     'Va apărea automat după ce sistemul strânge date.',
 };
 
@@ -334,14 +334,14 @@ export function describeStatsFailure(error: unknown): StatsFailure {
 export function describeStatsError(error: unknown): string {
   const api = toApiError(error);
   const status = api?.status ?? (error instanceof HttpErrorResponse ? error.status : -1);
-  const trace = api?.traceId ? ` (trace ${api.traceId})` : '';
+  const trace = api?.traceId ? ` (cod de urmărire ${api.traceId})` : '';
   switch (status) {
     case 0:
       return 'Serverul nu răspunde (rețea căzută sau API oprit). Încearcă din nou.';
     case 401:
       return 'Sesiunea a expirat. Autentifică-te din nou.';
     case 403:
-      return `Rolul tău nu are acces la statistici (doar DISPATCH și ADMIN).${trace}`;
+      return `Rolul tău nu are acces la statistici (doar Dispecerat și Administrator).${trace}`;
     case 404:
     case 405:
     case 501:

@@ -1,21 +1,122 @@
 <app-topbar />
 
 <main class="content">
-  <h1>Bine ai venit</h1>
-  @if (auth.hasRole('FIELD', 'CONNECTIONS')) {
-    <p>Poți încărca fișiere din pagina <a routerLink="/upload">Upload</a>.</p>
+  <section class="hero">
+    <app-logo class="hero-logo" [size]="56" [withText]="false" />
+    <div>
+      <h1>{{ greeting }}, {{ auth.user()?.username }}!</h1>
+      <p class="lead">
+        @if (role()) {
+          Ești conectat ca <strong>{{ role() }}</strong>.
+        }
+        FileGrid păstrează în siguranță fișierele rețelei: citiri de contor, avarii, documente de racordare și
+        video-uri de inspecție, fiecare verificat cu SHA-256.
+      </p>
+    </div>
+  </section>
+
+  @if (canSearch()) {
+    <form class="quick card" role="search" (submit)="$event.preventDefault(); quickSearch()">
+      <label for="quick" class="sr-only">Caută un fișier după nume</label>
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" />
+      </svg>
+      <input
+        id="quick"
+        type="search"
+        maxlength="200"
+        placeholder="Caută rapid un fișier, de exemplu BRASOV sau tronson-7"
+        [value]="quickQuery()"
+        (input)="quickQuery.set($any($event.target).value)"
+      />
+      <button type="submit">Caută</button>
+    </form>
   }
-  @if (auth.hasRole('FIELD', 'DISPATCH', 'CONNECTIONS')) {
-    <p>
-      Poți căuta, descărca și verifica integritatea fișierelor din pagina <a routerLink="/search">Căutare</a>.
-    </p>
-  } @else {
-    <p>Ești autentificat. Rolul tău nu încarcă și nu caută fișiere.</p>
-  }
-  @if (auth.hasRole('DISPATCH')) {
-    <p>
-      Vezi recomandările de storage, ziua de vârf, anomaliile și starea cerințelor în pagina
-      <a routerLink="/stats">Statistici</a>.
-    </p>
+
+  <section class="actions" aria-label="Ce poți face">
+    @if (canUpload()) {
+      <a class="action card" routerLink="/upload">
+        <span class="action-icon upload" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M12 16V4m0 0-5 5m5-5 5 5" /><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3" /></svg>
+        </span>
+        <span class="action-title">Încarcă un fișier</span>
+        <span class="action-desc">Avarii, documente de racordare sau video-uri de dronă, cu reluare dacă pică rețeaua.</span>
+        <span class="go" aria-hidden="true">→</span>
+      </a>
+    }
+    @if (canSearch()) {
+      <a class="action card" routerLink="/search">
+        <span class="action-icon search" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" /></svg>
+        </span>
+        <span class="action-title">Caută și descarcă</span>
+        <span class="action-desc">Filtrează după categorie, nume și dată; descarcă și verifică integritatea fișierelor.</span>
+        <span class="go" aria-hidden="true">→</span>
+      </a>
+    }
+    @if (canViewStats()) {
+      <a class="action card" routerLink="/stats">
+        <span class="action-icon stats" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M5 20V11m7 9V5m7 15v-6" /></svg>
+        </span>
+        <span class="action-title">Statistici</span>
+        <span class="action-desc">Recomandări de stocare, ziua de vârf, zonele cu avarii și anomaliile din citiri.</span>
+        <span class="go" aria-hidden="true">→</span>
+      </a>
+    }
+    @if (!canUpload() && !canSearch() && !canViewStats()) {
+      <p class="card">Rolul tău trimite doar citiri automate; nu încarcă și nu caută fișiere din interfață.</p>
+    }
+  </section>
+
+  @if (canSearch()) {
+    <div class="overview">
+      <section class="card">
+        <h2>Fișierele tale pe categorii</h2>
+        @if (counts(); as list) {
+          <ul class="counts">
+            @for (c of list; track c.category) {
+              <li>
+                <button type="button" class="count" (click)="openCategory(c.category)">
+                  <span class="count-num">{{ c.total === null ? '—' : c.total.toLocaleString('ro-RO') }}</span>
+                  <span class="count-label">{{ c.label }}</span>
+                </button>
+              </li>
+            }
+          </ul>
+        } @else {
+          <p class="muted">Se încarcă…</p>
+        }
+      </section>
+
+      <section class="card">
+        <div class="section-head">
+          <h2>Încărcate recent</h2>
+          <a routerLink="/search" class="see-all">Vezi toate</a>
+        </div>
+        @if (recentError()) {
+          <p class="muted">Nu am putut încărca lista. Încearcă din pagina Căutare.</p>
+        } @else if (recent(); as items) {
+          @if (items.length === 0) {
+            <p class="muted">Încă nu există fișiere.</p>
+          } @else {
+            <ul class="recent">
+              @for (f of items; track f.id) {
+                <li>
+                  <button type="button" class="recent-row" (click)="openFile(f)">
+                    <span class="file-name">{{ f.originalName }}</span>
+                    <span class="file-meta">
+                      {{ labels[f.category] }} · {{ formatBytes(f.size) }} · {{ f.createdAt | date: 'dd.MM.yyyy HH:mm' }}
+                    </span>
+                  </button>
+                </li>
+              }
+            </ul>
+          }
+        } @else {
+          <p class="muted">Se încarcă…</p>
+        }
+      </section>
+    </div>
   }
 </main>

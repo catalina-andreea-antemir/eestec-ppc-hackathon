@@ -87,8 +87,8 @@
                   <th>Nume</th>
                   <th>Categorie</th>
                   <th class="num">Mărime</th>
-                  <th>Storage</th>
-                  <th>Status</th>
+                  <th>Stocare</th>
+                  <th>Stare</th>
                   <th>Creat</th>
                   <th><span class="sr-only">Detalii</span></th>
                 </tr>
@@ -105,8 +105,8 @@
                     </td>
                     <td>{{ labels[f.category] }}</td>
                     <td class="num">{{ formatBytes(f.size) }}</td>
-                    <td>{{ f.storage }}</td>
-                    <td><span [class]="'status ' + f.status.toLowerCase()">{{ f.status }}</span></td>
+                    <td>{{ storageLabels[f.storage] }}</td>
+                    <td><span [class]="'status ' + f.status.toLowerCase()">{{ statusLabels[f.status] }}</span></td>
                     <td>{{ f.createdAt | date: 'dd.MM.yyyy HH:mm' }}</td>
                     <td>
                       <button
@@ -129,10 +129,10 @@
                           <dd>{{ formatBytes(f.size) }} ({{ f.size }} octeți)</dd>
                           <dt>Tip</dt>
                           <dd>{{ f.contentType }}</dd>
-                          <dt>Storage</dt>
-                          <dd>{{ f.storage }}</dd>
-                          <dt>Status</dt>
-                          <dd>{{ f.status }}</dd>
+                          <dt>Stocare</dt>
+                          <dd>{{ storageLabels[f.storage] }}</dd>
+                          <dt>Stare</dt>
+                          <dd>{{ statusLabels[f.status] }}</dd>
                           <dt>SHA-256 stocat</dt>
                           <dd><code class="hash">{{ f.sha256 }}</code></dd>
                           @if (f.sha256Plain) {

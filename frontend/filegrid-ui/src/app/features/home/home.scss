@@ -1,9 +1,279 @@
 .content {
-  max-width: 960px;
+  max-width: 1040px;
   margin: 0 auto;
-  padding: 32px 16px;
+  padding: 32px 16px 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
 }
 
-a {
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  margin: 0;
+}
+
+.hero {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 28px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background:
+    radial-gradient(circle at 100% 0%, var(--accent-soft), transparent 60%),
+    var(--surface);
+}
+
+.hero h1 {
+  margin: 0 0 6px;
+  font-size: 1.8rem;
+}
+
+.lead {
+  margin: 0;
+  color: var(--muted);
+  max-width: 70ch;
+}
+
+.lead strong {
+  color: var(--text);
+}
+
+.quick {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 10px 10px 16px;
+}
+
+.quick input {
+  border: none;
+  background: transparent;
+  padding: 8px 0;
+  font-size: 1rem;
+}
+
+.quick input:focus {
+  outline: none;
+}
+
+.quick:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.icon,
+.action-icon svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.icon {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  color: var(--muted);
+}
+
+.actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+}
+
+.action {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--text);
+  text-decoration: none;
+  transition:
+    transform 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.action:hover,
+.action:focus-visible {
+  transform: translateY(-2px);
+  border-color: var(--accent);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.12);
+  outline: none;
+}
+
+.action-icon {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  margin-bottom: 6px;
+}
+
+.action-icon svg {
+  width: 22px;
+  height: 22px;
+}
+
+.action-icon.upload {
+  background: var(--accent-soft);
   color: var(--accent);
+}
+
+.action-icon.search {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+
+.action-icon.stats {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.action-title {
+  font-weight: 700;
+  font-size: 1.05rem;
+}
+
+.action-desc {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.go {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  color: var(--muted);
+  transition: transform 0.15s ease;
+}
+
+.action:hover .go {
+  transform: translateX(4px);
+  color: var(--accent);
+}
+
+.overview {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  gap: 16px;
+}
+
+@media (max-width: 760px) {
+  .overview {
+    grid-template-columns: 1fr;
+  }
+
+  .hero {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+h2 {
+  margin: 0 0 12px;
+  font-size: 1.05rem;
+}
+
+.section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.see-all {
+  color: var(--accent);
+  font-size: 0.9rem;
+}
+
+ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.counts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+}
+
+.count,
+.recent-row {
+  width: 100%;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  font-weight: normal;
+  text-align: left;
+  border-radius: 10px;
+}
+
+.count {
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
+}
+
+.count:hover,
+.recent-row:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.count-num {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--accent);
+  line-height: 1.2;
+}
+
+.count-label {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.recent {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.recent-row {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 12px;
+}
+
+.file-name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-meta,
+.muted {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.muted {
+  margin: 0;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }

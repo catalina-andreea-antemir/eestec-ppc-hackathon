@@ -28,7 +28,7 @@
     @case ('ok') {
       <div class="result ok" role="status">
         <span>
-          <strong>OK</strong> — hash-ul recalculat din storage e identic cu cel salvat la upload.
+          <strong>Integru</strong> — hash-ul recalculat din stocare e identic cu cel salvat la încărcare.
           @if (o.deep) {
             Verificare completă: și originalul decriptat se potrivește.
           }
@@ -39,7 +39,7 @@
     }
     @case ('corrupt') {
       <div class="result corrupt" role="alert">
-        <span><strong>Corupt</strong> — {{ o.message }}: conținutul din storage nu mai are hash-ul salvat la upload.</span>
+        <span><strong>Corupt</strong> — {{ o.message }}: conținutul din stocare nu mai are hash-ul salvat la încărcare.</span>
         <dl>
           <dt>Așteptat</dt>
           <dd><code class="hash">{{ o.expectedSha256 ?? '—' }}</code></dd>
@@ -47,7 +47,7 @@
           <dd><code class="hash">{{ o.actualSha256 ?? '—' }}</code></dd>
         </dl>
         @if (o.traceId) {
-          <span class="when">trace {{ o.traceId }}</span>
+          <span class="when">cod de urmărire {{ o.traceId }}</span>
         }
       </div>
     }

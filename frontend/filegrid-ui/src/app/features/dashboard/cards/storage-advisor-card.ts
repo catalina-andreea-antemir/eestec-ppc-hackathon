@@ -1,6 +1,7 @@
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { Component, computed, DestroyRef, effect, inject, input, untracked } from '@angular/core';
 
+import { STORAGE_LABELS } from '../../../core/i18n/labels';
 import { StatsApi } from '../../../core/stats/stats-api';
 import { StorageAdvisor } from '../../../core/stats/stats.models';
 import { buildAdvisorMatrix, costAssumptionLine, CostLine, scoreTint } from '../../../core/stats/stats-view';
@@ -34,6 +35,7 @@ export class StorageAdvisorCard {
     return d ? costAssumptionLine(d.costAssumption) : null;
   });
   protected readonly tint = scoreTint;
+  protected readonly storageLabels = STORAGE_LABELS;
 
   constructor() {
     effect(() => {

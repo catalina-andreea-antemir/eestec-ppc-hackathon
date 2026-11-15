@@ -135,7 +135,7 @@ export function isAbortError(error: unknown): boolean {
 }
 
 export function abortError(): DOMException {
-  return new DOMException('Upload oprit.', 'AbortError');
+  return new DOMException('Încărcare oprită.', 'AbortError');
 }
 
 export function throwIfAborted(signal?: AbortSignal): void {

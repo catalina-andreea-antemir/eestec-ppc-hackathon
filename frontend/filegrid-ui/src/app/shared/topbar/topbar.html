@@ -1,9 +1,9 @@
 <header class="topbar">
-  <strong>FileGrid</strong>
+  <a routerLink="/" class="brand" aria-label="FileGrid, pagina principală"><app-logo /></a>
   <nav>
     <a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">Acasă</a>
     @if (canUpload()) {
-      <a routerLink="/upload" routerLinkActive="active">Upload</a>
+      <a routerLink="/upload" routerLinkActive="active">Încărcare</a>
     }
     @if (canSearch()) {
       <a routerLink="/search" routerLinkActive="active">Căutare</a>
@@ -16,7 +16,7 @@
     <span class="user">
       {{ user.username }}
       @if (user.role) {
-        <span class="role">{{ user.role }}</span>
+        <span class="role" [attr.title]="user.role">{{ roleLabel(user.role) }}</span>
       }
     </span>
   }
