@@ -1,19 +1,20 @@
 <#
 FileGrid PPC - pornirea intregului sistem cu o singura comanda (ADR-002). Din radacina repo-ului:
-    .\scripts\start.ps1
+    .\scripts\start.ps1 [-ShowPasswords]
 1) verifica Docker Compose >= 2.20; 2) creeaza .env cu secrete aleatorii daca lipseste (si completeaza variabilele
 care lipsesc); 3) docker compose up -d --build; 4) asteapta health-ul api; 5) afiseaza adresa si utilizatorii de test.
 Merge in Windows PowerShell 5.1 si in PowerShell 7.
 #>
 [CmdletBinding()]
 param(
-    [int]$HealthTimeoutSeconds = 600
+    [int]$HealthTimeoutSeconds = 600,
+    [switch]$ShowPasswords
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
 
-$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+$repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).ProviderPath
 Set-Location -LiteralPath $repoRoot
 $envFile = Join-Path $repoRoot '.env'
 
@@ -195,7 +196,7 @@ if ($curl) {
     # nginx re-rezolva api la 5 s, deci primele cereri pot da 502/503 cateva secunde.
     $nginxDeadline = (Get-Date).AddSeconds(60)
     while ($true) {
-        $code = Get-NativeOutput $curl.Source @('-ks', '-o', 'NUL', '-w', '%{http_code}', 'https://localhost/api/v1/health')
+        $code = Get-NativeOutput $curl.Source @('-ks', '--max-time', '5', '-o', 'NUL', '-w', '%{http_code}', 'https://localhost/api/v1/health')
         if ($code -eq '200') { break }
         if ((Get-Date) -ge $nginxDeadline) {
             [void](Invoke-Native docker @('compose', 'logs', '--no-color', '--tail', '20', 'nginx'))
@@ -213,8 +214,12 @@ Write-Host 'Grafana:               https://localhost/grafana/   (utilizator admi
 Write-Host ''
 Write-Host 'Utilizatori de test (parolele sunt in .env):'
 foreach ($user in $testUsers.Keys) {
-    $password = Get-EnvValue ("FILEGRID_USER_{0}_PASSWORD" -f $user.ToUpperInvariant())
-    Write-Host ('  {0,-10} {1,-14} {2}' -f $user, $testUsers[$user], $password)
+    if ($ShowPasswords) {
+        $password = Get-EnvValue ("FILEGRID_USER_{0}_PASSWORD" -f $user.ToUpperInvariant())
+        Write-Host ('  {0,-10} {1,-14} {2}' -f $user, $testUsers[$user], $password)
+    } else {
+        Write-Host ('  {0,-10} {1}' -f $user, $testUsers[$user])
+    }
 }
 Write-Host ''
 Write-Host 'Oprire: docker compose down    Resetare completa (sterge datele): docker compose down -v'

@@ -1,14 +1,16 @@
 # FileGrid PPC — comenzi rapide pentru demo
 
-Rulează din rădăcina repo-ului. **PS** = Windows PowerShell 5.1/7, inclusiv pentru demo și haos. **WSL** = Bash cu integrarea Docker Desktop. Comenzile Compose sunt comune.
+Rulează din rădăcina repo-ului. **PS** = Windows PowerShell 5.1/7, inclusiv pentru demo și haos. **Bash** pentru pornire pe Linux, WSL și macOS Intel. În WSL activează integrarea Docker Desktop. Comenzile Compose sunt comune.
 
-**⚠ Temporar** — schimbă starea, declanșează alerte sau generează sarcină. Rulează haosul pe rând. Datele de test pot rămâne în stack. **Pornește stack-ul și autentifică-te în afara proiecției.** Scripturile de pornire afișează parole la final.
+**⚠ Temporar** — schimbă starea, declanșează alerte sau generează sarcină. Rulează haosul pe rând. Datele de test pot rămâne în stack. **Autentifică-te în afara proiecției.** Rezumatul conturilor afișează implicit utilizatorii și rolurile. Pentru parolele de test, folosește în privat `.\scripts\start.ps1 -ShowPasswords` sau `bash scripts/start.sh --show-passwords`.
 
 ## Pornire, roluri și date
 
+**Apple Silicon** — SQL Server 2022 cere `linux/amd64`. Rulează stack-ul pe o mașină x86-64 validată și folosește MacBook-ul pentru vizualizare. Pe Mac Intel, verifică stack-ul înainte de demo. [Compatibilitate](../../README.md#compatibilitate)
+
 | Demonstrație | Comandă / acțiune | Verifică | Pentru juriu |
 |---|---|---|---|
-| Pornire și health | **PS** `.\scripts\start.ps1` · **WSL** `bash scripts/start.sh`. Pe ecran: `docker compose ps` și, în PS, `curl.exe -ks -o NUL -w '%{http_code}' https://localhost/api/v1/health` sau, în WSL, `curl -ks -o /dev/null -w '%{http_code}' https://localhost/api/v1/health`. | API `healthy` și HTTP `200` prin nginx. | Scriptul construiește, pornește și verifică stack-ul. |
+| Pornire și health | **PS** `.\scripts\start.ps1` · **Bash** `bash scripts/start.sh`. Pe ecran: `docker compose ps` și, în PS, `curl.exe -ks -o NUL -w '%{http_code}' https://localhost/api/v1/health` sau, în Bash, `curl -ks -o /dev/null -w '%{http_code}' https://localhost/api/v1/health`. | API `healthy` și HTTP `200` prin nginx. | Scriptul construiește, pornește și verifică stack-ul. |
 | Fișiere de demo | Dacă lipsesc, **PS** `.\scripts\generate-sample-data.ps1` · **WSL** `bash scripts/generate-sample-data.sh`. | Confirmă că PDF-ul, CSV-ul și video-ul din rândul **Upload DB / S3 / FTP** există în `sample-data/` înainte de demo. | Folosim date fictive, inclusiv fișiere mari pentru reluarea upload-ului. |
 | Autentificare și roluri | Deschide `https://localhost/login` în taburi separate ca `teren`, `racordari` și `dispecer`. Pentru refuz, folosește comanda de la **Alerte**. | `teren` poate încărca avarii și video, `racordari` documente, `dispecer` vede Statistici și primește `403 FORBIDDEN` la accesul demonstrat. | Drepturile sunt verificate pe server pentru fiecare rol și categorie. |
 | Upload DB / S3 / FTP | În `https://localhost/upload`, ca `racordari`, încarcă `sample-data/connection-docs/contract-racordare-fictiv-003.pdf`. Ca `teren`, încarcă `sample-data/outage-records/avarie-01-ST-BRASOV-114.csv` la **Avarie**, zona **Muntenia**, apoi `sample-data/inspection-videos/drona-inspectie-100MB.mp4` la **Video dronă**. | Storage afișat **DB** la document, **S3** la avarie, **FTP** la video, cu storage-urile sănătoase și politica implicită. | Politica categoriei alege destinația. Videoclipurile se trimit în bucăți. |

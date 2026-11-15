@@ -23,7 +23,7 @@ totul în Docker Compose.
 
 | Ce | Detalii |
 |---|---|
-| Docker | Docker Desktop pe Windows/macOS (pe Windows: containere Linux, motor WSL 2 sau Hyper-V) sau Docker Engine pe Linux |
+| Docker | Docker Desktop cu containere Linux pe Windows x86-64, Docker Engine pe Linux x86-64 sau Docker Desktop pe Mac Intel. Pentru Apple Silicon, vezi [compatibilitatea](#compatibilitate). |
 | Docker Compose | **minim 2.20** (stack-ul folosește `include`); scriptul de pornire verifică versiunea |
 | Memorie | **~8 GB RAM alocați lui Docker** (bugetul din `infra/docker/docker-compose.yml`: ~7,1 GB cu 3 replici api) |
 | Disc | minim ~10 GB liberi: imaginile au ~6 GB (SQL Server 2022 singur ~2,2 GB), plus cache-ul de build și volumele; plus ~1,7 GB dacă generezi video-urile de test |
@@ -35,7 +35,7 @@ Nu e nevoie de Java, Maven sau Node.js local: build-ul se face în imaginile Doc
 
 ## 2. Pornire cu o singură comandă
 
-Din rădăcina repo-ului, cu Docker pornit:
+Pe Windows 10/11, din rădăcina repo-ului, cu Docker Desktop în modul Linux containers, folosește Windows PowerShell 5.1 sau PowerShell 7.
 
 ```powershell
 .\scripts\start.ps1
@@ -47,25 +47,31 @@ Dacă politica de execuție PowerShell blochează scriptul:
 powershell -ExecutionPolicy Bypass -File .\scripts\start.ps1
 ```
 
-Linux, macOS, WSL sau Git Bash:
+Pe Linux, macOS Intel, WSL sau Git Bash, rulează scriptul cu Bash. Pe macOS sunt suficiente Bash 3.2 și utilitarele de sistem.
 
 ```bash
 ./scripts/start.sh
 ```
+
+Implicit, rezumatul afișează utilizatorii și rolurile. Pentru afișarea parolelor celor cinci conturi de test, folosește un terminal privat.
+
+- PowerShell `.\scripts\start.ps1 -ShowPasswords`
+- Bash `./scripts/start.sh --show-passwords`
 
 Ce face scriptul ([ADR-002](docs/decisions/ADR-002-pornire-o-singura-comanda.md)):
 
 1. verifică `docker`, că Docker răspunde și că Docker Compose e cel puțin 2.20;
 2. creează `.env` (ignorat de git) cu **secrete aleatorii**: parolele SQL Server (`sa`, `filegrid_meta_app`,
    `filegrid_storage_app`), MinIO, FTP, Grafana, cheia JWT, cheia AES pentru documente, cheia HMAC pentru link-urile
-   semnate și parolele celor 5 utilizatori de test. Dacă `.env` există, adaugă doar variabilele lipsă și **nu schimbă
-   niciodată** valorile existente (parolele SQL sunt deja în volumul `mssql`);
+   semnate și parolele celor 5 utilizatori de test. Completează valorile obligatorii lipsă sau goale și păstrează
+   valorile existente. Bash creează fișierul cu `umask 077` și încearcă să aplice permisiunea `0600`. Pe Windows,
+   fișierul nou moștenește permisiunile directorului;
 3. rulează `docker compose up -d --build` — **prima construire durează câteva minute** (imagini + build Maven și
    Angular); următoarele porniri sunt rapide;
 4. așteaptă ca toate instanțele `api` să fie `healthy` (implicit maxim 600 s; `-HealthTimeoutSeconds` în PowerShell,
-   `FILEGRID_START_TIMEOUT` în bash), apoi verifică `GET https://localhost/api/v1/health` prin nginx;
-5. afișează adresa, Grafana și utilizatorii de test **cu parolele lor** — nu face capturi de ecran / nu partaja
-   ecranul în acel moment.
+   `FILEGRID_START_TIMEOUT` în Bash), apoi verifică `GET https://localhost/api/v1/health` prin nginx când este
+   disponibil `curl` (Linux/macOS) sau `curl.exe` (Windows);
+5. afișează adresele FileGrid și Grafana, utilizatorii și rolurile. Parolele de test apar doar cu opțiunea explicită.
 
 La eșec, scriptul afișează ultimele linii din logurile relevante (`mssql-init`, `minio-init`, `api` sau `nginx`).
 
@@ -74,6 +80,26 @@ Verificare rapidă:
 ```bash
 docker compose ps
 ```
+
+### Compatibilitate
+
+| Sistem | Script de pornire | Imaginile stack-ului |
+|---|---|---|
+| Windows 10/11 x86-64 | `start.ps1` în Windows PowerShell 5.1 sau PowerShell 7 | `linux/amd64` prin Docker Desktop în modul Linux containers (WSL 2 sau Hyper-V, unde este disponibil). |
+| Linux x86-64 | `start.sh` în Bash | `linux/amd64` prin Docker Engine și pluginul Compose. |
+| macOS Intel | `start.sh` în Bash 3.2 sau mai nou, verificat static pentru utilitarele macOS | `linux/amd64` în VM-ul Linux al Docker Desktop. Confirmă pornirea completă pe Mac înainte de demo. |
+| macOS Apple Silicon ARM64 | `start.sh` are aceleași cerințe de shell ca pe Mac Intel | Stack-ul complet nu rulează nativ. Imaginea obligatorie `mcr.microsoft.com/mssql/server:2022-latest` este `linux/amd64`. |
+
+Manifestele imaginilor Compose și ale imaginilor de bază conțin `linux/amd64`. Celelalte imagini verificate au și
+variantă `linux/arm64`, inclusiv digestul MinIO fixat în Compose. Scripturile au fost verificate cu Docker și
+curl simulate în Windows PowerShell 5.1 și PowerShell 7, respectiv Bash 3.2 și 5.2 pe Linux. Verificarea pentru
+macOS a fost statică. Stack-ul complet nu a fost repornit.
+[Docker Desktop pe Windows](https://docs.docker.com/desktop/setup/install/windows-install/) · [Docker Desktop pe Mac](https://docs.docker.com/desktop/setup/install/mac-install/)
+
+Microsoft acceptă containerele SQL Server pe Linux cu CPU Intel/AMD x86-64. Rosetta și QEMU nu sunt testate sau
+suportate de Microsoft pentru aceste imagini. Pentru un MacBook Apple Silicon, rulează stack-ul pe o mașină x86-64
+validată înainte de prezentare și folosește MacBook-ul pentru vizualizare.
+[Platformele SQL Server în containere](https://learn.microsoft.com/sql/linux/sql-server-linux-docker-container-deployment?view=sql-server-ver16)
 
 ## 3. Adrese și porturi
 
@@ -100,7 +126,7 @@ Porturi suplimentare, doar la cerere și doar pe `127.0.0.1`:
 ## 4. Utilizatori de test și roluri
 
 Câte un utilizator per rol. **Parolele sunt în `.env`** (`FILEGRID_USER_<NUME>_PASSWORD`, de exemplu
-`FILEGRID_USER_DISPECER_PASSWORD`) și sunt afișate la finalul scriptului de pornire.
+`FILEGRID_USER_DISPECER_PASSWORD`). Scripturile le afișează doar cu opțiunea explicită din [secțiunea de pornire](#2-pornire-cu-o-singură-comandă).
 
 | Utilizator | Rol | Poate încărca | Poate căuta și descărca | Altele |
 |---|---|---|---|---|
