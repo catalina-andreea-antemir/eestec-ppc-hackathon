@@ -48,14 +48,24 @@ public class MeterReadingIngestionService {
     private final TransactionTemplate transaction;
     private final Clock clock;
 
+    private final ro.filegrid.observability.OperationMetrics metrics;
+
     @Autowired
     public MeterReadingIngestionService(MeterReadingRepository readings, FileMetadataRepository files,
-                                        ContentWriter writer, PlatformTransactionManager transactions) {
-        this(readings, files, writer, new TransactionTemplate(transactions), Clock.systemUTC());
+                                        ContentWriter writer, PlatformTransactionManager transactions,
+                                        ro.filegrid.observability.OperationMetrics metrics) {
+        this(readings, files, writer, new TransactionTemplate(transactions), Clock.systemUTC(), metrics);
     }
 
     public MeterReadingIngestionService(MeterReadingRepository readings, FileMetadataRepository files,
                                         ContentWriter writer, TransactionTemplate transaction, Clock clock) {
+        this(readings, files, writer, transaction, clock, ro.filegrid.observability.OperationMetrics.noop());
+    }
+
+    public MeterReadingIngestionService(MeterReadingRepository readings, FileMetadataRepository files,
+                                        ContentWriter writer, TransactionTemplate transaction, Clock clock,
+                                        ro.filegrid.observability.OperationMetrics metrics) {
+        this.metrics = metrics;
         this.readings = readings;
         this.files = files;
         this.writer = writer;
@@ -148,6 +158,7 @@ public class MeterReadingIngestionService {
     }
 
     private Result duplicate(MeterReadingBatch batch, UUID fileId) {
+        metrics.duplicate(ro.filegrid.domain.Category.METER_READING);
         byte[] sha256;
         try {
             sha256 = files.findSha256(fileId).orElseThrow(() ->
@@ -160,7 +171,7 @@ public class MeterReadingIngestionService {
 
     private void compensate(UUID attemptId, ContentWriter.Stored stored) {
         if (stored != null) {
-            writer.deleteQuietly(stored.storage(), stored.key());
+            writer.deleteQuietly(ro.filegrid.domain.Category.METER_READING, stored.storage(), stored.key());
         }
         try {
             readings.delete(attemptId);

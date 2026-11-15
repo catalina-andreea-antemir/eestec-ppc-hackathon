@@ -68,7 +68,7 @@ public class FileIngestionService {
         } catch (RuntimeException e) {
             log.error("Metadatele fișierului {} nu s-au salvat; șterg obiectul din {}: {}", record.id(),
                     stored.storage(), e.getMessage());
-            writer.deleteQuietly(stored.storage(), stored.key());
+            writer.deleteQuietly(upload.category(), stored.storage(), stored.key());
             throw IngestErrors.storageUnavailable("Baza de metadate este indisponibilă; fișierul nu a fost salvat.");
         }
         return policy.encrypted() ? record.withOriginalName(upload.originalName()) : record;

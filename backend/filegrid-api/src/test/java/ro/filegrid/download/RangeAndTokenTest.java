@@ -121,7 +121,9 @@ class RangeAndTokenTest {
         String otherFile = Base64.getUrlEncoder().withoutPadding().encodeToString(
                 ("{\"f\":\"" + UUID.randomUUID() + "\",\"u\":\"x\",\"e\":" + clock.now.plusSeconds(900).getEpochSecond()
                         + "}").getBytes());
-        String flipped = token.substring(0, token.length() - 1) + (token.endsWith("A") ? "B" : "A");
+        // Penultimul caracter: toți cei 6 biți sunt semnificativi (ultimul are biți de umplere și poate decoda identic).
+        String head = token.substring(0, token.length() - 2);
+        String flipped = head + (token.charAt(token.length() - 2) == 'A' ? 'B' : 'A') + token.charAt(token.length() - 1);
 
         for (String bad : new String[]{flipped, otherFile + "." + parts[1], parts[0] + "." + parts[1] + "x",
                 other.create(file, "x").token(), "", "abc", ".", "a.b.c", parts[0], "x".repeat(600)}) {

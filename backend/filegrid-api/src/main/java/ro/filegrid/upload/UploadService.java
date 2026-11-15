@@ -33,6 +33,7 @@ import ro.filegrid.storage.ByteRange;
 import ro.filegrid.storage.ChunkReceipt;
 import ro.filegrid.storage.ChunkedUpload;
 import ro.filegrid.storage.ChunkedWriter;
+import ro.filegrid.observability.OperationMetrics;
 import ro.filegrid.storage.StorageAdapter;
 import ro.filegrid.storage.StorageAdapterRegistry;
 import ro.filegrid.storage.StorageException;
@@ -59,6 +60,7 @@ public class UploadService {
     private final TransactionTemplate transaction;
     private final UploadSettings settings;
     private final Clock clock;
+    private final OperationMetrics metrics;
 
     @Autowired
     public UploadService(PolicyEngine policies, StorageSelector selector, StorageAdapterRegistry registry,
@@ -66,14 +68,23 @@ public class UploadService {
                          PlatformTransactionManager transactions,
                          @Value("${filegrid.uploads.lease-ttl:2m}") Duration leaseTtl,
                          @Value("${filegrid.uploads.inactive-ttl:24h}") Duration inactiveTtl,
-                         @Value("${filegrid.uploads.storage-down-ttl:10m}") Duration storageDownTtl) {
+                         @Value("${filegrid.uploads.storage-down-ttl:10m}") Duration storageDownTtl,
+                         OperationMetrics metrics) {
         this(policies, selector, registry, sessions, files, new TransactionTemplate(transactions),
-                new UploadSettings(leaseTtl, inactiveTtl, storageDownTtl), Clock.systemUTC());
+                new UploadSettings(leaseTtl, inactiveTtl, storageDownTtl), Clock.systemUTC(), metrics);
     }
 
     public UploadService(PolicyEngine policies, StorageSelector selector, StorageAdapterRegistry registry,
                          UploadSessionRepository sessions, FileMetadataRepository files,
                          TransactionTemplate transaction, UploadSettings settings, Clock clock) {
+        this(policies, selector, registry, sessions, files, transaction, settings, clock, OperationMetrics.noop());
+    }
+
+    public UploadService(PolicyEngine policies, StorageSelector selector, StorageAdapterRegistry registry,
+                         UploadSessionRepository sessions, FileMetadataRepository files,
+                         TransactionTemplate transaction, UploadSettings settings, Clock clock,
+                         OperationMetrics metrics) {
+        this.metrics = metrics;
         this.policies = policies;
         this.selector = selector;
         this.registry = registry;
@@ -178,7 +189,8 @@ public class UploadService {
         BodyStream in = new BodyStream(body, expected, () -> renewQuietly(session.id(), owner));
         ChunkReceipt receipt;
         try {
-            receipt = writer(session).append(upload, n, in, expected);
+            receipt = metrics.time(session.category(), session.storage(), OperationMetrics.UPLOAD_CHUNK, expected,
+                    () -> writer(session).append(upload, n, in, expected));
         } catch (StorageException e) {
             if (in.sourceFailed()) {
                 throw IngestErrors.validation("body", "Corpul bucății " + n + " este incomplet sau întrerupt ("
@@ -240,8 +252,11 @@ public class UploadService {
                 throw UploadErrors.incomplete(session.nextChunk(), total);
             }
             ChunkedUpload upload = session.toChunkedUpload();
+            UploadSession current = session;
             try {
-                writer(session).finish(upload, chunks.stream().map(UploadSessionRepository.Chunk::receipt).toList());
+                metrics.run(current.category(), current.storage(), OperationMetrics.UPLOAD_COMPLETE,
+                        current.totalSize(), () -> writer(current).finish(upload,
+                                chunks.stream().map(UploadSessionRepository.Chunk::receipt).toList()));
             } catch (StorageException e) {
                 throw storageFailure(session, e);
             }
@@ -352,7 +367,8 @@ public class UploadService {
     /** Abort în storage (cel mult o încercare; la eșec rămân resturi, logate) și starea finală în DB. */
     private void abandon(UploadSession session, String status) {
         try {
-            writer(session).abort(session.toChunkedUpload());
+            metrics.run(session.category(), session.storage(), OperationMetrics.DELETE, null,
+                    () -> writer(session).abort(session.toChunkedUpload()));
         } catch (RuntimeException e) {
             log.warn("Abort-ul upload-ului {} în {} a eșuat; pot rămâne resturi: {}", session.id(),
                     session.storage(), e.getMessage());
