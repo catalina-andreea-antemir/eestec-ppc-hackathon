@@ -90,10 +90,13 @@ services:
       FILEGRID_USER_ADMIN_PASSWORD: ${FILEGRID_USER_ADMIN_PASSWORD:-}
       # Politica per categorie (4.2): directorul din repo, montat read-only; PolicyEngine il reciteste fara restart.
       FILEGRID_POLICY_DIR: /app/policies
+      LOGGING_CONFIG: /etc/filegrid/logback-spring.xml
       # Heap-ul din procent, ca limita containerului (512 MB) sa ramana sub control.
       JAVA_OPTS: "-XX:MaxRAMPercentage=60 -XX:+ExitOnOutOfMemoryError"
     volumes:
       - ../../backend/filegrid-api/src/main/resources/policies:/app/policies:ro
+      - ../../observability/promtail/logback-spring.xml:/etc/filegrid/logback-spring.xml:ro
+      - api-logs:/var/log/filegrid
     networks:
       - storage-net
     depends_on:
@@ -103,6 +106,8 @@ services:
         condition: service_completed_successfully
       ftp:
         condition: service_healthy
+      api-logs-init:
+        condition: service_completed_successfully
     healthcheck:
       # GET /api/v1/health (contract): UP doar cand api si FileGridMeta raspund (storage-urile nu intra aici).
       test: ["CMD", "curl", "-fs", "-o", "/dev/null", "http://localhost:8080/api/v1/health"]
@@ -306,10 +311,64 @@ services:
     mem_limit: 64m
 
   # ---------------------------------------------------------------------------------------------------------------
-  # Locuri rezervate pentru etapele urmatoare (se completeaza in etapele lor; toate pe storage-net, fara porturi):
-  #
-  # loki:            # O8 - observability/loki; volum loki; mem_limit 512m
-  # promtail:        # O8 - observability/promtail, logurile JSON ale api
+  # Pregateste volumele noi pentru UID-ul neprivilegiat folosit de api si promtail.
+  api-logs-init:
+    image: busybox:1.37.0-musl
+    restart: "no"
+    network_mode: none
+    command: ["sh", "-ec", "chown 10001:10001 /var/log/filegrid /var/lib/promtail && chmod 0750 /var/log/filegrid /var/lib/promtail"]
+    volumes:
+      - api-logs:/var/log/filegrid
+      - promtail-positions:/var/lib/promtail
+    mem_limit: 16m
+
+  loki:
+    build:
+      context: ../../observability/loki
+    image: filegrid/loki:3.7.8
+    restart: unless-stopped
+    command: ["-config.file=/etc/loki/loki.yml"]
+    environment:
+      GOMEMLIMIT: 384MiB
+    volumes:
+      - ../../observability/loki/loki.yml:/etc/loki/loki.yml:ro
+      - loki:/loki
+    networks:
+      - storage-net
+    healthcheck:
+      test: ["CMD", "/bin/busybox", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3100/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 30s
+    mem_limit: 512m
+
+  promtail:
+    build:
+      context: ../../observability/promtail
+    image: filegrid/promtail:3.6.11
+    restart: unless-stopped
+    read_only: true
+    command: ["-config.file=/etc/promtail/promtail.yml"]
+    volumes:
+      - ../../observability/promtail/promtail.yml:/etc/promtail/promtail.yml:ro
+      - api-logs:/var/log/filegrid:ro
+      - promtail-positions:/var/lib/promtail
+    networks:
+      - storage-net
+    depends_on:
+      api-logs-init:
+        condition: service_completed_successfully
+      loki:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/bin/busybox", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9080/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 30s
+    stop_grace_period: 30s
+    mem_limit: 128m
 
   # ---------------------------------------------------------------------------------------------------------------
   # Grafana (F7): dashboard-uri si alerte provisionate din observability/grafana (apar singure la pornire). Fara port
@@ -381,4 +440,6 @@ volumes:
   grafana:
   prometheus:
   alertmanager:
-  # loki:        # O8
+  loki:
+  api-logs:
+  promtail-positions:
